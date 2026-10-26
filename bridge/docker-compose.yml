@@ -1,0 +1,52 @@
+# Pilote FlowIT Smart (§6, Docker Compose) : passerelle FlowIT + Home Assistant,
+# et en option Mosquitto + Zigbee2MQTT pour un coordinateur Zigbee USB.
+#
+#   docker compose up -d bridge homeassistant                 # Wi-Fi / Tuya via Home Assistant
+#   docker compose --profile zigbee up -d                     # + Zigbee2MQTT
+#
+# Aucun port n'est publié vers Internet : Home Assistant (8123) et Zigbee2MQTT (8080)
+# ne sont accessibles que sur le réseau local (§6.2).
+
+services:
+  bridge:
+    build: .
+    restart: unless-stopped
+    env_file: .env
+    network_mode: host # joint Home Assistant sur le LAN ; connexions sortantes vers Supabase uniquement
+    depends_on:
+      - homeassistant
+
+  homeassistant:
+    image: ghcr.io/home-assistant/home-assistant:2026.10.1
+    restart: unless-stopped
+    network_mode: host
+    volumes:
+      - ./data/homeassistant:/config
+      - /etc/localtime:/etc/localtime:ro
+    environment:
+      - TZ=Africa/Algiers
+
+  mosquitto:
+    profiles: [zigbee]
+    image: eclipse-mosquitto:2.0.22
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:1883:1883"
+    volumes:
+      - ./config/mosquitto.conf:/mosquitto/config/mosquitto.conf:ro
+      - ./config/acl:/mosquitto/config/acl:ro
+      - ./data/mosquitto:/mosquitto/data
+
+  zigbee2mqtt:
+    profiles: [zigbee]
+    image: koenkk/zigbee2mqtt:2.6.2
+    restart: unless-stopped
+    depends_on: [mosquitto]
+    ports:
+      - "127.0.0.1:8080:8080"
+    volumes:
+      - ./data/zigbee2mqtt:/app/data
+    devices:
+      - /dev/ttyUSB0:/dev/ttyUSB0 # adapter au coordinateur (ex. /dev/serial/by-id/...)
+    environment:
+      - TZ=Africa/Algiers

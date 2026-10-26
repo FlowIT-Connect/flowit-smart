@@ -1,0 +1,6 @@
+app/build/
+app/.dart_tool/
+bridge/node_modules/
+bridge/.env
+*.iml
+.idea/

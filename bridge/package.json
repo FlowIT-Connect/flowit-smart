@@ -1,0 +1,17 @@
+{
+  "name": "flowit-bridge",
+  "version": "1.0.0",
+  "description": "Passerelle locale FlowIT Smart : relie Home Assistant (Wi-Fi, Tuya, Zigbee2MQTT…) à Supabase, exécute les commandes et les automatisations.",
+  "type": "module",
+  "private": true,
+  "license": "UNLICENSED",
+  "engines": { "node": ">=22" },
+  "main": "src/index.js",
+  "scripts": {
+    "start": "node src/index.js",
+    "test": "node --test test/*.test.js"
+  },
+  "dependencies": {
+    "@supabase/supabase-js": "2.117.3"
+  }
+}

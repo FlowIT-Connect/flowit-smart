@@ -1,0 +1,94 @@
+
+import 'package:flowit_smart/data/backend.dart';
+import 'package:flowit_smart/data/demo_backend.dart';
+import 'package:flowit_smart/models/models.dart';
+import 'package:flowit_smart/state/app_state.dart';
+import 'package:flutter_test/flutter_test.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+
+/// Backend de démo dont la passerelle ne répond jamais.
+class SilentBackend extends DemoBackend {
+  SilentBackend() : super(latency: Duration.zero, confirmDelay: const Duration(hours: 1), liveSensors: false);
+}
+
+Future<AppState> signedIn(Backend backend, {Duration timeout = const Duration(seconds: 15)}) async {
+  final state = AppState(backend, commandTimeout: timeout);
+  await backend.signIn('test@flowit.dz', 'x');
+  for (var i = 0; i < 50 && state.devices.isEmpty; i++) {
+    await Future<void>.delayed(const Duration(milliseconds: 20));
+  }
+  return state;
+}
+
+Device byName(AppState s, String name) => s.devices.values.firstWhere((d) => d.name == name);
+
+void main() {
+  setUp(() => SharedPreferences.setMockInitialValues({}));
+
+  test('commande : attente puis confirmation, état mis à jour', () async {
+    final state = await signedIn(DemoBackend(latency: Duration.zero, confirmDelay: const Duration(milliseconds: 200), liveSensors: false));
+    final plug = byName(state, 'Prise café');
+    expect(plug.isOn, isFalse);
+
+    await state.sendCommand(plug, 'switch', true);
+    expect(state.pendingFor(plug.id, 'switch')?.isWaiting, isTrue, reason: 'pas de succès avant confirmation');
+    expect(state.devices[plug.id]!.isOn, isFalse);
+
+    await Future<void>.delayed(const Duration(milliseconds: 400));
+    expect(state.pendingFor(plug.id, 'switch')?.status, CommandStatus.confirmed);
+    expect(state.devices[plug.id]!.isOn, isTrue);
+  });
+
+  test('double commande ignorée tant que la première attend', () async {
+    final backend = DemoBackend(latency: Duration.zero, confirmDelay: const Duration(milliseconds: 300), liveSensors: false);
+    final state = await signedIn(backend);
+    final light = byName(state, 'Plafonnier');
+    await state.sendCommand(light, 'switch', false);
+    final first = state.pendingFor(light.id, 'switch')!.commandId;
+    await state.sendCommand(light, 'switch', true);
+    expect(state.pendingFor(light.id, 'switch')!.commandId, first);
+    expect(state.pendingFor(light.id, 'switch')!.value, false);
+  });
+
+  test('appareil hors ligne : délai dépassé signalé', () async {
+    final state = await signedIn(DemoBackend(latency: Duration.zero, confirmDelay: const Duration(milliseconds: 100), liveSensors: false));
+    final notices = <Notice>[];
+    state.notices.listen(notices.add);
+    final bulb = byName(state, 'Ampoule chevet');
+    expect(bulb.availability, Availability.unavailable);
+    await state.sendCommand(bulb, 'switch', true);
+    await Future<void>.delayed(const Duration(milliseconds: 500));
+    expect(state.pendingFor(bulb.id, 'switch')?.status, CommandStatus.timeout);
+    expect(notices.any((n) => n.isError), isTrue);
+  });
+
+  test('passerelle muette : délai client de sécurité', () async {
+    final state = await signedIn(SilentBackend(), timeout: const Duration(seconds: 3));
+    final plug = byName(state, 'Prise café');
+    await state.sendCommand(plug, 'switch', true);
+    await Future<void>.delayed(const Duration(seconds: 5));
+    expect(state.pendingFor(plug.id, 'switch')?.status, CommandStatus.timeout);
+    expect(state.devices[plug.id]!.isOn, isFalse, reason: 'état inchangé sans confirmation');
+  });
+
+  test('appareil sensible : aucune commande envoyée', () async {
+    final state = await signedIn(DemoBackend(latency: Duration.zero, liveSensors: false));
+    final lock = byName(state, 'Serrure');
+    await state.sendCommand(lock, 'lock', false);
+    expect(state.pendingFor(lock.id, 'lock'), isNull);
+  });
+
+  test('scène : exécution, résultat partiel journalisé (appareil hors ligne)', () async {
+    final state = await signedIn(DemoBackend(latency: Duration.zero, confirmDelay: const Duration(milliseconds: 50), liveSensors: false));
+    final scene = state.scenes.firstWhere((s) => s.name == 'Je pars');
+    await state.executeScene(scene);
+    for (var i = 0; i < 100 && state.sceneRuns.firstOrNull?.finishedAt == null; i++) {
+      await Future<void>.delayed(const Duration(milliseconds: 20));
+    }
+    final run = state.sceneRuns.first;
+    expect(run.status, 'partial');
+    expect(run.results, hasLength(4));
+    final events = await state.backend.listEvents(state.home!.id);
+    expect(events.any((e) => e.eventType == 'scene_finished'), isTrue);
+  });
+}
