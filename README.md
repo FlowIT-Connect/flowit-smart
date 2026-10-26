@@ -11,7 +11,7 @@ Application domotique multimarque (cahier des charges v1.0 du 26/10/2026).
 | `screenshots/` | Captures de l'application en mode démo |
 
 Démarrage rapide sans matériel ni compte : `cd app && flutter run -d chrome`
-(sans `SUPABASE_URL`, l'application démarre en **mode démo** avec une maison fictive).
+(par défaut, l'application se connecte au projet Supabase FlowIT ; avec `--dart-define=SUPABASE_URL=` vide, elle démarre en **mode démo** avec une maison fictive).
 
 Lire ensuite : [Architecture](docs/ARCHITECTURE.md), [Installation](docs/INSTALLATION.md),
 [Tests](docs/TESTS.md), [Limites connues](docs/LIMITES.md), [Dépendances](docs/DEPENDANCES.md).
