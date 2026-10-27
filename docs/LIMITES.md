@@ -15,4 +15,9 @@
   l'appairage se fait dans Home Assistant / Zigbee2MQTT.
 - **Appareils sensibles** (serrures, alarmes) : affichés mais commandes bloquées tant
   qu'une validation renforcée (code, biométrie) n'est pas développée.
+- **Mode Tuya Cloud (sans box)** : dépend d'Internet et du cloud Tuya ; l'état est relu toutes
+  les 30 s (pas de notification instantanée sans le service de messages Tuya), la passerelle
+  tourne sur un PC qui doit rester allumé, et l'essai gratuit « IoT Core » doit être prolongé
+  régulièrement. Pas encore testé avec de vrais appareils (API Tuya injoignable depuis
+  l'environnement de développement) : seulement avec un cloud Tuya simulé.
 - **Historique de capteurs** : seul l'état courant est stocké (pas de graphes).

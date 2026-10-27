@@ -1,8 +1,10 @@
 // FlowIT Bridge — point d'entrée.
-//   node --env-file=.env src/index.js        (ou docker compose up -d)
+//   node --env-file=.env src/index.js        (ou docker compose up -d, ou npm run local)
 
 import { FakeHomeAssistant } from './adapters/fake_home_assistant.js';
 import { HomeAssistantAdapter } from './adapters/home_assistant.js';
+import { TuyaClient } from './adapters/tuya_api.js';
+import { TuyaCloudAdapter } from './adapters/tuya_cloud.js';
 import { Bridge } from './bridge.js';
 import { loadConfig } from './config.js';
 import { applyAddonOptions } from './addon_options.js';
@@ -24,6 +26,10 @@ if (config.adapter === 'simulator') {
     fake.setState('sensor.chambre_temperature', (t + (Math.random() - 0.5) * 0.4).toFixed(1));
   }, 15_000);
   log.warn('bridge.simulator', { message: 'Mode simulateur : appareils fictifs, aucun matériel piloté.' });
+} else if (config.adapter === 'tuya_cloud') {
+  const client = new TuyaClient({ accessId: config.tuyaAccessId, accessSecret: config.tuyaAccessSecret, baseUrl: config.tuyaBaseUrl });
+  adapter = new TuyaCloudAdapter({ client, pollMs: config.tuyaPollMs });
+  log.info('bridge.tuya_cloud', { region: config.tuyaBaseUrl, poll_seconds: config.tuyaPollMs / 1000 });
 } else {
   adapter = new HomeAssistantAdapter({ url: config.haUrl, wsUrl: config.haWsUrl ?? undefined, token: config.haToken, filter: config.haEntityFilter });
 }

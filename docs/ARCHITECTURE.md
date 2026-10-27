@@ -43,4 +43,7 @@
 - `adapters/home_assistant.js` : client WebSocket HA (reconnexion avec backoff).
 - `adapters/ha_mapping.js` : entités HA → appareils et capacités FlowIT.
 - `adapters/fake_home_assistant.js` : simulateur (`ADAPTER=simulator`).
+- `adapters/tuya_api.js`, `tuya_mapping.js`, `tuya_cloud.js` : mode sans box (`ADAPTER=tuya_cloud`),
+  API cloud Tuya signée, interrogation périodique, confirmation par relecture de l'état.
+- `setup.js` : assistant de configuration sur PC (`npm run configurer`), écrit le `.env`.
 - `bridge.js` : inventaire, file de commandes, automatisations ; `store.js` : accès Supabase.
