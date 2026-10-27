@@ -1,0 +1,21 @@
+configuration:
+  service_role_key:
+    name: Supabase secret key (service_role)
+    description: Supabase > Project Settings > API Keys > service_role (or secret). It stays on this box.
+  integration_id:
+    name: Integration ID
+    description: FlowIT Smart app > Settings > Integrations > Home Assistant > copy the ID.
+  supabase_url:
+    name: Supabase URL
+    description: Keep the default value.
+  simulator:
+    name: Simulator mode
+    description: Turn on to test with 10 fake devices, no hardware needed.
+  run_automations:
+    name: Run automations
+    description: Keep on (only one bridge per home).
+  log_level:
+    name: Log level
+  entity_filter:
+    name: Entity filter (optional)
+    description: "Regular expression, e.g. ^(light|switch|cover)\\."

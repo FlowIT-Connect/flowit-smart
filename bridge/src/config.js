@@ -22,7 +22,9 @@ export function loadConfig(env = process.env) {
     supabaseServiceKey: required(env, 'SUPABASE_SERVICE_ROLE_KEY'),
     integrationId: required(env, 'INTEGRATION_ID'),
     adapter,
-    haUrl: adapter === 'home_assistant' ? required(env, 'HA_URL').replace(/\/$/, '') : null,
+    // HA_WS_URL (adresse WebSocket complète) remplace HA_URL, par ex. dans le module complémentaire HA.
+    haWsUrl: adapter === 'home_assistant' && env.HA_WS_URL ? env.HA_WS_URL : null,
+    haUrl: adapter === 'home_assistant' && !env.HA_WS_URL ? required(env, 'HA_URL').replace(/\/$/, '') : null,
     haToken: adapter === 'home_assistant' ? required(env, 'HA_TOKEN') : null,
     // Filtre facultatif : n'importer que les entités dont l'id correspond (ex. ^(light|switch|cover)\.)
     haEntityFilter: env.HA_ENTITY_FILTER ? new RegExp(env.HA_ENTITY_FILTER) : null,
