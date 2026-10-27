@@ -12,12 +12,16 @@ class OnboardingScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final state = AppScope.of(context);
-    return Scaffold(
+    return AmbientBackground(
+      child: Scaffold(
+      backgroundColor: Colors.transparent,
       appBar: AppBar(
+        leading: const Padding(padding: EdgeInsetsDirectional.only(start: 16), child: Center(child: FlowLogo(size: 34))),
+        leadingWidth: 60,
         title: const Text('FlowIT Smart'),
         actions: [
           const LanguageMenu(),
-          IconButton(tooltip: context.tr('auth.signOut'), onPressed: state.signOut, icon: const Icon(Icons.logout)),
+          IconButton(tooltip: context.tr('auth.signOut'), onPressed: state.signOut, icon: const Icon(Icons.logout_rounded)),
         ],
       ),
       body: Column(children: [
@@ -31,12 +35,12 @@ class OnboardingScreen extends StatelessWidget {
                       padding: const EdgeInsets.all(16),
                       children: [
                         EmptyState(
-                          icon: Icons.add_home_outlined,
+                          icon: Icons.add_home_rounded,
                           title: context.tr('onboarding.title'),
                           message: context.tr('onboarding.message'),
                           action: FilledButton.icon(
                             onPressed: () => createHomeFlow(context),
-                            icon: const Icon(Icons.add),
+                            icon: const Icon(Icons.add_rounded),
                             label: Text(context.tr('home.create')),
                           ),
                         ),
@@ -45,7 +49,7 @@ class OnboardingScreen extends StatelessWidget {
                           for (final inv in state.myInvitations)
                             Card(
                               child: ListTile(
-                                leading: const Icon(Icons.mail_outline),
+                                leading: const TileIcon(Icons.mail_rounded),
                                 title: Text(inv.homeName ?? ''),
                                 subtitle: Text(context.tr('role.${inv.role.name}')),
                                 trailing: FilledButton.tonal(
@@ -62,7 +66,7 @@ class OnboardingScreen extends StatelessWidget {
                               final token = await promptText(context, title: context.tr('invitations.join'), label: context.tr('invitations.code'));
                               if (token != null && context.mounted) await acceptInvitationFlow(context, token);
                             },
-                            icon: const Icon(Icons.vpn_key_outlined),
+                            icon: const Icon(Icons.vpn_key_rounded),
                             label: Text(context.tr('invitations.haveCode')),
                           ),
                         ),
@@ -70,6 +74,7 @@ class OnboardingScreen extends StatelessWidget {
                     ),
         ),
       ]),
+      ),
     );
   }
 }

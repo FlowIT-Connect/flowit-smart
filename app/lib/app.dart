@@ -62,13 +62,16 @@ class _FlowItAppState extends State<FlowItApp> {
       state: widget.state,
       child: Builder(builder: (context) {
         final state = AppScope.of(context);
-        return MaterialApp(
+        return ValueListenableBuilder<ThemeMode>(
+          valueListenable: ThemeController.instance,
+          builder: (context, mode, _) => MaterialApp(
           title: 'FlowIT Smart',
           debugShowCheckedModeBanner: false,
           navigatorKey: _navigator,
           scaffoldMessengerKey: _messenger,
           theme: AppTheme.light(),
           darkTheme: AppTheme.dark(),
+          themeMode: mode,
           locale: state.locale,
           supportedLocales: L10n.supported,
           localizationsDelegates: const [
@@ -80,6 +83,7 @@ class _FlowItAppState extends State<FlowItApp> {
           home: !state.signedIn
               ? const AuthScreen()
               : (state.home == null ? const OnboardingScreen() : const Shell()),
+          ),
         );
       }),
     );

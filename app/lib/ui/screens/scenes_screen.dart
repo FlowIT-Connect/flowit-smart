@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../../core/icons.dart';
 import '../../core/l10n.dart';
+import '../../core/theme.dart';
 import '../../data/backend.dart';
 import '../../models/models.dart';
 import '../../state/app_state.dart';
@@ -18,25 +19,29 @@ class ScenesScreen extends StatelessWidget {
     final state = AppScope.of(context);
     final scenes = state.scenes;
     return Scaffold(
+      backgroundColor: Colors.transparent,
       floatingActionButton: state.canManage
           ? FloatingActionButton.extended(
               heroTag: 'scene-add',
               onPressed: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => const SceneEditor())),
-              icon: const Icon(Icons.add),
+              icon: const Icon(Icons.add_rounded),
               label: Text(context.tr('scene.add')),
             )
           : null,
       body: scenes.isEmpty
           ? ListView(children: [
-              EmptyState(icon: Icons.auto_awesome_outlined, title: context.tr('scene.emptyTitle'), message: context.tr('scene.emptyHelp')),
+              EmptyState(icon: Icons.auto_awesome_rounded, title: context.tr('scene.emptyTitle'), message: context.tr('scene.emptyHelp')),
             ])
           : ListView(
-              padding: const EdgeInsets.fromLTRB(16, 16, 16, 96),
+              padding: const EdgeInsets.fromLTRB(16, 8, 16, 104),
               children: [
                 for (final s in scenes) Padding(padding: const EdgeInsets.only(bottom: 12), child: _SceneCard(scene: s)),
                 if (state.sceneRuns.isNotEmpty) ...[
                   SectionHeader(context.tr('scene.history')),
-                  for (final r in state.sceneRuns.take(15)) _RunTile(run: r),
+                  Card(
+                    clipBehavior: Clip.antiAlias,
+                    child: Column(children: [for (final r in state.sceneRuns.take(15)) _RunTile(run: r)]),
+                  ),
                 ],
               ],
             ),
@@ -54,38 +59,82 @@ class _SceneCard extends StatelessWidget {
     final state = AppScope.of(context);
     final s = scene;
     final running = state.sceneRuns.any((r) => r.sceneId == s.id && r.finishedAt == null);
+    final f = context.flow;
+    final theme = Theme.of(context);
+    final colors = sceneGradient(context, s.icon);
+    final canRun = !running && s.enabled && s.actions.isNotEmpty;
     return Card(
+      clipBehavior: Clip.antiAlias,
       child: Column(children: [
-        ListTile(
-          leading: CircleAvatar(child: Icon(sceneIcon(s.icon))),
-          title: Text(s.name),
-          subtitle: Text([
-            context.tr('scene.actionCount', {'n': s.actions.length}),
-            if (!s.enabled) context.tr('common.disabled'),
-            if (s.failurePolicy == FailurePolicy.stop) context.tr('scene.policy.stop'),
-          ].join(' · ')),
-          trailing: FilledButton.icon(
-            onPressed: running || !s.enabled || s.actions.isEmpty ? null : () => state.executeScene(s),
-            icon: running ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2)) : const Icon(Icons.play_arrow),
-            label: Text(context.tr(running ? 'scene.running' : 'scene.run')),
-          ),
-        ),
-        if (state.canManage)
-          OverflowBar(alignment: MainAxisAlignment.end, children: [
-            TextButton.icon(
-              onPressed: () => state.run(() async {
-                await state.backend.saveScene(s.copyWith(enabled: !s.enabled));
-                await state.refreshHome(silent: true);
-              }),
-              icon: Icon(s.enabled ? Icons.pause_circle_outline : Icons.play_circle_outline),
-              label: Text(context.tr(s.enabled ? 'common.disable' : 'common.enable')),
+        Padding(
+          padding: const EdgeInsets.fromLTRB(16, 16, 16, 12),
+          child: Row(children: [
+            Opacity(
+              opacity: s.enabled ? 1 : .45,
+              child: Container(
+                width: 56,
+                height: 56,
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(begin: Alignment.topLeft, end: Alignment.bottomRight, colors: colors),
+                  borderRadius: BorderRadius.circular(18),
+                  boxShadow: [BoxShadow(color: colors.last.withValues(alpha: .35), blurRadius: 16, offset: const Offset(0, 6))],
+                ),
+                child: Icon(sceneIcon(s.icon), color: Colors.white, size: 28),
+              ),
             ),
-            TextButton.icon(
-              onPressed: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => SceneEditor(scene: s))),
-              icon: const Icon(Icons.edit_outlined),
-              label: Text(context.tr('common.edit')),
+            const SizedBox(width: 14),
+            Expanded(
+              child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                Text(s.name, style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w800)),
+                const SizedBox(height: 4),
+                Text(
+                  [
+                    context.tr('scene.actionCount', {'n': s.actions.length}),
+                    if (!s.enabled) context.tr('common.disabled'),
+                    if (s.failurePolicy == FailurePolicy.stop) context.tr('scene.policy.stop'),
+                  ].join(' · '),
+                  style: theme.textTheme.bodyMedium?.copyWith(color: f.inkSoft),
+                ),
+              ]),
+            ),
+            const SizedBox(width: 8),
+            FilledButton.icon(
+              style: FilledButton.styleFrom(
+                backgroundColor: colors.first,
+                foregroundColor: Colors.white,
+                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+              ),
+              onPressed: canRun ? () => state.executeScene(s) : null,
+              icon: running
+                  ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
+                  : const Icon(Icons.play_arrow_rounded),
+              label: Text(context.tr(running ? 'scene.running' : 'scene.run')),
             ),
           ]),
+        ),
+        if (state.canManage) ...[
+          Divider(height: 1, color: f.line),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+            child: OverflowBar(alignment: MainAxisAlignment.end, children: [
+              TextButton.icon(
+                style: TextButton.styleFrom(foregroundColor: f.inkSoft),
+                onPressed: () => state.run(() async {
+                  await state.backend.saveScene(s.copyWith(enabled: !s.enabled));
+                  await state.refreshHome(silent: true);
+                }),
+                icon: Icon(s.enabled ? Icons.pause_circle_outline_rounded : Icons.play_circle_outline_rounded),
+                label: Text(context.tr(s.enabled ? 'common.disable' : 'common.enable')),
+              ),
+              TextButton.icon(
+                style: TextButton.styleFrom(foregroundColor: f.inkSoft),
+                onPressed: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => SceneEditor(scene: s))),
+                icon: const Icon(Icons.edit_rounded),
+                label: Text(context.tr('common.edit')),
+              ),
+            ]),
+          ),
+        ],
       ]),
     );
   }
@@ -99,17 +148,19 @@ class _RunTile extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final state = AppScope.of(context);
-    final scheme = Theme.of(context).colorScheme;
+    final f = context.flow;
     final scene = state.sceneById(run.sceneId);
     final ok = run.results.where((r) => r['status'] == 'confirmed').length;
     final (icon, color) = switch (run.status) {
-      'success' => (Icons.check_circle, Colors.green.shade600),
-      'partial' => (Icons.warning_amber, Colors.orange.shade700),
-      'failed' => (Icons.error, scheme.error),
-      _ => (Icons.hourglass_top, scheme.outline),
+      'success' => (Icons.check_circle_rounded, f.success),
+      'partial' => (Icons.warning_rounded, f.warning),
+      'failed' => (Icons.error_rounded, f.danger),
+      _ => (Icons.hourglass_top_rounded, f.inkFaint),
     };
     return ExpansionTile(
-      leading: Icon(icon, color: color),
+      shape: const Border(),
+      collapsedShape: const Border(),
+      leading: TileIcon(icon, color: color),
       title: Text(scene?.name ?? context.tr('scene.deleted')),
       subtitle: Text([
         '${MaterialLocalizations.of(context).formatShortDate(run.startedAt)} ${timeOfDay(context, run.startedAt)}',
@@ -121,7 +172,7 @@ class _RunTile extends StatelessWidget {
         for (final r in run.results)
           ListTile(
             dense: true,
-            leading: Icon(r['status'] == 'confirmed' ? Icons.check : Icons.close, color: r['status'] == 'confirmed' ? Colors.green.shade600 : scheme.error),
+            leading: Icon(r['status'] == 'confirmed' ? Icons.check_rounded : Icons.close_rounded, color: r['status'] == 'confirmed' ? f.success : f.danger),
             title: Text('${state.devices[r['device_id']]?.name ?? '—'} · ${capabilityLabel(context, '${r['capability_key']}')}'),
             subtitle: Text([context.tr('command.status.${r['status']}'), if (r['error'] != null) '${r['error']}'].join(' — ')),
           ),

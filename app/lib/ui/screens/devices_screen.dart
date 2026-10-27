@@ -36,12 +36,11 @@ class _DevicesScreenState extends State<DevicesScreen> {
     return CustomScrollView(slivers: [
       SliverToBoxAdapter(
         child: Padding(
-          padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
+          padding: const EdgeInsets.fromLTRB(16, 8, 16, 12),
           child: TextField(
             decoration: InputDecoration(
-              prefixIcon: const Icon(Icons.search),
+              prefixIcon: const Icon(Icons.search_rounded),
               hintText: context.tr('device.search'),
-              isDense: true,
             ),
             onChanged: (v) => setState(() => _query = v.trim()),
           ),
@@ -70,7 +69,7 @@ class _DevicesScreenState extends State<DevicesScreen> {
         SliverFillRemaining(
           hasScrollBody: false,
           child: EmptyState(
-            icon: Icons.search_off,
+            icon: Icons.search_off_rounded,
             title: context.tr(state.devices.isEmpty ? 'device.emptyTitle' : 'device.noMatch'),
             message: state.devices.isEmpty ? context.tr('device.emptyHelp') : null,
           ),

@@ -1,8 +1,178 @@
+import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
 
 import '../../core/l10n.dart';
+import '../../core/theme.dart';
 import '../../models/models.dart';
 import '../../state/app_state.dart';
+
+/// Logo FlowIT : toit de maison et onde de flux sur le dégradé de la marque.
+class FlowLogo extends StatelessWidget {
+  const FlowLogo({super.key, this.size = 40});
+
+  final double size;
+
+  @override
+  Widget build(BuildContext context) {
+    final f = context.flow;
+    return Container(
+      width: size,
+      height: size,
+      decoration: BoxDecoration(
+        gradient: f.brandGradient,
+        borderRadius: BorderRadius.circular(size * .3),
+        boxShadow: [BoxShadow(color: f.brand.withValues(alpha: .35), blurRadius: size * .4, offset: Offset(0, size * .12))],
+      ),
+      child: CustomPaint(painter: _LogoPainter()),
+    );
+  }
+}
+
+class _LogoPainter extends CustomPainter {
+  @override
+  void paint(Canvas canvas, Size s) {
+    final p = Paint()
+      ..color = Colors.white
+      ..style = PaintingStyle.stroke
+      ..strokeCap = StrokeCap.round
+      ..strokeJoin = StrokeJoin.round
+      ..strokeWidth = s.width * .085;
+    final roof = Path()
+      ..moveTo(s.width * .24, s.height * .47)
+      ..lineTo(s.width * .5, s.height * .25)
+      ..lineTo(s.width * .76, s.height * .47);
+    canvas.drawPath(roof, p);
+    final wave = Path()..moveTo(s.width * .26, s.height * .66);
+    for (var i = 0; i <= 24; i++) {
+      final t = i / 24;
+      wave.lineTo(s.width * (.26 + .48 * t), s.height * (.66 - .07 * math.sin(t * 2 * math.pi)));
+    }
+    canvas.drawPath(wave, p..strokeWidth = s.width * .075);
+  }
+
+  @override
+  bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
+}
+
+/// Fond d'ambiance : halos de lumière doux derrière le contenu.
+class AmbientBackground extends StatelessWidget {
+  const AmbientBackground({super.key, required this.child});
+
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
+    final f = context.flow;
+    return DecoratedBox(
+      decoration: BoxDecoration(color: f.background),
+      child: Stack(children: [
+        Positioned.fill(
+          child: IgnorePointer(
+            child: DecoratedBox(
+              decoration: BoxDecoration(
+                gradient: RadialGradient(center: const Alignment(-1.1, -1.25), radius: 1.1, colors: [f.glowA, f.glowA.withValues(alpha: 0)]),
+              ),
+            ),
+          ),
+        ),
+        Positioned.fill(
+          child: IgnorePointer(
+            child: DecoratedBox(
+              decoration: BoxDecoration(
+                gradient: RadialGradient(center: const Alignment(1.2, -1.1), radius: .9, colors: [f.glowB, f.glowB.withValues(alpha: 0)]),
+              ),
+            ),
+          ),
+        ),
+        Positioned.fill(child: child),
+      ]),
+    );
+  }
+}
+
+/// Pastille ronde colorée portant une icône.
+class IconBubble extends StatelessWidget {
+  const IconBubble({super.key, required this.icon, required this.color, this.size = 40, this.filled = false, this.glow = false});
+
+  final IconData icon;
+  final Color color;
+  final double size;
+
+  /// Fond plein (icône blanche) plutôt que teinté.
+  final bool filled;
+  final bool glow;
+
+  @override
+  Widget build(BuildContext context) => AnimatedContainer(
+        duration: const Duration(milliseconds: 250),
+        width: size,
+        height: size,
+        decoration: BoxDecoration(
+          color: filled ? color : color.withValues(alpha: .16),
+          shape: BoxShape.circle,
+          boxShadow: glow ? [BoxShadow(color: color.withValues(alpha: .45), blurRadius: size * .55, spreadRadius: -size * .05)] : null,
+        ),
+        child: Icon(icon, size: size * .52, color: filled ? Colors.white : color),
+      );
+}
+
+/// Groupe de réglages : lignes regroupées dans une carte arrondie, façon iOS.
+class SettingsGroup extends StatelessWidget {
+  const SettingsGroup({super.key, this.title, required this.children});
+
+  final String? title;
+  final List<Widget> children;
+
+  @override
+  Widget build(BuildContext context) {
+    final f = context.flow;
+    final items = <Widget>[];
+    for (var i = 0; i < children.length; i++) {
+      if (i > 0) items.add(Divider(indent: 64, endIndent: 16, color: f.line.withValues(alpha: .7)));
+      items.add(children[i]);
+    }
+    return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+      if (title != null) SectionHeader(title!),
+      Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 16),
+        child: Card(clipBehavior: Clip.antiAlias, child: Column(children: items)),
+      ),
+    ]);
+  }
+}
+
+/// Icône de ligne de réglage : petite tuile colorée.
+class TileIcon extends StatelessWidget {
+  const TileIcon(this.icon, {super.key, this.color});
+
+  final IconData icon;
+  final Color? color;
+
+  @override
+  Widget build(BuildContext context) {
+    final c = color ?? context.flow.brand;
+    return Container(
+      width: 34,
+      height: 34,
+      decoration: BoxDecoration(color: c.withValues(alpha: .14), borderRadius: BorderRadius.circular(11)),
+      child: Icon(icon, size: 19, color: c),
+    );
+  }
+}
+
+/// Largeur de lecture confortable sur grand écran.
+class ContentWidth extends StatelessWidget {
+  const ContentWidth({super.key, required this.child, this.maxWidth = 1120});
+
+  final Widget child;
+  final double maxWidth;
+
+  @override
+  Widget build(BuildContext context) => Center(
+        child: ConstrainedBox(constraints: BoxConstraints(maxWidth: maxWidth), child: child),
+      );
+}
 
 /// État vide (§5.11).
 class EmptyState extends StatelessWidget {
@@ -16,21 +186,33 @@ class EmptyState extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final f = context.flow;
     return Center(
       child: Padding(
-        padding: const EdgeInsets.all(32),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(icon, size: 56, color: theme.colorScheme.outline),
-            const SizedBox(height: 16),
-            Text(title, style: theme.textTheme.titleMedium, textAlign: TextAlign.center),
-            if (message != null) ...[
-              const SizedBox(height: 8),
-              Text(message!, style: theme.textTheme.bodyMedium?.copyWith(color: theme.colorScheme.onSurfaceVariant), textAlign: TextAlign.center),
+        padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 48),
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 420),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Container(
+                width: 96,
+                height: 96,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  gradient: RadialGradient(colors: [f.brand.withValues(alpha: .22), f.brand.withValues(alpha: .04)]),
+                ),
+                child: Icon(icon, size: 44, color: f.brand),
+              ),
+              const SizedBox(height: 20),
+              Text(title, style: theme.textTheme.titleLarge, textAlign: TextAlign.center),
+              if (message != null) ...[
+                const SizedBox(height: 8),
+                Text(message!, style: theme.textTheme.bodyMedium?.copyWith(color: f.inkSoft, height: 1.5), textAlign: TextAlign.center),
+              ],
+              if (action != null) ...[const SizedBox(height: 24), action!],
             ],
-            if (action != null) ...[const SizedBox(height: 20), action!],
-          ],
+          ),
         ),
       ),
     );
@@ -46,7 +228,7 @@ class ErrorState extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => EmptyState(
-        icon: Icons.error_outline,
+        icon: Icons.cloud_off_rounded,
         title: context.tr('error.title'),
         message: message,
         action: onRetry == null ? null : FilledButton.tonal(onPressed: onRetry, child: Text(context.tr('common.retry'))),
@@ -63,25 +245,31 @@ class ConnectionBanner extends StatelessWidget {
     final String? text = !state.online
         ? context.tr('banner.offline')
         : (!state.realtimeConnected ? context.tr('banner.realtime') : null);
-    final scheme = Theme.of(context).colorScheme;
+    final f = context.flow;
     return AnimatedSize(
-      duration: const Duration(milliseconds: 200),
+      duration: const Duration(milliseconds: 220),
+      curve: Curves.easeOutCubic,
       child: text == null
           ? const SizedBox(width: double.infinity)
-          : Material(
-              color: scheme.errorContainer,
-              child: Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                child: Row(
-                  children: [
-                    Icon(Icons.cloud_off_outlined, size: 18, color: scheme.onErrorContainer),
-                    const SizedBox(width: 8),
-                    Expanded(child: Text(text, style: TextStyle(color: scheme.onErrorContainer))),
-                    TextButton(
-                      onPressed: () => state.home == null ? state.loadHomes() : state.refreshHome(),
-                      child: Text(context.tr('common.retry')),
-                    ),
-                  ],
+          : Padding(
+              padding: const EdgeInsets.fromLTRB(16, 4, 16, 8),
+              child: Material(
+                color: f.dangerSoft,
+                borderRadius: BorderRadius.circular(18),
+                child: Padding(
+                  padding: const EdgeInsetsDirectional.fromSTEB(16, 6, 6, 6),
+                  child: Row(
+                    children: [
+                      Icon(Icons.cloud_off_rounded, size: 18, color: f.dangerInk),
+                      const SizedBox(width: 10),
+                      Expanded(child: Text(text, style: TextStyle(color: f.dangerInk, fontWeight: FontWeight.w600))),
+                      TextButton(
+                        style: TextButton.styleFrom(foregroundColor: f.dangerInk),
+                        onPressed: () => state.home == null ? state.loadHomes() : state.refreshHome(),
+                        child: Text(context.tr('common.retry')),
+                      ),
+                    ],
+                  ),
                 ),
               ),
             ),
@@ -98,21 +286,38 @@ class AvailabilityBadge extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final scheme = Theme.of(context).colorScheme;
+    final f = context.flow;
     final (color, icon) = switch (availability) {
-      Availability.available => (Colors.green.shade600, Icons.circle),
-      Availability.unavailable => (scheme.error, Icons.link_off),
-      Availability.unknown => (scheme.outline, Icons.help_outline),
+      Availability.available => (f.success, Icons.circle),
+      Availability.unavailable => (f.danger, Icons.link_off_rounded),
+      Availability.unknown => (f.inkFaint, Icons.help_outline_rounded),
     };
     final label = context.tr('availability.${availability.name}');
     if (compact) {
-      return Tooltip(message: label, child: Icon(icon, size: availability == Availability.available ? 10 : 16, color: color, semanticLabel: label));
+      if (availability == Availability.available) {
+        return Tooltip(
+          message: label,
+          child: Semantics(
+            label: label,
+            child: Container(
+              width: 9,
+              height: 9,
+              decoration: BoxDecoration(color: color, shape: BoxShape.circle, boxShadow: [BoxShadow(color: color.withValues(alpha: .5), blurRadius: 6)]),
+            ),
+          ),
+        );
+      }
+      return Tooltip(message: label, child: Icon(icon, size: 16, color: color, semanticLabel: label));
     }
-    return Row(mainAxisSize: MainAxisSize.min, children: [
-      Icon(icon, size: 12, color: color),
-      const SizedBox(width: 4),
-      Text(label, style: Theme.of(context).textTheme.labelMedium?.copyWith(color: color)),
-    ]);
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+      decoration: BoxDecoration(color: color.withValues(alpha: .12), borderRadius: BorderRadius.circular(999)),
+      child: Row(mainAxisSize: MainAxisSize.min, children: [
+        Icon(icon, size: availability == Availability.available ? 8 : 14, color: color),
+        const SizedBox(width: 6),
+        Text(label, style: Theme.of(context).textTheme.labelMedium?.copyWith(color: color, fontWeight: FontWeight.w700)),
+      ]),
+    );
   }
 }
 
@@ -124,14 +329,14 @@ class InfoChip extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final scheme = Theme.of(context).colorScheme;
+    final f = context.flow;
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-      decoration: BoxDecoration(color: scheme.secondaryContainer, borderRadius: BorderRadius.circular(8)),
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+      decoration: BoxDecoration(color: f.chip, borderRadius: BorderRadius.circular(999)),
       child: Row(mainAxisSize: MainAxisSize.min, children: [
-        Icon(icon, size: 14, color: scheme.onSecondaryContainer),
-        const SizedBox(width: 4),
-        Text(label, style: Theme.of(context).textTheme.labelSmall?.copyWith(color: scheme.onSecondaryContainer)),
+        Icon(icon, size: 14, color: f.inkSoft),
+        const SizedBox(width: 6),
+        Text(label, style: Theme.of(context).textTheme.labelMedium?.copyWith(color: f.ink)),
       ]),
     );
   }
@@ -145,25 +350,27 @@ class SectionHeader extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => Padding(
-        padding: const EdgeInsetsDirectional.fromSTEB(16, 20, 8, 8),
+        padding: const EdgeInsetsDirectional.fromSTEB(20, 22, 8, 8),
         child: Row(children: [
-          Expanded(child: Text(title, style: Theme.of(context).textTheme.titleSmall?.copyWith(color: Theme.of(context).colorScheme.primary))),
+          Expanded(
+            child: Text(title, style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w800, color: context.flow.ink)),
+          ),
           ?trailing,
         ]),
       );
 }
 
 Future<bool> confirmDialog(BuildContext context, {required String title, required String message, String? confirmLabel, bool destructive = false}) async {
-  final scheme = Theme.of(context).colorScheme;
+  final f = context.flow;
   final res = await showDialog<bool>(
     context: context,
     builder: (ctx) => AlertDialog(
       title: Text(title),
-      content: Text(message),
+      content: Text(message, style: TextStyle(color: f.inkSoft, height: 1.45)),
       actions: [
         TextButton(onPressed: () => Navigator.pop(ctx, false), child: Text(context.tr('common.cancel'))),
         FilledButton(
-          style: destructive ? FilledButton.styleFrom(backgroundColor: scheme.error, foregroundColor: scheme.onError) : null,
+          style: destructive ? FilledButton.styleFrom(backgroundColor: f.danger, foregroundColor: Colors.white) : null,
           onPressed: () => Navigator.pop(ctx, true),
           child: Text(confirmLabel ?? context.tr('common.confirm')),
         ),
@@ -185,12 +392,15 @@ Future<String?> promptText(BuildContext context, {required String title, String?
 
       return AlertDialog(
         title: Text(title),
-        content: TextField(
-          controller: controller,
-          autofocus: true,
-          keyboardType: keyboard,
-          decoration: InputDecoration(labelText: label, hintText: hint),
-          onSubmitted: (_) => submit(),
+        content: SizedBox(
+          width: 380,
+          child: TextField(
+            controller: controller,
+            autofocus: true,
+            keyboardType: keyboard,
+            decoration: InputDecoration(labelText: label, hintText: hint),
+            onSubmitted: (_) => submit(),
+          ),
         ),
         actions: [
           TextButton(onPressed: () => Navigator.pop(ctx), child: Text(context.tr('common.cancel'))),
@@ -219,6 +429,8 @@ class ForwardChevron extends StatelessWidget {
   const ForwardChevron({super.key});
 
   @override
-  Widget build(BuildContext context) =>
-      Transform.flip(flipX: Directionality.of(context) == TextDirection.rtl, child: const Icon(Icons.chevron_right));
+  Widget build(BuildContext context) => Transform.flip(
+        flipX: Directionality.of(context) == TextDirection.rtl,
+        child: Icon(Icons.chevron_right_rounded, color: context.flow.inkFaint),
+      );
 }

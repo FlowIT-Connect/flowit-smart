@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../../core/icons.dart';
 import '../../core/l10n.dart';
+import '../../core/theme.dart';
 import '../../models/models.dart';
 import '../../state/app_state.dart';
 import '../screens/device_detail.dart';
@@ -53,7 +54,7 @@ class CommandIndicator extends StatelessWidget {
     final Widget icon = p.isWaiting
         ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2))
         : Icon(p.status == CommandStatus.confirmed ? Icons.check_circle : Icons.error_outline,
-            size: 18, color: p.status == CommandStatus.confirmed ? Colors.green.shade600 : scheme.error);
+            size: 18, color: p.status == CommandStatus.confirmed ? context.flow.success : scheme.error);
     if (compact) {
       return Semantics(liveRegion: true, label: label, child: Tooltip(message: label, child: icon));
     }
@@ -70,6 +71,9 @@ class CommandIndicator extends StatelessWidget {
 }
 
 /// Tuile d'appareil (grilles Accueil / Pièces / Appareils).
+///
+/// Allumé, l'appareil « s'illumine » : carte claire, pastille pleine à sa couleur
+/// et halo. Éteint ou hors ligne, il reste discret.
 class DeviceTile extends StatelessWidget {
   const DeviceTile(this.device, {super.key, this.showRoom = true});
 
@@ -79,55 +83,91 @@ class DeviceTile extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final state = AppScope.of(context);
-    final scheme = Theme.of(context).colorScheme;
+    final f = context.flow;
+    final theme = Theme.of(context);
     final d = device;
     final sw = d.primarySwitch;
     final pending = sw == null ? null : state.pendingFor(d.id, 'switch');
     final on = (pending?.isWaiting ?? false) ? pending!.value == true : d.isOn == true;
     final active = d.isOnline && d.isOn == true; // couleur = état confirmé, pas la demande en cours
+    final accent = deviceAccent(context, d);
     final subtitle = _summary(context, d);
     final room = showRoom ? state.roomById(d.roomId)?.name : null;
+    final reading = sw == null ? _headline(context, d) : null;
+    final ink = active ? f.tileOnInk : f.ink;
+    final inkSoft = active ? f.tileOnInkSoft : f.inkSoft;
 
     return Card(
-      color: active ? scheme.primaryContainer : null,
+      color: active ? f.tileOn : f.tileOff,
+      elevation: active ? 10 : 0,
+      shadowColor: active ? accent.withValues(alpha: .35) : Colors.transparent,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(26),
+        side: BorderSide(color: active ? accent.withValues(alpha: .25) : f.cardBorder),
+      ),
       clipBehavior: Clip.antiAlias,
       child: InkWell(
         onTap: () => showDeviceDetail(context, d.id),
         child: Padding(
-          padding: const EdgeInsets.all(12),
+          padding: const EdgeInsetsDirectional.fromSTEB(14, 14, 10, 14),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Row(children: [
-                Icon(deviceIcon(d), color: active ? scheme.onPrimaryContainer : (d.isOnline ? scheme.primary : scheme.outline)),
+                Opacity(
+                  opacity: d.isOnline ? 1 : .55,
+                  child: IconBubble(icon: deviceIcon(d), color: d.isOnline ? accent : f.inkFaint, size: 42, filled: active, glow: active),
+                ),
                 const Spacer(),
-                if (pending != null) CommandIndicator(pending, compact: true) else AvailabilityBadge(d.availability, compact: true),
+                if (pending != null)
+                  Padding(padding: const EdgeInsetsDirectional.only(end: 4), child: CommandIndicator(pending, compact: true))
+                else if (!d.isOnline || sw == null || !sw.isControl)
+                  Padding(padding: const EdgeInsetsDirectional.only(end: 6), child: AvailabilityBadge(d.availability, compact: true)),
+                if (sw != null && sw.isControl)
+                  Transform.scale(
+                    scale: .82,
+                    alignment: AlignmentDirectional.centerEnd,
+                    child: Switch(
+                      materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                      value: on,
+                      onChanged: !d.isOnline || d.isSensitive || (pending?.isWaiting ?? false)
+                          ? null
+                          : (v) => state.sendCommand(d, 'switch', v),
+                    ),
+                  ),
               ]),
               const Spacer(),
-              Text(d.name, maxLines: 1, overflow: TextOverflow.ellipsis, style: Theme.of(context).textTheme.titleSmall),
+              if (reading != null)
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 2),
+                  child: Text(reading, style: theme.textTheme.headlineSmall?.copyWith(color: ink, height: 1.1)),
+                ),
+              Text(d.name, maxLines: 1, overflow: TextOverflow.ellipsis, style: theme.textTheme.titleSmall?.copyWith(color: ink, fontWeight: FontWeight.w800)),
+              const SizedBox(height: 2),
               Text(
-                [?room, subtitle].join(' · '),
+                [?room, if (reading == null || subtitle != reading) subtitle].where((e) => e.isNotEmpty).join(' · '),
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
-                style: Theme.of(context).textTheme.bodySmall?.copyWith(color: scheme.onSurfaceVariant),
+                style: theme.textTheme.bodySmall?.copyWith(
+                  color: d.availability == Availability.unavailable ? f.danger : inkSoft,
+                  fontWeight: FontWeight.w600,
+                ),
               ),
-              if (sw != null && sw.isControl)
-                Align(
-                  alignment: AlignmentDirectional.centerEnd,
-                  child: Switch(
-                    value: on,
-                    onChanged: !d.isOnline || d.isSensitive || (pending?.isWaiting ?? false)
-                        ? null
-                        : (v) => state.sendCommand(d, 'switch', v),
-                  ),
-                )
-              else
-                const SizedBox(height: 48),
             ],
           ),
         ),
       ),
     );
+  }
+
+  /// Mesure mise en avant sur la tuile d'un capteur ou d'un thermostat.
+  String? _headline(BuildContext context, Device d) {
+    if (!d.isOnline) return null;
+    for (final key in ['temperature', 'current_temperature', 'target_temperature', 'cover_position', 'humidity', 'power']) {
+      final cap = d.capability(key);
+      if (cap != null && d.state[key] is num) return formatValue(context, cap, key, d.state[key]);
+    }
+    return null;
   }
 
   String _summary(BuildContext context, Device d) {
@@ -158,8 +198,8 @@ class DeviceGrid extends StatelessWidget {
         padding: const EdgeInsets.symmetric(horizontal: 16),
         sliver: SliverGrid(
           gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
-            maxCrossAxisExtent: 220,
-            mainAxisExtent: 152,
+            maxCrossAxisExtent: 210,
+            mainAxisExtent: 164,
             crossAxisSpacing: 12,
             mainAxisSpacing: 12,
           ),
@@ -180,28 +220,72 @@ class DeviceControlPanel extends StatelessWidget {
     final children = <Widget>[];
 
     if (d.isSensitive) {
-      children.add(_Notice(icon: Icons.shield_outlined, text: context.tr('device.sensitiveBlocked')));
+      children.add(_Notice(icon: Icons.shield_rounded, text: context.tr('device.sensitiveBlocked')));
     } else if (d.availability == Availability.unavailable && d.controls.isNotEmpty) {
-      children.add(_Notice(icon: Icons.link_off, text: context.tr('device.offlineControls')));
+      children.add(_Notice(icon: Icons.link_off_rounded, text: context.tr('device.offlineControls')));
     }
     if (d.isUnsupported) {
-      children.add(_Notice(icon: Icons.info_outline, text: context.tr('device.unsupported')));
+      children.add(_Notice(icon: Icons.info_outline_rounded, text: context.tr('device.unsupported')));
     }
     for (final cap in d.controls) {
       if (d.isSensitive) break;
-      children.add(_CapabilityControl(device: d, cap: cap));
+      children.add(_ControlCard(child: _CapabilityControl(device: d, cap: cap)));
     }
     if (d.readings.isNotEmpty) {
       children.add(SectionHeader(context.tr('device.readings')));
-      for (final cap in d.readings) {
-        children.add(ListTile(
-          leading: Icon(capabilityIcon(cap.key)),
-          title: Text(capabilityLabel(context, cap.key)),
-          trailing: Text(formatValue(context, cap, cap.key, d.state[cap.key]), style: Theme.of(context).textTheme.titleMedium),
-        ));
-      }
+      children.add(Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 16),
+        child: LayoutBuilder(builder: (context, box) {
+          final cols = box.maxWidth > 420 ? 3 : 2;
+          final w = (box.maxWidth - 10 * (cols - 1)) / cols;
+          return Wrap(spacing: 10, runSpacing: 10, children: [
+            for (final cap in d.readings) SizedBox(width: w, child: _ReadingCard(device: d, cap: cap)),
+          ]);
+        }),
+      ));
     }
     return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: children);
+  }
+}
+
+/// Carte d'un contrôle dans la fiche d'appareil.
+class _ControlCard extends StatelessWidget {
+  const _ControlCard({required this.child});
+
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) => Padding(
+        padding: const EdgeInsets.fromLTRB(16, 6, 16, 6),
+        child: Card(
+          clipBehavior: Clip.antiAlias,
+          child: Padding(padding: const EdgeInsets.symmetric(vertical: 6), child: child),
+        ),
+      );
+}
+
+/// Mesure d'un capteur (température, humidité, batterie…).
+class _ReadingCard extends StatelessWidget {
+  const _ReadingCard({required this.device, required this.cap});
+
+  final Device device;
+  final Capability cap;
+
+  @override
+  Widget build(BuildContext context) {
+    final f = context.flow;
+    final theme = Theme.of(context);
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(14),
+        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Icon(capabilityIcon(cap.key), size: 20, color: f.brand),
+          const SizedBox(height: 10),
+          Text(formatValue(context, cap, cap.key, device.state[cap.key]), style: theme.textTheme.titleLarge, maxLines: 1, overflow: TextOverflow.ellipsis),
+          Text(capabilityLabel(context, cap.key), style: theme.textTheme.bodySmall?.copyWith(color: f.inkSoft), maxLines: 1, overflow: TextOverflow.ellipsis),
+        ]),
+      ),
+    );
   }
 }
 
@@ -213,15 +297,15 @@ class _Notice extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final scheme = Theme.of(context).colorScheme;
+    final f = context.flow;
     return Container(
       margin: const EdgeInsets.fromLTRB(16, 8, 16, 8),
-      padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(color: scheme.surfaceContainerHighest, borderRadius: BorderRadius.circular(12)),
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(color: f.warning.withValues(alpha: .12), borderRadius: BorderRadius.circular(20)),
       child: Row(children: [
-        Icon(icon, color: scheme.onSurfaceVariant),
+        Icon(icon, color: f.warning),
         const SizedBox(width: 12),
-        Expanded(child: Text(text)),
+        Expanded(child: Text(text, style: TextStyle(color: f.ink, height: 1.4, fontWeight: FontWeight.w600))),
       ]),
     );
   }
@@ -257,7 +341,7 @@ class _CapabilityControlState extends State<_CapabilityControl> {
     switch (cap.type) {
       case CapabilityType.boolean:
         return SwitchListTile(
-          secondary: Icon(capabilityIcon(cap.key)),
+          secondary: TileIcon(capabilityIcon(cap.key)),
           title: title,
           subtitle: pending != null ? Align(alignment: AlignmentDirectional.centerStart, child: indicator) : null,
           value: current == true,
@@ -267,14 +351,14 @@ class _CapabilityControlState extends State<_CapabilityControl> {
         if (cap.key == 'target_temperature') {
           final v = (current as num?) ?? cap.min;
           return ListTile(
-            leading: Icon(capabilityIcon(cap.key)),
+            leading: TileIcon(capabilityIcon(cap.key)),
             title: title,
             subtitle: pending != null ? Align(alignment: AlignmentDirectional.centerStart, child: indicator) : null,
             trailing: Row(mainAxisSize: MainAxisSize.min, children: [
               IconButton.filledTonal(
                 tooltip: context.tr('common.decrease'),
                 onPressed: enabled && v > cap.min ? () => send(_round(v - cap.step, cap)) : null,
-                icon: const Icon(Icons.remove),
+                icon: const Icon(Icons.remove_rounded),
               ),
               SizedBox(
                 width: 72,
@@ -283,7 +367,7 @@ class _CapabilityControlState extends State<_CapabilityControl> {
               IconButton.filledTonal(
                 tooltip: context.tr('common.increase'),
                 onPressed: enabled && v < cap.max ? () => send(_round(v + cap.step, cap)) : null,
-                icon: const Icon(Icons.add),
+                icon: const Icon(Icons.add_rounded),
               ),
             ]),
           );
@@ -294,7 +378,7 @@ class _CapabilityControlState extends State<_CapabilityControl> {
           padding: const EdgeInsets.only(top: 4),
           child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
             ListTile(
-              leading: Icon(capabilityIcon(cap.key)),
+              leading: TileIcon(capabilityIcon(cap.key)),
               title: title,
               subtitle: pending != null ? Align(alignment: AlignmentDirectional.centerStart, child: indicator) : null,
               trailing: Text(formatValue(context, cap, cap.key, _round(v, cap)), style: Theme.of(context).textTheme.titleMedium),
@@ -306,7 +390,7 @@ class _CapabilityControlState extends State<_CapabilityControl> {
                   Expanded(
                     child: OutlinedButton.icon(
                       onPressed: enabled ? () => send(cap.max) : null,
-                      icon: const Icon(Icons.keyboard_arrow_up),
+                      icon: const Icon(Icons.keyboard_arrow_up_rounded),
                       label: Text(context.tr('cover.open')),
                     ),
                   ),
@@ -314,31 +398,39 @@ class _CapabilityControlState extends State<_CapabilityControl> {
                   Expanded(
                     child: OutlinedButton.icon(
                       onPressed: enabled ? () => send(cap.min) : null,
-                      icon: const Icon(Icons.keyboard_arrow_down),
+                      icon: const Icon(Icons.keyboard_arrow_down_rounded),
                       label: Text(context.tr('cover.close')),
                     ),
                   ),
                 ]),
               ),
-            Slider(
-              value: v,
-              min: cap.min.toDouble(),
-              max: cap.max.toDouble(),
-              divisions: divisions > 0 && divisions <= 1000 ? divisions : null,
-              label: formatValue(context, cap, cap.key, _round(v, cap)),
-              onChanged: enabled ? (x) => setState(() => _drag = x) : null,
-              onChangeEnd: enabled
-                  ? (x) {
-                      setState(() => _drag = null);
-                      send(_round(x, cap));
-                    }
-                  : null,
+            Padding(
+              padding: const EdgeInsets.fromLTRB(8, 4, 8, 8),
+              child: SliderTheme(
+                data: SliderTheme.of(context).copyWith(
+                  activeTrackColor: cap.key == 'cover_position' ? context.flow.blue : (cap.key.contains('temp') ? context.flow.orange : deviceAccent(context, d)),
+                ),
+                child: Slider(
+                  value: v,
+                  min: cap.min.toDouble(),
+                  max: cap.max.toDouble(),
+                  divisions: divisions > 0 && divisions <= 1000 ? divisions : null,
+                  label: formatValue(context, cap, cap.key, _round(v, cap)),
+                  onChanged: enabled ? (x) => setState(() => _drag = x) : null,
+                  onChangeEnd: enabled
+                      ? (x) {
+                          setState(() => _drag = null);
+                          send(_round(x, cap));
+                        }
+                      : null,
+                ),
+              ),
             ),
           ]),
         );
       case CapabilityType.enumeration:
         return ListTile(
-          leading: Icon(capabilityIcon(cap.key)),
+          leading: TileIcon(capabilityIcon(cap.key)),
           title: title,
           subtitle: Padding(
             padding: const EdgeInsets.only(top: 8),
@@ -360,11 +452,11 @@ class _CapabilityControlState extends State<_CapabilityControl> {
           Color(0xFF3F51B5), Color(0xFF03A9F4), Color(0xFF00BFA5), Color(0xFF8BC34A), Color(0xFFFFEB3B),
         ];
         return ListTile(
-          leading: Icon(capabilityIcon(cap.key)),
+          leading: TileIcon(capabilityIcon(cap.key)),
           title: title,
           subtitle: Padding(
             padding: const EdgeInsets.only(top: 8),
-            child: Wrap(spacing: 10, runSpacing: 10, crossAxisAlignment: WrapCrossAlignment.center, children: [
+            child: Wrap(spacing: 12, runSpacing: 12, crossAxisAlignment: WrapCrossAlignment.center, children: [
               for (final c in palette)
                 Semantics(
                   button: true,
@@ -374,8 +466,8 @@ class _CapabilityControlState extends State<_CapabilityControl> {
                     customBorder: const CircleBorder(),
                     onTap: enabled ? () => send(toHex(c)) : null,
                     child: Container(
-                      width: 32,
-                      height: 32,
+                      width: 38,
+                      height: 38,
                       decoration: BoxDecoration(
                         color: c,
                         shape: BoxShape.circle,
@@ -394,7 +486,7 @@ class _CapabilityControlState extends State<_CapabilityControl> {
       case CapabilityType.string:
       case CapabilityType.sensor:
         return ListTile(
-          leading: Icon(capabilityIcon(cap.key)),
+          leading: TileIcon(capabilityIcon(cap.key)),
           title: title,
           trailing: Text(formatValue(context, cap, cap.key, current)),
         );

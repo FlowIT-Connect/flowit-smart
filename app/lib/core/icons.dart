@@ -1,78 +1,134 @@
 import 'package:flutter/material.dart';
 
 import '../models/models.dart';
+import 'theme.dart';
 
 /// Icônes de pièces proposées (clé stockée dans rooms.icon).
 const roomIcons = <String, IconData>{
-  'sofa': Icons.weekend_outlined,
-  'bed': Icons.bed_outlined,
-  'kitchen': Icons.kitchen_outlined,
-  'dining': Icons.dining_outlined,
-  'bath': Icons.bathtub_outlined,
-  'office': Icons.desk_outlined,
-  'child': Icons.child_care_outlined,
-  'door': Icons.door_front_door_outlined,
-  'garage': Icons.garage_outlined,
-  'garden': Icons.yard_outlined,
-  'stairs': Icons.stairs_outlined,
-  'other': Icons.meeting_room_outlined,
+  'sofa': Icons.weekend_rounded,
+  'bed': Icons.bed_rounded,
+  'kitchen': Icons.kitchen_rounded,
+  'dining': Icons.dining_rounded,
+  'bath': Icons.bathtub_rounded,
+  'office': Icons.desk_rounded,
+  'child': Icons.child_care_rounded,
+  'door': Icons.door_front_door_rounded,
+  'garage': Icons.garage_rounded,
+  'garden': Icons.yard_rounded,
+  'stairs': Icons.stairs_rounded,
+  'other': Icons.meeting_room_rounded,
 };
 
-IconData roomIcon(String? key) => roomIcons[key] ?? Icons.meeting_room_outlined;
+IconData roomIcon(String? key) => roomIcons[key] ?? Icons.meeting_room_rounded;
 
 /// Icônes de scènes (clé stockée dans scenes.icon).
 const sceneIcons = <String, IconData>{
-  'movie': Icons.movie_outlined,
-  'night': Icons.bedtime_outlined,
-  'sun': Icons.wb_sunny_outlined,
-  'logout': Icons.logout,
-  'home': Icons.home_outlined,
-  'party': Icons.celebration_outlined,
-  'meal': Icons.restaurant_outlined,
-  'auto': Icons.auto_awesome_outlined,
+  'movie': Icons.movie_rounded,
+  'night': Icons.bedtime_rounded,
+  'sun': Icons.wb_sunny_rounded,
+  'logout': Icons.logout_rounded,
+  'home': Icons.home_rounded,
+  'party': Icons.celebration_rounded,
+  'meal': Icons.restaurant_rounded,
+  'auto': Icons.auto_awesome_rounded,
 };
 
-IconData sceneIcon(String? key) => sceneIcons[key] ?? Icons.auto_awesome_outlined;
+IconData sceneIcon(String? key) => sceneIcons[key] ?? Icons.auto_awesome_rounded;
 
-IconData deviceIcon(Device d) {
+/// Dégradé d'une scène, choisi d'après son icône pour rester stable.
+List<Color> sceneGradient(BuildContext context, String? key) {
+  final f = context.flow;
+  return switch (key) {
+    'movie' => [const Color(0xFF4C2BD9), f.violet],
+    'night' => [const Color(0xFF1E2A78), const Color(0xFF5B6CF0)],
+    'sun' => [const Color(0xFFF08A24), f.amber],
+    'logout' => [f.brandDeep, f.brand],
+    'home' => [const Color(0xFF0F7B6C), const Color(0xFF3CCB9F)],
+    'party' => [const Color(0xFFD9327A), f.pink],
+    'meal' => [const Color(0xFFD9542B), f.orange],
+    _ => [f.brandDeep, f.cyan],
+  };
+}
+
+enum DeviceKind { light, plug, cover, climate, lock, door, motion, sensor, other }
+
+DeviceKind deviceKind(Device d) {
   bool has(String k) => d.capability(k) != null;
-  if (d.isSensitive || has('lock')) return Icons.lock_outline;
-  if (has('cover_position')) return Icons.blinds_outlined;
-  if (has('target_temperature')) return Icons.thermostat_outlined;
-  if (has('color') || has('brightness') || has('color_temp')) return Icons.lightbulb_outline;
-  if (has('switch')) return Icons.power_settings_new;
-  if (has('contact')) return Icons.sensor_door_outlined;
-  if (has('motion')) return Icons.directions_run;
-  if (has('temperature') || has('humidity')) return Icons.device_thermostat;
-  return Icons.devices_other_outlined;
+  if (d.isSensitive || has('lock')) return DeviceKind.lock;
+  if (has('cover_position')) return DeviceKind.cover;
+  if (has('target_temperature')) return DeviceKind.climate;
+  if (has('color') || has('brightness') || has('color_temp')) return DeviceKind.light;
+  if (has('switch')) return DeviceKind.plug;
+  if (has('contact')) return DeviceKind.door;
+  if (has('motion')) return DeviceKind.motion;
+  if (has('temperature') || has('humidity')) return DeviceKind.sensor;
+  return DeviceKind.other;
+}
+
+IconData deviceIcon(Device d) => switch (deviceKind(d)) {
+      DeviceKind.lock => Icons.lock_rounded,
+      DeviceKind.cover => Icons.blinds_rounded,
+      DeviceKind.climate => Icons.thermostat_rounded,
+      DeviceKind.light => Icons.lightbulb_rounded,
+      DeviceKind.plug => Icons.power_rounded,
+      DeviceKind.door => Icons.sensor_door_rounded,
+      DeviceKind.motion => Icons.directions_walk_rounded,
+      DeviceKind.sensor => Icons.device_thermostat_rounded,
+      DeviceKind.other => Icons.devices_other_rounded,
+    };
+
+/// Couleur d'accent d'un appareil : la couleur réelle d'une lampe colorée si elle
+/// est connue, sinon la couleur de sa famille.
+Color deviceAccent(BuildContext context, Device d) {
+  final f = context.flow;
+  final kind = deviceKind(d);
+  if (kind == DeviceKind.light) {
+    final c = d.state['color'];
+    if (c is String && RegExp(r'^#?[0-9a-fA-F]{6}$').hasMatch(c)) {
+      final color = Color(int.parse(c.replaceFirst('#', ''), radix: 16) | 0xFF000000);
+      // Une lampe blanche reste ambrée pour garder une icône lisible.
+      if (color.computeLuminance() < .85) return color;
+    }
+    return f.amber;
+  }
+  return switch (kind) {
+    DeviceKind.plug => f.brand,
+    DeviceKind.cover => f.blue,
+    DeviceKind.climate => f.orange,
+    DeviceKind.lock => f.violet,
+    DeviceKind.door => f.cyan,
+    DeviceKind.motion => f.pink,
+    DeviceKind.sensor => f.cyan,
+    _ => f.brand,
+  };
 }
 
 IconData capabilityIcon(String key) => switch (key) {
-      'switch' => Icons.power_settings_new,
-      'brightness' => Icons.brightness_6_outlined,
-      'color_temp' => Icons.wb_incandescent_outlined,
-      'color' => Icons.palette_outlined,
-      'cover_position' => Icons.blinds_outlined,
-      'target_temperature' => Icons.thermostat_outlined,
-      'hvac_mode' => Icons.mode_fan_off_outlined,
-      'lock' => Icons.lock_outline,
-      'temperature' || 'current_temperature' => Icons.device_thermostat,
-      'humidity' => Icons.water_drop_outlined,
-      'battery' => Icons.battery_std_outlined,
-      'power' => Icons.bolt_outlined,
-      'energy' => Icons.electric_meter_outlined,
-      'contact' => Icons.sensor_door_outlined,
-      'motion' => Icons.directions_run,
-      'illuminance' => Icons.light_mode_outlined,
-      _ => Icons.tune,
+      'switch' => Icons.power_settings_new_rounded,
+      'brightness' => Icons.brightness_6_rounded,
+      'color_temp' => Icons.wb_incandescent_rounded,
+      'color' => Icons.palette_rounded,
+      'cover_position' => Icons.blinds_rounded,
+      'target_temperature' => Icons.thermostat_rounded,
+      'hvac_mode' => Icons.mode_fan_off_rounded,
+      'lock' => Icons.lock_rounded,
+      'temperature' || 'current_temperature' => Icons.device_thermostat_rounded,
+      'humidity' => Icons.water_drop_rounded,
+      'battery' => Icons.battery_std_rounded,
+      'power' => Icons.bolt_rounded,
+      'energy' => Icons.electric_meter_rounded,
+      'contact' => Icons.sensor_door_rounded,
+      'motion' => Icons.directions_walk_rounded,
+      'illuminance' => Icons.light_mode_rounded,
+      _ => Icons.tune_rounded,
     };
 
 IconData protocolIcon(String protocol) => switch (protocol) {
-      'zigbee' => Icons.hub_outlined,
-      'ble' => Icons.bluetooth,
-      'wifi' => Icons.wifi,
-      'tuya' => Icons.cloud_outlined,
-      'mqtt' => Icons.lan_outlined,
-      'matter' => Icons.join_inner,
-      _ => Icons.device_unknown_outlined,
+      'zigbee' => Icons.hub_rounded,
+      'ble' => Icons.bluetooth_rounded,
+      'wifi' => Icons.wifi_rounded,
+      'tuya' => Icons.cloud_rounded,
+      'mqtt' => Icons.lan_rounded,
+      'matter' => Icons.join_inner_rounded,
+      _ => Icons.device_unknown_rounded,
     };

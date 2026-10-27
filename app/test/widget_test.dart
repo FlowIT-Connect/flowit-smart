@@ -53,6 +53,8 @@ void main() {
     await signIn(tester);
     await tester.tap(find.text('Appareils').last);
     await tester.pumpAndSettle();
+    await tester.ensureVisible(find.text('Serrure'));
+    await tester.pumpAndSettle();
     await tester.tap(find.text('Serrure'));
     await tester.pumpAndSettle();
     expect(find.textContaining('commande à distance bloquée'), findsOneWidget);

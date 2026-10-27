@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../core/l10n.dart';
+import '../../core/theme.dart';
 import '../../data/backend.dart';
 import '../../models/models.dart';
 import '../../state/app_state.dart';
@@ -19,20 +20,21 @@ class AutomationsScreen extends StatelessWidget {
     final state = AppScope.of(context);
     final list = state.automations;
     return Scaffold(
+      backgroundColor: Colors.transparent,
       floatingActionButton: state.canManage
           ? FloatingActionButton.extended(
               heroTag: 'automation-add',
               onPressed: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => const AutomationEditor())),
-              icon: const Icon(Icons.add),
+              icon: const Icon(Icons.add_rounded),
               label: Text(context.tr('automation.add')),
             )
           : null,
       body: list.isEmpty
           ? ListView(children: [
-              EmptyState(icon: Icons.schedule_outlined, title: context.tr('automation.emptyTitle'), message: context.tr('automation.emptyHelp')),
+              EmptyState(icon: Icons.schedule_rounded, title: context.tr('automation.emptyTitle'), message: context.tr('automation.emptyHelp')),
             ])
           : ListView.separated(
-              padding: const EdgeInsets.fromLTRB(16, 16, 16, 96),
+              padding: const EdgeInsets.fromLTRB(16, 8, 16, 104),
               itemCount: list.length,
               separatorBuilder: (_, _) => const SizedBox(height: 12),
               itemBuilder: (context, i) => _AutomationCard(automation: list[i]),
@@ -50,30 +52,57 @@ class _AutomationCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final state = AppScope.of(context);
     final a = automation;
+    final f = context.flow;
+    final theme = Theme.of(context);
+    final type = a.trigger['type'];
+    final (icon, color) = switch (type) {
+      'manual' => (Icons.touch_app_rounded, f.brand),
+      'device_state' => (Icons.sensors_rounded, f.violet),
+      _ => (Icons.schedule_rounded, f.blue),
+    };
+    Widget line(IconData i, Color c, String text) => Padding(
+          padding: const EdgeInsets.only(top: 6),
+          child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Padding(padding: const EdgeInsets.only(top: 1), child: Icon(i, size: 16, color: c)),
+            const SizedBox(width: 8),
+            Expanded(child: Text(text, style: theme.textTheme.bodyMedium?.copyWith(color: f.inkSoft))),
+          ]),
+        );
     return Card(
+      clipBehavior: Clip.antiAlias,
       child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-        SwitchListTile(
-          title: Text(a.name),
-          subtitle: Text(describeTrigger(context, state, a.trigger)),
-          value: a.enabled,
-          onChanged: state.canManage
-              ? (v) => state.run(() async {
-                    await state.backend.saveAutomation(a.copyWith(enabled: v));
-                    await state.refreshHome(silent: true);
-                  })
-              : null,
+        Padding(
+          padding: const EdgeInsetsDirectional.fromSTEB(16, 16, 12, 4),
+          child: Row(children: [
+            IconBubble(icon: icon, color: color, size: 46, filled: a.enabled, glow: a.enabled),
+            const SizedBox(width: 14),
+            Expanded(
+              child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                Text(a.name, style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w800)),
+                const SizedBox(height: 2),
+                Text(describeTrigger(context, state, a.trigger), style: theme.textTheme.bodyMedium?.copyWith(color: f.inkSoft)),
+              ]),
+            ),
+            Switch(
+              value: a.enabled,
+              onChanged: state.canManage
+                  ? (v) => state.run(() async {
+                        await state.backend.saveAutomation(a.copyWith(enabled: v));
+                        await state.refreshHome(silent: true);
+                      })
+                  : null,
+            ),
+          ]),
         ),
         Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 16),
+          padding: const EdgeInsets.fromLTRB(16, 4, 16, 4),
           child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            for (final c in a.conditions)
-              Text('• ${describeCondition(context, state, c)}', style: Theme.of(context).textTheme.bodySmall),
-            for (final act in a.actions)
-              Text('→ ${describeAutomationAction(context, state, act)}', style: Theme.of(context).textTheme.bodySmall),
+            for (final c in a.conditions) line(Icons.filter_alt_rounded, f.warning, describeCondition(context, state, c)),
+            for (final act in a.actions) line(Icons.arrow_forward_rounded, f.brand, describeAutomationAction(context, state, act)),
             if (a.lastRunAt != null)
               Padding(
-                padding: const EdgeInsets.only(top: 4),
-                child: Text(context.tr('automation.lastRun', {'when': relativeTime(context, a.lastRunAt)}), style: Theme.of(context).textTheme.labelSmall),
+                padding: const EdgeInsets.only(top: 10),
+                child: Text(context.tr('automation.lastRun', {'when': relativeTime(context, a.lastRunAt)}), style: theme.textTheme.labelSmall?.copyWith(color: f.inkFaint)),
               ),
           ]),
         ),
@@ -81,13 +110,14 @@ class _AutomationCard extends StatelessWidget {
           if (a.trigger['type'] == 'manual')
             TextButton.icon(
               onPressed: a.enabled ? () => runAutomationNow(context, a) : null,
-              icon: const Icon(Icons.play_arrow),
+              icon: const Icon(Icons.play_arrow_rounded),
               label: Text(context.tr('scene.run')),
             ),
           if (state.canManage)
             TextButton.icon(
+              style: TextButton.styleFrom(foregroundColor: f.inkSoft),
               onPressed: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => AutomationEditor(automation: a))),
-              icon: const Icon(Icons.edit_outlined),
+              icon: const Icon(Icons.edit_rounded),
               label: Text(context.tr('common.edit')),
             ),
         ]),

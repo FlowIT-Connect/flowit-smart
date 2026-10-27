@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../core/l10n.dart';
+import '../core/theme.dart';
 import '../state/app_state.dart';
 import 'screens/automations_screen.dart';
 import 'screens/dashboard_screen.dart';
@@ -24,12 +25,12 @@ class _ShellState extends State<Shell> {
   int _index = 0;
 
   static const _icons = [
-    (Icons.home_outlined, Icons.home),
-    (Icons.meeting_room_outlined, Icons.meeting_room),
-    (Icons.devices_other_outlined, Icons.devices_other),
-    (Icons.auto_awesome_outlined, Icons.auto_awesome),
-    (Icons.schedule_outlined, Icons.schedule),
-    (Icons.settings_outlined, Icons.settings),
+    (Icons.home_outlined, Icons.home_rounded),
+    (Icons.meeting_room_outlined, Icons.meeting_room_rounded),
+    (Icons.lightbulb_outline_rounded, Icons.lightbulb_rounded),
+    (Icons.auto_awesome_outlined, Icons.auto_awesome_rounded),
+    (Icons.schedule_outlined, Icons.schedule_rounded),
+    (Icons.settings_outlined, Icons.settings_rounded),
   ];
   static const _labels = ['nav.home', 'nav.rooms', 'nav.devices', 'nav.scenes', 'nav.automations', 'nav.settings'];
 
@@ -38,6 +39,7 @@ class _ShellState extends State<Shell> {
   @override
   Widget build(BuildContext context) {
     final state = AppScope.of(context);
+    final f = context.flow;
     final wide = MediaQuery.sizeOf(context).width >= 840;
     final pages = <Widget>[
       DashboardScreen(onNavigate: go),
@@ -57,61 +59,115 @@ class _ShellState extends State<Shell> {
                 ? const Center(child: CircularProgressIndicator())
                 : RefreshIndicator(
                     onRefresh: state.refreshHome,
-                    child: IndexedStack(index: _index, children: pages),
+                    child: ContentWidth(child: IndexedStack(index: _index, children: pages)),
                   ),
       ),
     ]);
 
-    return Scaffold(
-      appBar: AppBar(
-        title: const HomeSwitcher(),
-        actions: [
-          if (state.backend.isDemo)
-            Padding(
-              padding: const EdgeInsetsDirectional.only(end: 8),
-              child: Chip(label: Text(context.tr('demo.chip')), visualDensity: VisualDensity.compact),
+    final appBar = AppBar(
+      toolbarHeight: 76,
+      titleSpacing: wide ? 28 : 16,
+      leadingWidth: 64,
+      leading: wide ? null : const Padding(padding: EdgeInsetsDirectional.only(start: 16), child: Center(child: FlowLogo(size: 38))),
+      title: _index == 0
+          ? const HomeSwitcher(large: true)
+          : Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisSize: MainAxisSize.min, children: [
+              const HomeSwitcher(),
+              Text(context.tr(_labels[_index]), style: Theme.of(context).textTheme.headlineSmall),
+            ]),
+      actions: [
+        if (state.backend.isDemo)
+          Padding(
+            padding: const EdgeInsetsDirectional.only(end: 16),
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+              decoration: BoxDecoration(color: f.brandSoft, borderRadius: BorderRadius.circular(999)),
+              child: Row(mainAxisSize: MainAxisSize.min, children: [
+                Icon(Icons.science_rounded, size: 15, color: f.brandInk),
+                const SizedBox(width: 6),
+                Text(context.tr('demo.chip'), style: Theme.of(context).textTheme.labelMedium?.copyWith(color: f.brandInk, fontWeight: FontWeight.w800)),
+              ]),
             ),
-        ],
-      ),
-      body: wide
-          ? Row(children: [
-              NavigationRail(
-                selectedIndex: _index,
-                onDestinationSelected: go,
-                labelType: NavigationRailLabelType.all,
-                destinations: [
-                  for (var i = 0; i < _labels.length; i++)
-                    NavigationRailDestination(icon: Icon(_icons[i].$1), selectedIcon: Icon(_icons[i].$2), label: Text(context.tr(_labels[i]))),
-                ],
+          ),
+      ],
+    );
+
+    return AmbientBackground(
+      child: Scaffold(
+        backgroundColor: Colors.transparent,
+        appBar: appBar,
+        body: wide
+            ? Row(children: [
+                Padding(
+                  padding: const EdgeInsetsDirectional.fromSTEB(12, 0, 0, 16),
+                  child: Container(
+                    decoration: BoxDecoration(
+                      color: f.surface,
+                      borderRadius: BorderRadius.circular(28),
+                      border: Border.all(color: f.cardBorder),
+                      boxShadow: [BoxShadow(color: f.shadow, blurRadius: 24, offset: const Offset(0, 8))],
+                    ),
+                    clipBehavior: Clip.antiAlias,
+                    child: NavigationRail(
+                      selectedIndex: _index,
+                      onDestinationSelected: go,
+                      labelType: NavigationRailLabelType.all,
+                      leading: const Padding(padding: EdgeInsets.only(top: 12, bottom: 20), child: FlowLogo(size: 46)),
+                      destinations: [
+                        for (var i = 0; i < _labels.length; i++)
+                          NavigationRailDestination(icon: Icon(_icons[i].$1), selectedIcon: Icon(_icons[i].$2), label: Text(context.tr(_labels[i]))),
+                      ],
+                    ),
+                  ),
+                ),
+                Expanded(child: body),
+              ])
+            : body,
+        bottomNavigationBar: wide
+            ? null
+            : DecoratedBox(
+                decoration: BoxDecoration(
+                  border: Border(top: BorderSide(color: f.line.withValues(alpha: .6))),
+                ),
+                child: NavigationBar(
+                  selectedIndex: _index,
+                  onDestinationSelected: go,
+                  labelBehavior: NavigationDestinationLabelBehavior.onlyShowSelected,
+                  destinations: [
+                    for (var i = 0; i < _labels.length; i++)
+                      NavigationDestination(
+                        icon: Icon(_icons[i].$1),
+                        selectedIcon: Icon(_icons[i].$2),
+                        // Libellé court sous l'icône, nom complet dans l'infobulle.
+                        label: context.tr(i == 4 ? 'nav.automationsShort' : _labels[i]),
+                        tooltip: context.tr(_labels[i]),
+                      ),
+                  ],
+                ),
               ),
-              const VerticalDivider(width: 1),
-              Expanded(child: body),
-            ])
-          : body,
-      bottomNavigationBar: wide
-          ? null
-          : NavigationBar(
-              selectedIndex: _index,
-              onDestinationSelected: go,
-              labelBehavior: NavigationDestinationLabelBehavior.onlyShowSelected,
-              destinations: [
-                for (var i = 0; i < _labels.length; i++)
-                  NavigationDestination(icon: Icon(_icons[i].$1), selectedIcon: Icon(_icons[i].$2), label: context.tr(_labels[i])),
-              ],
-            ),
+      ),
     );
   }
 }
 
 /// Sélecteur de maison dans la barre d'application.
 class HomeSwitcher extends StatelessWidget {
-  const HomeSwitcher({super.key});
+  const HomeSwitcher({super.key, this.large = false});
+
+  /// Grand titre (accueil) plutôt que libellé discret au-dessus du titre de page.
+  final bool large;
 
   @override
   Widget build(BuildContext context) {
     final state = AppScope.of(context);
+    final f = context.flow;
+    final theme = Theme.of(context);
+    final style = large
+        ? theme.textTheme.headlineSmall
+        : theme.textTheme.labelLarge?.copyWith(color: f.inkSoft, fontWeight: FontWeight.w700);
     return PopupMenuButton<String>(
       tooltip: context.tr('home.switch'),
+      position: PopupMenuPosition.under,
       onSelected: (id) {
         if (id == '+') {
           createHomeFlow(context);
@@ -123,11 +179,12 @@ class HomeSwitcher extends StatelessWidget {
         for (final h in state.homes)
           CheckedPopupMenuItem(value: h.id, checked: h.id == state.home?.id, child: Text(h.name)),
         const PopupMenuDivider(),
-        PopupMenuItem(value: '+', child: ListTile(leading: const Icon(Icons.add_home_outlined), title: Text(context.tr('home.create')))),
+        PopupMenuItem(value: '+', child: ListTile(leading: const Icon(Icons.add_home_rounded), title: Text(context.tr('home.create')))),
       ],
       child: Row(mainAxisSize: MainAxisSize.min, children: [
-        Flexible(child: Text(state.home?.name ?? 'FlowIT Smart', overflow: TextOverflow.ellipsis)),
-        const Icon(Icons.arrow_drop_down),
+        Flexible(child: Text(state.home?.name ?? 'FlowIT Smart', overflow: TextOverflow.ellipsis, style: style)),
+        const SizedBox(width: 2),
+        Icon(Icons.keyboard_arrow_down_rounded, size: large ? 26 : 18, color: large ? f.ink : f.inkSoft),
       ]),
     );
   }

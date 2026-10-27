@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import '../../core/l10n.dart';
+import '../../core/theme.dart';
 import '../../models/models.dart';
 import '../../state/app_state.dart';
 import '../widgets/common.dart';
@@ -17,106 +18,167 @@ class SettingsScreen extends StatelessWidget {
     final home = state.home;
     void push(Widget page) => Navigator.of(context).push(MaterialPageRoute(builder: (_) => page));
 
-    return ListView(padding: const EdgeInsets.only(bottom: 32), children: [
-      SectionHeader(context.tr('settings.account')),
-      ListTile(
-        leading: const Icon(Icons.person_outline),
-        title: Text(state.backend.currentEmail ?? '—'),
-        subtitle: home == null ? null : Text(context.tr('settings.roleIn', {'role': context.tr('role.${state.role.name}'), 'home': home.name})),
-      ),
-      ListTile(
-        leading: const Icon(Icons.translate),
-        title: Text(context.tr('settings.language')),
-        trailing: DropdownButton<String>(
-          value: state.locale.languageCode,
-          underline: const SizedBox.shrink(),
-          items: [for (final l in L10n.supported) DropdownMenuItem(value: l.languageCode, child: Text(L10n.languageName(l.languageCode)))],
-          onChanged: (v) => v == null ? null : state.setLocale(Locale(v)),
+    final f = context.flow;
+    final theme = Theme.of(context);
+    final email = state.backend.currentEmail ?? '—';
+
+    return ListView(padding: const EdgeInsets.only(bottom: 40), children: [
+      // Carte de profil.
+      Padding(
+        padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
+        child: Card(
+          child: Padding(
+            padding: const EdgeInsets.all(18),
+            child: Row(children: [
+              Container(
+                width: 56,
+                height: 56,
+                alignment: Alignment.center,
+                decoration: BoxDecoration(gradient: f.brandGradient, shape: BoxShape.circle),
+                child: Text(
+                  email.isEmpty || email == '—' ? '?' : email.characters.first.toUpperCase(),
+                  style: theme.textTheme.titleLarge?.copyWith(color: Colors.white, fontWeight: FontWeight.w800),
+                ),
+              ),
+              const SizedBox(width: 16),
+              Expanded(
+                child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                  Text(email, overflow: TextOverflow.ellipsis, style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w800)),
+                  if (home != null) ...[
+                    const SizedBox(height: 4),
+                    Text(
+                      context.tr('settings.roleIn', {'role': context.tr('role.${state.role.name}'), 'home': home.name}),
+                      style: theme.textTheme.bodyMedium?.copyWith(color: f.inkSoft),
+                    ),
+                  ],
+                ]),
+              ),
+            ]),
+          ),
         ),
       ),
-      if (state.myInvitations.isNotEmpty)
-        ListTile(
-          leading: const Icon(Icons.mail_outline),
-          title: Text(context.tr('invitations.received')),
-          trailing: Badge(label: Text('${state.myInvitations.length}')),
-          onTap: () => push(const _ReceivedInvitationsPage()),
+      SettingsGroup(title: context.tr('settings.appearance'), children: [
+        Padding(
+          padding: const EdgeInsets.fromLTRB(16, 14, 16, 8),
+          child: ValueListenableBuilder<ThemeMode>(
+            valueListenable: ThemeController.instance,
+            builder: (context, mode, _) => SizedBox(
+              width: double.infinity,
+              child: SegmentedButton<ThemeMode>(
+                showSelectedIcon: false,
+                segments: [
+                  ButtonSegment(value: ThemeMode.system, icon: const Icon(Icons.brightness_auto_rounded), label: Text(context.tr('theme.system'))),
+                  ButtonSegment(value: ThemeMode.light, icon: const Icon(Icons.light_mode_rounded), label: Text(context.tr('theme.light'))),
+                  ButtonSegment(value: ThemeMode.dark, icon: const Icon(Icons.dark_mode_rounded), label: Text(context.tr('theme.dark'))),
+                ],
+                selected: {mode},
+                onSelectionChanged: (s) => ThemeController.instance.set(s.first),
+              ),
+            ),
+          ),
         ),
-      ListTile(
-        leading: const Icon(Icons.vpn_key_outlined),
-        title: Text(context.tr('invitations.haveCode')),
-        onTap: () async {
-          final token = await promptText(context, title: context.tr('invitations.join'), label: context.tr('invitations.code'));
-          if (token != null && context.mounted) await acceptInvitationFlow(context, token);
-        },
-      ),
-      if (home != null) ...[
-        SectionHeader(context.tr('settings.home')),
         ListTile(
-          leading: const Icon(Icons.home_outlined),
-          title: Text(home.name),
-          subtitle: Text(home.timezone),
-          trailing: state.canManage ? const Icon(Icons.edit_outlined) : null,
-          onTap: state.canManage
-              ? () async {
-                  final name = await promptText(context, title: context.tr('home.rename'), initial: home.name, label: context.tr('home.name'));
-                  if (name != null && await state.run(() => state.backend.renameHome(home.id, name))) {
-                    await state.loadHomes(select: home.id);
+          leading: TileIcon(Icons.translate_rounded, color: f.blue),
+          title: Text(context.tr('settings.language')),
+          trailing: DropdownButton<String>(
+            value: state.locale.languageCode,
+            underline: const SizedBox.shrink(),
+            borderRadius: BorderRadius.circular(16),
+            items: [for (final l in L10n.supported) DropdownMenuItem(value: l.languageCode, child: Text(L10n.languageName(l.languageCode)))],
+            onChanged: (v) => v == null ? null : state.setLocale(Locale(v)),
+          ),
+        ),
+      ]),
+      SettingsGroup(title: context.tr('settings.account'), children: [
+        if (state.myInvitations.isNotEmpty)
+          ListTile(
+            leading: TileIcon(Icons.mail_rounded, color: f.pink),
+            title: Text(context.tr('invitations.received')),
+            trailing: Badge(label: Text('${state.myInvitations.length}')),
+            onTap: () => push(const _ReceivedInvitationsPage()),
+          ),
+        ListTile(
+          leading: TileIcon(Icons.vpn_key_rounded, color: f.amber),
+          title: Text(context.tr('invitations.haveCode')),
+          trailing: const ForwardChevron(),
+          onTap: () async {
+            final token = await promptText(context, title: context.tr('invitations.join'), label: context.tr('invitations.code'));
+            if (token != null && context.mounted) await acceptInvitationFlow(context, token);
+          },
+        ),
+      ]),
+      if (home != null)
+        SettingsGroup(title: context.tr('settings.home'), children: [
+          ListTile(
+            leading: const TileIcon(Icons.home_rounded),
+            title: Text(home.name),
+            subtitle: Text(home.timezone),
+            trailing: state.canManage ? Icon(Icons.edit_rounded, color: f.inkFaint) : null,
+            onTap: state.canManage
+                ? () async {
+                    final name = await promptText(context, title: context.tr('home.rename'), initial: home.name, label: context.tr('home.name'));
+                    if (name != null && await state.run(() => state.backend.renameHome(home.id, name))) {
+                      await state.loadHomes(select: home.id);
+                    }
                   }
-                }
-              : null,
-        ),
-        ListTile(
-          leading: const Icon(Icons.group_outlined),
-          title: Text(context.tr('members.title')),
-          trailing: const ForwardChevron(),
-          onTap: () => push(const MembersPage()),
-        ),
-        if (state.canManage)
+                : null,
+          ),
           ListTile(
-            leading: const Icon(Icons.hub_outlined),
-            title: Text(context.tr('integrations.title')),
+            leading: TileIcon(Icons.group_rounded, color: f.violet),
+            title: Text(context.tr('members.title')),
             trailing: const ForwardChevron(),
-            onTap: () => push(const IntegrationsPage()),
+            onTap: () => push(const MembersPage()),
           ),
-        ListTile(
-          leading: const Icon(Icons.history),
-          title: Text(context.tr('events.title')),
-          trailing: const ForwardChevron(),
-          onTap: () => push(const EventsPage()),
-        ),
-        if (state.role == HomeRole.owner)
+          if (state.canManage)
+            ListTile(
+              leading: TileIcon(Icons.hub_rounded, color: f.cyan),
+              title: Text(context.tr('integrations.title')),
+              trailing: const ForwardChevron(),
+              onTap: () => push(const IntegrationsPage()),
+            ),
           ListTile(
-            leading: Icon(Icons.delete_forever_outlined, color: Theme.of(context).colorScheme.error),
-            title: Text(context.tr('home.delete'), style: TextStyle(color: Theme.of(context).colorScheme.error)),
-            onTap: () async {
-              final typed = await promptText(context, title: context.tr('home.deleteTitle'), label: context.tr('home.deleteConfirm', {'name': home.name}));
-              if (typed != home.name) {
-                if (typed != null) state.notify(state.tr('home.deleteMismatch'), error: true);
-                return;
-              }
-              if (await state.run(() => state.backend.deleteHome(home.id))) await state.loadHomes();
-            },
+            leading: TileIcon(Icons.history_rounded, color: f.orange),
+            title: Text(context.tr('events.title')),
+            trailing: const ForwardChevron(),
+            onTap: () => push(const EventsPage()),
           ),
-      ],
-      SectionHeader(context.tr('settings.session')),
-      ListTile(leading: const Icon(Icons.logout), title: Text(context.tr('auth.signOut')), onTap: state.signOut),
-      ListTile(
-        leading: Icon(Icons.person_remove_outlined, color: Theme.of(context).colorScheme.error),
-        title: Text(context.tr('account.delete'), style: TextStyle(color: Theme.of(context).colorScheme.error)),
-        subtitle: Text(context.tr('account.deleteHelp')),
-        onTap: () async {
-          final ok = await confirmDialog(context,
-              title: context.tr('account.deleteTitle'), message: context.tr('account.deleteMessage'), destructive: true, confirmLabel: context.tr('account.delete'));
-          if (ok) await state.run(state.backend.deleteAccount);
-        },
-      ),
-      const Divider(height: 32),
-      ListTile(
-        leading: const Icon(Icons.info_outline),
-        title: const Text('FlowIT Smart 1.0.0'),
-        subtitle: Text(state.backend.isDemo ? context.tr('demo.about') : context.tr('settings.about')),
-        onTap: () => showLicensePage(context: context, applicationName: 'FlowIT Smart', applicationVersion: '1.0.0'),
-      ),
+          if (state.role == HomeRole.owner)
+            ListTile(
+              leading: TileIcon(Icons.delete_forever_rounded, color: f.danger),
+              title: Text(context.tr('home.delete'), style: TextStyle(color: f.danger)),
+              onTap: () async {
+                final typed = await promptText(context, title: context.tr('home.deleteTitle'), label: context.tr('home.deleteConfirm', {'name': home.name}));
+                if (typed != home.name) {
+                  if (typed != null) state.notify(state.tr('home.deleteMismatch'), error: true);
+                  return;
+                }
+                if (await state.run(() => state.backend.deleteHome(home.id))) await state.loadHomes();
+              },
+            ),
+        ]),
+      SettingsGroup(title: context.tr('settings.session'), children: [
+        ListTile(leading: TileIcon(Icons.logout_rounded, color: f.inkSoft), title: Text(context.tr('auth.signOut')), onTap: state.signOut),
+        ListTile(
+          leading: TileIcon(Icons.person_remove_rounded, color: f.danger),
+          title: Text(context.tr('account.delete'), style: TextStyle(color: f.danger)),
+          subtitle: Text(context.tr('account.deleteHelp')),
+          onTap: () async {
+            final ok = await confirmDialog(context,
+                title: context.tr('account.deleteTitle'), message: context.tr('account.deleteMessage'), destructive: true, confirmLabel: context.tr('account.delete'));
+            if (ok) await state.run(state.backend.deleteAccount);
+          },
+        ),
+      ]),
+      const SizedBox(height: 12),
+      SettingsGroup(children: [
+        ListTile(
+          leading: const Padding(padding: EdgeInsets.all(2), child: FlowLogo(size: 30)),
+          title: const Text('FlowIT Smart 1.0.0'),
+          subtitle: Text(state.backend.isDemo ? context.tr('demo.about') : context.tr('settings.about')),
+          trailing: const ForwardChevron(),
+          onTap: () => showLicensePage(context: context, applicationName: 'FlowIT Smart', applicationVersion: '1.0.0'),
+        ),
+      ]),
     ]);
   }
 }
@@ -480,7 +542,7 @@ class _IntegrationsPageState extends State<IntegrationsPage> {
                             'disabled' => Icons.pause_circle,
                             _ => Icons.hourglass_top,
                           }, color: switch (i.status) {
-                            'connected' => Colors.green.shade600,
+                            'connected' => context.flow.success,
                             'error' => scheme.error,
                             _ => scheme.outline,
                           }),

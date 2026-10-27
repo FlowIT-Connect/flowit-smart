@@ -1,10 +1,13 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import 'app.dart';
 import 'core/config.dart';
 import 'core/l10n.dart';
+import 'core/theme.dart';
 import 'data/backend.dart';
 import 'data/demo_backend.dart';
 import 'data/supabase_backend.dart';
@@ -12,6 +15,12 @@ import 'state/app_state.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  LicenseRegistry.addLicense(() async* {
+    for (final (font, file) in const [('Manrope', 'OFL-Manrope.txt'), ('IBM Plex Sans Arabic', 'OFL-IBMPlexSansArabic.txt')]) {
+      yield LicenseEntryWithLineBreaks([font], await rootBundle.loadString('assets/fonts/$file'));
+    }
+  });
+  await ThemeController.instance.load();
 
   final Backend backend;
   if (AppConfig.hasSupabase) {
