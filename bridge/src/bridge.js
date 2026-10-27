@@ -77,7 +77,14 @@ export class Bridge {
   }
 
   // ------------------------------------------------------------------ Inventaire
-  async syncInventory() {
+  /** Une synchronisation à la fois : deux passes simultanées créeraient des appareils en double. */
+  syncInventory() {
+    const run = (this.syncChain ?? Promise.resolve()).catch(() => {}).then(() => this.#syncInventory());
+    this.syncChain = run;
+    return run;
+  }
+
+  async #syncInventory() {
     const bindings = new Map((await this.store.listBindings(this.config.integrationId)).map((b) => [b.external_id, b.device_id]));
     const seen = new Set();
     const now = this.clock().toISOString();

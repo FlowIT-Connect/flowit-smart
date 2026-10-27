@@ -8,6 +8,9 @@ c'est **Home Assistant**, avec le module **FlowIT Bridge** qui le relie à l'app
 Téléphone (FlowIT Smart) ⇄ Internet (Supabase) ⇄ Box Home Assistant + FlowIT Bridge ⇄ ampoules, prises…
 ```
 
+> **Pas encore de box ?** Pour tester des prises et ampoules Tuya / Smart Life tout de suite,
+> sans Home Assistant, suivez [TUYA_SANS_BOX.md](TUYA_SANS_BOX.md) (passerelle sur un PC, via le cloud Tuya).
+
 ## 1. Le matériel à acheter
 
 | Quoi | Conseil | Prix indicatif |
