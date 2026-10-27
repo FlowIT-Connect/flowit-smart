@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../../core/icons.dart';
 import '../../core/l10n.dart';
+import '../../core/theme.dart';
 import '../../models/models.dart';
 import '../../state/app_state.dart';
 import '../widgets/common.dart';
@@ -16,7 +17,7 @@ Future<void> showDeviceDetail(BuildContext context, String deviceId) => showModa
       constraints: const BoxConstraints(maxWidth: 640),
       builder: (_) => DraggableScrollableSheet(
         expand: false,
-        initialChildSize: 0.75,
+        initialChildSize: 0.8,
         minChildSize: 0.4,
         maxChildSize: 0.95,
         builder: (context, scroll) => DeviceDetail(deviceId: deviceId, scrollController: scroll),
@@ -34,63 +35,87 @@ class DeviceDetail extends StatelessWidget {
     final state = AppScope.of(context);
     final d = state.devices[deviceId];
     if (d == null) {
-      return EmptyState(icon: Icons.devices_other_outlined, title: context.tr('device.gone'));
+      return EmptyState(icon: Icons.devices_other_rounded, title: context.tr('device.gone'));
     }
     final theme = Theme.of(context);
+    final f = context.flow;
     final room = state.roomById(d.roomId);
     final canEdit = state.role.canConfigureDevices;
+    final accent = deviceAccent(context, d);
+    final active = d.isOnline && d.isOn == true;
 
     return ListView(
       controller: scrollController,
-      padding: const EdgeInsets.only(bottom: 24),
+      padding: const EdgeInsets.only(bottom: 32),
       children: [
-        ListTile(
-          leading: CircleAvatar(child: Icon(deviceIcon(d))),
-          title: Text(d.name, style: theme.textTheme.titleLarge),
-          subtitle: Text([room?.name ?? context.tr('room.none'), if ((d.vendor ?? '').isNotEmpty) '${d.vendor} ${d.model ?? ''}'.trim()].join(' · ')),
-          trailing: canEdit
-              ? IconButton(
-                  tooltip: d.isPinned ? context.tr('device.unpin') : context.tr('device.pin'),
-                  icon: Icon(d.isPinned ? Icons.push_pin : Icons.push_pin_outlined),
-                  onPressed: () => state.updateDevice(d, isPinned: !d.isPinned),
-                )
-              : null,
-        ),
         Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 16),
+          padding: const EdgeInsets.fromLTRB(20, 0, 12, 0),
+          child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            IconBubble(icon: deviceIcon(d), color: d.isOnline ? accent : f.inkFaint, size: 64, filled: active, glow: active),
+            const SizedBox(width: 16),
+            Expanded(
+              child: Padding(
+                padding: const EdgeInsets.only(top: 4),
+                child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                  Text(d.name, style: theme.textTheme.headlineSmall),
+                  const SizedBox(height: 4),
+                  Text(
+                    [room?.name ?? context.tr('room.none'), if ((d.vendor ?? '').isNotEmpty) '${d.vendor} ${d.model ?? ''}'.trim()].join(' · '),
+                    style: theme.textTheme.bodyMedium?.copyWith(color: f.inkSoft),
+                  ),
+                ]),
+              ),
+            ),
+            if (canEdit)
+              IconButton.filledTonal(
+                tooltip: d.isPinned ? context.tr('device.unpin') : context.tr('device.pin'),
+                style: IconButton.styleFrom(
+                  backgroundColor: d.isPinned ? f.brandSoft : f.chip,
+                  foregroundColor: d.isPinned ? f.brandInk : f.inkSoft,
+                ),
+                icon: Icon(d.isPinned ? Icons.star_rounded : Icons.star_outline_rounded),
+                onPressed: () => state.updateDevice(d, isPinned: !d.isPinned),
+              ),
+          ]),
+        ),
+        const SizedBox(height: 16),
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 20),
           child: Wrap(spacing: 8, runSpacing: 8, crossAxisAlignment: WrapCrossAlignment.center, children: [
             AvailabilityBadge(d.availability),
             InfoChip(icon: protocolIcon(d.protocol), label: context.tr('protocol.${d.protocol}')),
-            InfoChip(icon: Icons.route_outlined, label: context.tr('source.${d.connectionSource}')),
-            InfoChip(icon: Icons.schedule, label: context.tr('device.updated', {'when': relativeTime(context, d.lastSeenAt)})),
+            InfoChip(icon: Icons.route_rounded, label: context.tr('source.${d.connectionSource}')),
+            InfoChip(icon: Icons.schedule_rounded, label: context.tr('device.updated', {'when': relativeTime(context, d.lastSeenAt)})),
           ]),
         ),
-        const SizedBox(height: 8),
+        const SizedBox(height: 12),
         DeviceControlPanel(d),
-        if (canEdit) ...[
-          SectionHeader(context.tr('device.manage')),
-          ListTile(
-            leading: const Icon(Icons.edit_outlined),
-            title: Text(context.tr('device.rename')),
-            onTap: () async {
-              final name = await promptText(context, title: context.tr('device.rename'), initial: d.name, label: context.tr('common.name'));
-              if (name != null) await state.updateDevice(d, name: name);
-            },
-          ),
-          ListTile(
-            leading: const Icon(Icons.meeting_room_outlined),
-            title: Text(context.tr('device.move')),
-            subtitle: Text(room?.name ?? context.tr('room.none')),
-            onTap: () => _pickRoom(context, state, d),
-          ),
-          SwitchListTile(
-            secondary: const Icon(Icons.visibility_off_outlined),
-            title: Text(context.tr('device.hide')),
-            subtitle: Text(context.tr('device.hideHelp')),
-            value: d.isHidden,
-            onChanged: (v) => state.updateDevice(d, isHidden: v),
-          ),
-        ],
+        if (canEdit)
+          SettingsGroup(title: context.tr('device.manage'), children: [
+            ListTile(
+              leading: const TileIcon(Icons.edit_rounded),
+              title: Text(context.tr('device.rename')),
+              trailing: const ForwardChevron(),
+              onTap: () async {
+                final name = await promptText(context, title: context.tr('device.rename'), initial: d.name, label: context.tr('common.name'));
+                if (name != null) await state.updateDevice(d, name: name);
+              },
+            ),
+            ListTile(
+              leading: TileIcon(Icons.meeting_room_rounded, color: f.blue),
+              title: Text(context.tr('device.move')),
+              subtitle: Text(room?.name ?? context.tr('room.none')),
+              trailing: const ForwardChevron(),
+              onTap: () => _pickRoom(context, state, d),
+            ),
+            SwitchListTile(
+              secondary: TileIcon(Icons.visibility_off_rounded, color: f.inkSoft),
+              title: Text(context.tr('device.hide')),
+              subtitle: Text(context.tr('device.hideHelp')),
+              value: d.isHidden,
+              onChanged: (v) => state.updateDevice(d, isHidden: v),
+            ),
+          ]),
       ],
     );
   }
@@ -108,7 +133,7 @@ class DeviceDetail extends StatelessWidget {
             ),
           SimpleDialogOption(
             onPressed: () => Navigator.pop(ctx, ''),
-            child: ListTile(leading: const Icon(Icons.block), title: Text(context.tr('room.none')), selected: d.roomId == null),
+            child: ListTile(leading: const Icon(Icons.block_rounded), title: Text(context.tr('room.none')), selected: d.roomId == null),
           ),
         ],
       ),
