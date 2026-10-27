@@ -11,11 +11,12 @@ import { buildInventory, deviceSnapshot, serviceCall, stateMatches } from './ha_
 
 export class HomeAssistantAdapter extends EventEmitter {
   /**
-   * @param {{url:string, token:string, filter?:RegExp|null, wsFactory?:(url:string)=>WebSocket}} opts
+   * @param {{url?:string, wsUrl?:string, token:string, filter?:RegExp|null, wsFactory?:(url:string)=>WebSocket}} opts
    */
-  constructor({ url, token, filter = null, wsFactory = (u) => new WebSocket(u) }) {
+  constructor({ url, wsUrl, token, filter = null, wsFactory = (u) => new WebSocket(u) }) {
     super();
-    this.wsUrl = `${url.replace(/^http/, 'ws')}/api/websocket`;
+    // wsUrl direct : utilisé par le module complémentaire Home Assistant (ws://supervisor/core/websocket).
+    this.wsUrl = wsUrl ?? `${url.replace(/^http/, 'ws')}/api/websocket`;
     this.token = token;
     this.filter = filter;
     this.wsFactory = wsFactory;

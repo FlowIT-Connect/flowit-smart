@@ -25,6 +25,9 @@ Au premier lancement : créer un compte, puis une maison. Dans Paramètres > Int
 créer une intégration « Home Assistant » et copier son identifiant.
 
 ## 3. Passerelle (dans la maison)
+Le plus simple : Home Assistant OS + module complémentaire **FlowIT Bridge**, voir
+[MAISON_REELLE.md](MAISON_REELLE.md). Variante Docker ci-dessous.
+
 Prérequis : une machine allumée en permanence sur le réseau local (Raspberry Pi 4/5, mini-PC)
 avec Docker.
 ```bash

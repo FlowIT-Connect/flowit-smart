@@ -5,9 +5,11 @@ import { FakeHomeAssistant } from './adapters/fake_home_assistant.js';
 import { HomeAssistantAdapter } from './adapters/home_assistant.js';
 import { Bridge } from './bridge.js';
 import { loadConfig } from './config.js';
+import { applyAddonOptions } from './addon_options.js';
 import { log, setLogLevel } from './log.js';
 import { SupabaseStore } from './store.js';
 
+applyAddonOptions();
 const config = loadConfig();
 setLogLevel(config.logLevel);
 config.runAutomations = process.env.RUN_AUTOMATIONS !== 'false';
@@ -23,7 +25,7 @@ if (config.adapter === 'simulator') {
   }, 15_000);
   log.warn('bridge.simulator', { message: 'Mode simulateur : appareils fictifs, aucun matériel piloté.' });
 } else {
-  adapter = new HomeAssistantAdapter({ url: config.haUrl, token: config.haToken, filter: config.haEntityFilter });
+  adapter = new HomeAssistantAdapter({ url: config.haUrl, wsUrl: config.haWsUrl ?? undefined, token: config.haToken, filter: config.haEntityFilter });
 }
 
 const bridge = new Bridge({ store: new SupabaseStore(config.supabaseUrl, config.supabaseServiceKey), adapter, config });

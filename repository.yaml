@@ -1,0 +1,5 @@
+# Dépôt de modules complémentaires Home Assistant (Paramètres > Modules complémentaires >
+# Boutique > ⋮ > Dépôts > ajouter https://github.com/flowit-connect/flowit-smart).
+name: FlowIT Smart
+url: https://github.com/flowit-connect/flowit-smart
+maintainer: FlowIT Connect
