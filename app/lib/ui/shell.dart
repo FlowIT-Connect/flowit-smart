@@ -68,7 +68,7 @@ class _ShellState extends State<Shell> {
       toolbarHeight: 76,
       titleSpacing: wide ? 28 : 16,
       leadingWidth: 64,
-      leading: wide ? null : const Padding(padding: EdgeInsetsDirectional.only(start: 16), child: Center(child: FlowLogo(size: 38))),
+      leading: wide ? null : const Padding(padding: EdgeInsetsDirectional.only(start: 16), child: Center(child: SoleaLogo(size: 38))),
       title: _index == 0
           ? const HomeSwitcher(large: true)
           : Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisSize: MainAxisSize.min, children: [
@@ -112,7 +112,7 @@ class _ShellState extends State<Shell> {
                       selectedIndex: _index,
                       onDestinationSelected: go,
                       labelType: NavigationRailLabelType.all,
-                      leading: const Padding(padding: EdgeInsets.only(top: 12, bottom: 20), child: FlowLogo(size: 46)),
+                      leading: const Padding(padding: EdgeInsets.only(top: 12, bottom: 20), child: SoleaLogo(size: 46)),
                       destinations: [
                         for (var i = 0; i < _labels.length; i++)
                           NavigationRailDestination(icon: Icon(_icons[i].$1), selectedIcon: Icon(_icons[i].$2), label: Text(context.tr(_labels[i]))),
@@ -182,7 +182,7 @@ class HomeSwitcher extends StatelessWidget {
         PopupMenuItem(value: '+', child: ListTile(leading: const Icon(Icons.add_home_rounded), title: Text(context.tr('home.create')))),
       ],
       child: Row(mainAxisSize: MainAxisSize.min, children: [
-        Flexible(child: Text(state.home?.name ?? 'FlowIT Smart', overflow: TextOverflow.ellipsis, style: style)),
+        Flexible(child: Text(state.home?.name ?? 'Solea', overflow: TextOverflow.ellipsis, style: style)),
         const SizedBox(width: 2),
         Icon(Icons.keyboard_arrow_down_rounded, size: large ? 26 : 18, color: large ? f.ink : f.inkSoft),
       ]),

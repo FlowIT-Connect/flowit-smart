@@ -35,6 +35,16 @@ const PLATFORMS = {
   bthome: ['ble', 'ble_direct'],
   xiaomi_ble: ['ble', 'ble_direct'],
   mqtt: ['mqtt', 'gateway'],
+  // Caméras IP (Wi-Fi / Ethernet sur le réseau local)
+  onvif: ['wifi', 'local'],
+  generic: ['wifi', 'local'],
+  reolink: ['wifi', 'local'],
+  hikvision: ['wifi', 'local'],
+  dahua: ['wifi', 'local'],
+  amcrest: ['wifi', 'local'],
+  tapo_control: ['wifi', 'local'],
+  imou_life: ['wifi', 'cloud'],
+  ezviz_cloud: ['wifi', 'cloud'],
 };
 
 export function hexToRgb(hex) {
@@ -136,6 +146,10 @@ export function entityCapabilities(stateObj) {
       } else if (MOTION_CLASSES.has(a.device_class)) {
         caps.push({ key: 'motion', type: 'sensor', writable: false, metadata: { kind: 'binary' }, read: (s) => (s.state === 'on' ? true : s.state === 'off' ? false : null) });
       }
+      break;
+    case 'camera':
+      // Image récupérée à la demande par la passerelle (camera_proxy), jamais par l'application.
+      caps.push({ key: 'camera', type: 'string', writable: false, metadata: { kind: 'camera' }, read: (s) => s.state });
       break;
     case 'alarm_control_panel':
       caps.push({ key: 'alarm', type: 'sensor', writable: false, metadata: {}, sensitive: true, read: (s) => s.state });

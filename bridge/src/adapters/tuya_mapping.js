@@ -200,10 +200,11 @@ export function statusMap(list) {
 
 /**
  * Descripteur FlowIT d'un appareil Tuya (même forme que l'inventaire Home Assistant).
- * @param {{id:string,name?:string,category?:string,product_name?:string,model?:string}} device
+ * @param {{id:string,name?:string,category?:string,product_name?:string,model?:string,icon?:string}} device
  * @param {object} spec réponse de /v1.0/devices/{id}/specifications
+ * @param {{imageBase?:string|null}} [opts] CDN des photos produits de la région
  */
-export function buildTuyaDevice(device, spec) {
+export function buildTuyaDevice(device, spec, { imageBase = null } = {}) {
   const category = spec?.category ?? device.category;
   const { caps, sensitive } = tuyaCapabilities(category, parseSpecification(spec));
   const desc = {
@@ -215,6 +216,7 @@ export function buildTuyaDevice(device, spec) {
     protocol: 'tuya',
     connectionSource: 'cloud',
     isSensitive: sensitive,
+    imageUrl: productImageUrl(device.icon, imageBase),
     capabilities: [],
     capMap: {},
   };
@@ -225,6 +227,16 @@ export function buildTuyaDevice(device, spec) {
     desc.capabilities.push({ capability_key: key, type: c.type, writable: c.writable, metadata: c.metadata });
   }
   return desc;
+}
+
+/** Photo officielle du produit (celle de l'app Smart Life), en https uniquement. */
+export function productImageUrl(icon, imageBase) {
+  if (typeof icon !== 'string' || !icon.trim()) return null;
+  const v = icon.trim();
+  if (/^https:\/\//.test(v)) return v;
+  if (/^http:\/\//.test(v)) return v.replace(/^http:/, 'https:');
+  if (!imageBase || v.includes('..')) return null;
+  return `${imageBase}/${v.replace(/^\/+/, '')}`;
 }
 
 /** État et disponibilité FlowIT à partir des états Tuya et du drapeau `online`. */

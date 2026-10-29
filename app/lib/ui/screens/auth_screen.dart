@@ -30,7 +30,7 @@ class _AuthScreenState extends State<AuthScreen> {
   void initState() {
     super.initState();
     if (AppScope.read(context).backend.isDemo) {
-      _email.text = 'demo@flowit.dz';
+      _email.text = 'demo@solea-dz.com';
       _password.text = 'demo';
     }
   }
@@ -84,12 +84,12 @@ class _AuthScreenState extends State<AuthScreen> {
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
             if (!wide) ...[
-              const Center(child: FlowLogo(size: 72)),
-              const SizedBox(height: 18),
-              Text('FlowIT Smart', textAlign: TextAlign.center, style: theme.textTheme.headlineMedium),
-              const SizedBox(height: 6),
-              Text(context.tr('app.tagline'), textAlign: TextAlign.center, style: theme.textTheme.bodyMedium?.copyWith(color: f.inkSoft)),
-              const SizedBox(height: 28),
+              const Align(alignment: AlignmentDirectional.centerStart, child: SoleaWordmark(size: 44)),
+              const SizedBox(height: 26),
+              Text(context.tr('auth.hero'), style: theme.textTheme.headlineMedium?.copyWith(height: 1.15)),
+              const SizedBox(height: 8),
+              Text(context.tr('app.tagline'), style: theme.textTheme.bodyMedium?.copyWith(color: f.inkSoft)),
+              const SizedBox(height: 26),
             ],
             if (state.backend.isDemo) ...[
               Container(
@@ -210,25 +210,36 @@ class _BrandPanel extends StatelessWidget {
     final theme = Theme.of(context);
     const white = Colors.white;
     return Container(
+      clipBehavior: Clip.antiAlias,
       decoration: BoxDecoration(
-        gradient: f.brandGradient,
+        color: f.panel,
         borderRadius: BorderRadius.circular(36),
-        boxShadow: [BoxShadow(color: f.brand.withValues(alpha: .3), blurRadius: 40, offset: const Offset(0, 18))],
+        boxShadow: [BoxShadow(color: f.shadow, blurRadius: 40, offset: const Offset(0, 18))],
       ),
+      child: Stack(children: [
+        // Lever de soleil derrière le texte.
+        Positioned(
+          right: -160,
+          top: -160,
+          child: IgnorePointer(
+            child: Container(
+              width: 520,
+              height: 520,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                gradient: RadialGradient(colors: [f.brand.withValues(alpha: .45), f.brand.withValues(alpha: .08), f.brand.withValues(alpha: 0)], stops: const [0, .55, 1]),
+              ),
+            ),
+          ),
+        ),
+        Padding(
       padding: const EdgeInsets.all(44),
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        Row(children: [
-          Container(
-            decoration: BoxDecoration(borderRadius: BorderRadius.circular(18), border: Border.all(color: white.withValues(alpha: .5), width: 1.5)),
-            child: const FlowLogo(size: 56),
-          ),
-          const SizedBox(width: 14),
-          Text('FlowIT Smart', style: theme.textTheme.titleLarge?.copyWith(color: white, fontWeight: FontWeight.w800)),
-        ]),
+        const SoleaWordmark(size: 52, color: white),
         const Spacer(),
-        Text(context.tr('auth.hero'), style: theme.textTheme.displaySmall?.copyWith(color: white, fontWeight: FontWeight.w800, height: 1.1)),
+        Text(context.tr('auth.hero'), style: theme.textTheme.displaySmall?.copyWith(color: white, fontWeight: FontWeight.w700, height: 1.1)),
         const SizedBox(height: 14),
-        Text(context.tr('app.tagline'), style: theme.textTheme.titleMedium?.copyWith(color: white.withValues(alpha: .85))),
+        Text(context.tr('app.tagline'), style: theme.textTheme.titleMedium?.copyWith(color: white.withValues(alpha: .7))),
         const SizedBox(height: 32),
         for (final (icon, key) in const [
           (Icons.bolt_rounded, 'auth.feature1'),
@@ -241,13 +252,15 @@ class _BrandPanel extends StatelessWidget {
               Container(
                 width: 38,
                 height: 38,
-                decoration: BoxDecoration(color: white.withValues(alpha: .18), borderRadius: BorderRadius.circular(12)),
-                child: Icon(icon, color: white, size: 20),
+                decoration: BoxDecoration(color: white.withValues(alpha: .08), shape: BoxShape.circle),
+                child: Icon(icon, color: f.brand, size: 20),
               ),
               const SizedBox(width: 14),
               Expanded(child: Text(context.tr(key), style: theme.textTheme.bodyLarge?.copyWith(color: white, fontWeight: FontWeight.w600))),
             ]),
           ),
+      ]),
+        ),
       ]),
     );
   }

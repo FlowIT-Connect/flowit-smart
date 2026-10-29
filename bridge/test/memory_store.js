@@ -13,6 +13,9 @@ export class MemoryStore {
     this.events = [];
     this.scenesExecuted = [];
     this.listeners = [];
+    this.cameraWatchers = [];
+    this.frames = new Map(); // chemin -> { bytes, contentType }
+    this.frameNotices = [];
   }
 
   async getIntegration(id) { return this.integrations.get(id) ?? null; }
@@ -81,6 +84,16 @@ export class MemoryStore {
   async executeScene(sceneId, automationId) { this.scenesExecuted.push({ sceneId, automationId }); return randomUUID(); }
   async markAutomationRun(id, at) { const a = this.automations.find((x) => x.id === id); if (a) a.last_run_at = at; }
   async logEvent(row) { this.events.push(row); }
+  subscribeCameraWatch(_homeId, onWatch) {
+    this.cameraWatchers.push(onWatch);
+    return { notify: async (deviceId, at) => this.frameNotices.push({ deviceId, at }), unsubscribe: () => {} };
+  }
+  async uploadCameraFrame(homeId, deviceId, bytes, contentType) {
+    const path = `${homeId}/${deviceId}.jpg`;
+    this.frames.set(path, { bytes, contentType });
+    return path;
+  }
+  watchCamera(deviceId) { for (const w of this.cameraWatchers) w(deviceId); }
 
   // Aides de test
   deviceByName(name) { return [...this.devices.values()].find((d) => d.name === name); }

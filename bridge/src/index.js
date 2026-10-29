@@ -1,6 +1,7 @@
 // FlowIT Bridge — point d'entrée.
 //   node --env-file=.env src/index.js        (ou docker compose up -d, ou npm run local)
 
+import { addDirectCameras } from './adapters/direct_cameras.js';
 import { FakeHomeAssistant } from './adapters/fake_home_assistant.js';
 import { HomeAssistantAdapter } from './adapters/home_assistant.js';
 import { TuyaClient } from './adapters/tuya_api.js';
@@ -9,6 +10,7 @@ import { Bridge } from './bridge.js';
 import { loadConfig } from './config.js';
 import { applyAddonOptions } from './addon_options.js';
 import { log, setLogLevel } from './log.js';
+import { simulatedFrame } from './png.js';
 import { SupabaseStore } from './store.js';
 
 applyAddonOptions();
@@ -19,7 +21,12 @@ config.runAutomations = process.env.RUN_AUTOMATIONS !== 'false';
 let adapter;
 if (config.adapter === 'simulator') {
   const fake = new FakeHomeAssistant();
-  adapter = new HomeAssistantAdapter({ url: 'http://simulateur', token: 'simulateur', wsFactory: () => fake.socket() });
+  adapter = new HomeAssistantAdapter({
+    url: 'http://simulateur',
+    token: 'simulateur',
+    wsFactory: () => fake.socket(),
+    fetchImpl: async () => new Response(simulatedFrame(), { headers: { 'content-type': 'image/png' } }),
+  });
   // Les capteurs simulés évoluent pour montrer le temps réel dans l'application.
   setInterval(() => {
     const t = Number(fake.states.get('sensor.chambre_temperature').state);
@@ -28,10 +35,15 @@ if (config.adapter === 'simulator') {
   log.warn('bridge.simulator', { message: 'Mode simulateur : appareils fictifs, aucun matériel piloté.' });
 } else if (config.adapter === 'tuya_cloud') {
   const client = new TuyaClient({ accessId: config.tuyaAccessId, accessSecret: config.tuyaAccessSecret, baseUrl: config.tuyaBaseUrl });
-  adapter = new TuyaCloudAdapter({ client, pollMs: config.tuyaPollMs });
+  adapter = new TuyaCloudAdapter({ client, pollMs: config.tuyaPollMs, imageBase: config.tuyaImageUrl });
   log.info('bridge.tuya_cloud', { region: config.tuyaBaseUrl, poll_seconds: config.tuyaPollMs / 1000 });
 } else {
   adapter = new HomeAssistantAdapter({ url: config.haUrl, wsUrl: config.haWsUrl ?? undefined, token: config.haToken, filter: config.haEntityFilter });
+}
+
+if (config.cameras.length) {
+  addDirectCameras(adapter, config.cameras);
+  log.info('bridge.direct_cameras', { count: config.cameras.length });
 }
 
 const bridge = new Bridge({ store: new SupabaseStore(config.supabaseUrl, config.supabaseServiceKey), adapter, config });

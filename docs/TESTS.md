@@ -1,10 +1,10 @@
 # Tests
 
-| Partie | Commande | Résultat (26/10/2026) |
+| Partie | Commande | Résultat (29/10/2026) |
 |---|---|---|
-| SQL (fonctions, RLS, scènes, journal) | `cd supabase/tests && sh run_tests.sh` (PostgreSQL 16+, variables PG*) | 30 / 30 |
-| Application Flutter | `cd app && flutter analyze && flutter test` | 0 alerte, 15 / 15 |
-| Passerelle | `cd bridge && npm ci && npm test` | 28 / 28 |
+| SQL (fonctions, RLS, scènes, journal) | `cd supabase/tests && sh run_tests.sh` (PostgreSQL 16+, variables PG*) | 41 / 41 |
+| Application Flutter | `cd app && flutter analyze && flutter test` | 0 alerte, 26 / 26 |
+| Passerelle | `cd bridge && npm ci && npm test` | 65 / 65 |
 
 ## Ce qui est couvert
 - SQL : création de maison, rôles et RLS, invitations, transfert de propriété, suppression de
@@ -14,6 +14,10 @@
 - Passerelle : correspondance HA → FlowIT, déclencheurs et conditions, file de commandes
   (une à la fois par appareil, scènes séquentielles, réclamation atomique), forme des
   requêtes Supabase.
+- Caméras, photos, météo (29/10) : règles d'accès aux images (membre restreint, autre maison,
+  écriture réservée à la passerelle), entité caméra HA et caméras directes, images envoyées
+  seulement pendant qu'un membre regarde, photo produit Tuya, météo Open-Meteo (réponse, clé
+  commerciale), vue caméra et photos dans l'application.
 - Test visuel : application web en mode démo pilotée par Playwright (captures dans `screenshots/`).
 
 ## Pas encore testé

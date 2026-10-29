@@ -7,6 +7,8 @@ import '../../models/models.dart';
 import '../../state/app_state.dart';
 import '../widgets/common.dart';
 import '../widgets/device_controls.dart';
+import '../widgets/device_visual.dart';
+import '../widgets/weather_widgets.dart';
 import 'device_detail.dart';
 import 'rooms_screen.dart';
 
@@ -21,6 +23,8 @@ class DashboardScreen extends StatelessWidget {
     final state = AppScope.of(context);
     final f = context.flow;
     final all = state.visibleDevices;
+    // Météo extérieure : actualisée au plus toutes les 15 min, sans bloquer l'affichage.
+    WidgetsBinding.instance.addPostFrameCallback((_) => state.refreshWeather());
     if (all.isEmpty && state.scenes.isEmpty) {
       return ListView(children: [
         EmptyState(
@@ -76,7 +80,7 @@ class DashboardScreen extends StatelessWidget {
               child: Column(children: [
                 for (final d in attention)
                   ListTile(
-                    leading: IconBubble(icon: deviceIcon(d), color: f.danger, size: 40),
+                    leading: DeviceVisual(d, size: 40, photoSize: 44),
                     title: Text(d.name),
                     subtitle: Text(context.tr('device.lastSeen', {'when': relativeTime(context, d.lastSeenAt)})),
                     trailing: const ForwardChevron(),
@@ -132,7 +136,7 @@ class DashboardScreen extends StatelessWidget {
   }
 }
 
-/// Carte d'accueil : salutation, appareils allumés, santé du réseau, climat.
+/// Carte d'accueil sombre : appareils allumés, réseau, alertes, climat, puissance.
 class _HomeHero extends StatelessWidget {
   const _HomeHero({required this.devices, required this.onShowDevices});
 
@@ -143,6 +147,7 @@ class _HomeHero extends StatelessWidget {
   Widget build(BuildContext context) {
     final f = context.flow;
     final theme = Theme.of(context);
+    final weather = AppScope.of(context).weather;
     final online = devices.where((d) => d.isOnline).length;
     final active = devices.where((d) => d.isOnline && d.isOn == true).length;
     final unavailable = devices.where((d) => d.availability == Availability.unavailable).length;
@@ -151,77 +156,105 @@ class _HomeHero extends StatelessWidget {
         if (d.isOnline && d.state['temperature'] is num) (d.state['temperature'] as num).toDouble(),
     ];
     final avgTemp = temps.isEmpty ? null : temps.reduce((a, b) => a + b) / temps.length;
+    final power = devices.where((d) => d.isOnline && d.state['power'] is num).fold<double>(0, (sum, d) => sum + (d.state['power'] as num));
     final hour = DateTime.now().hour;
     final greeting = context.tr(hour < 5 || hour >= 18 ? 'greeting.evening' : (hour < 12 ? 'greeting.morning' : 'greeting.afternoon'));
     final ratio = devices.isEmpty ? 0.0 : online / devices.length;
     const white = Colors.white;
 
     return Container(
+      clipBehavior: Clip.antiAlias,
       decoration: BoxDecoration(
-        gradient: f.brandGradient,
+        color: f.panel,
         borderRadius: BorderRadius.circular(30),
-        boxShadow: [BoxShadow(color: f.brand.withValues(alpha: .28), blurRadius: 32, offset: const Offset(0, 14))],
+        boxShadow: [BoxShadow(color: f.shadow, blurRadius: 30, offset: const Offset(0, 14))],
       ),
       child: Stack(children: [
-        // Ondes décoratives, rappel du logo.
-        Positioned.fill(child: CustomPaint(painter: _WavesPainter())),
+        // Halo solaire dans l'angle.
+        Positioned(
+          right: -70,
+          top: -90,
+          child: IgnorePointer(
+            child: Container(
+              width: 230,
+              height: 230,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                gradient: RadialGradient(colors: [f.brand.withValues(alpha: .38), f.brand.withValues(alpha: 0)]),
+              ),
+            ),
+          ),
+        ),
         Padding(
           padding: const EdgeInsets.fromLTRB(20, 18, 20, 16),
           child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Row(children: [
+              Container(
+                width: 46,
+                height: 46,
+                decoration: BoxDecoration(gradient: f.brandGradient, shape: BoxShape.circle),
+                child: const Icon(Icons.wb_sunny_rounded, color: white, size: 24),
+              ),
+              const SizedBox(width: 14),
               Expanded(
                 child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                  Text(greeting, maxLines: 1, overflow: TextOverflow.ellipsis, style: theme.textTheme.titleMedium?.copyWith(color: white.withValues(alpha: .85))),
-                  const SizedBox(height: 4),
+                  Text(greeting, maxLines: 1, overflow: TextOverflow.ellipsis, style: theme.textTheme.labelLarge?.copyWith(color: white.withValues(alpha: .65))),
                   Row(crossAxisAlignment: CrossAxisAlignment.baseline, textBaseline: TextBaseline.alphabetic, children: [
-                    Text('$active', style: theme.textTheme.displaySmall?.copyWith(color: white, fontWeight: FontWeight.w800, height: 1.1)),
+                    Text('$active', style: theme.textTheme.displaySmall?.copyWith(color: white, fontWeight: FontWeight.w300, height: 1.1)),
                     const SizedBox(width: 8),
                     Flexible(
                       child: Text(
                         context.tr('dashboard.active').toLowerCase(),
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
-                        style: theme.textTheme.titleLarge?.copyWith(color: white, fontWeight: FontWeight.w700),
+                        style: theme.textTheme.titleMedium?.copyWith(color: white, fontWeight: FontWeight.w600),
                       ),
                     ),
                   ]),
-                  const SizedBox(height: 2),
-                  Text(
-                    context.tr('dashboard.onlineOf', {'n': online, 'total': devices.length}),
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: theme.textTheme.bodyMedium?.copyWith(color: white.withValues(alpha: .85)),
-                  ),
                 ]),
               ),
-              const SizedBox(width: 12),
+              const SizedBox(width: 10),
               SizedBox(
-                width: 68,
-                height: 68,
+                width: 58,
+                height: 58,
                 child: Stack(alignment: Alignment.center, children: [
                   SizedBox.expand(
                     child: CircularProgressIndicator(
                       value: ratio,
-                      strokeWidth: 6,
+                      strokeWidth: 5,
                       strokeCap: StrokeCap.round,
-                      color: white,
-                      backgroundColor: white.withValues(alpha: .2),
+                      color: f.brand,
+                      backgroundColor: white.withValues(alpha: .12),
                     ),
                   ),
-                  Text('${(ratio * 100).round()}%', style: theme.textTheme.titleMedium?.copyWith(color: white, fontWeight: FontWeight.w800)),
+                  Text('${(ratio * 100).round()}%', style: theme.textTheme.labelLarge?.copyWith(color: white, fontWeight: FontWeight.w800)),
                 ]),
               ),
             ]),
-            const SizedBox(height: 16),
+            const SizedBox(height: 6),
+            Text(
+              context.tr('dashboard.onlineOf', {'n': online, 'total': devices.length}),
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: theme.textTheme.bodyMedium?.copyWith(color: white.withValues(alpha: .65)),
+            ),
+            const SizedBox(height: 14),
             Wrap(spacing: 8, runSpacing: 8, children: [
+              if (weather != null)
+                _HeroPill(
+                  icon: weatherIcon(weather),
+                  label: '${context.tr('weather.outside')} ${formatDegrees(weather.temperature)}',
+                  onTap: () => showWeatherSheet(context),
+                ),
               _HeroPill(
                 icon: unavailable > 0 ? Icons.error_outline_rounded : Icons.check_circle_rounded,
                 label: unavailable > 0 ? context.tr('dashboard.unavailableCount', {'n': unavailable}) : context.tr('dashboard.allGood'),
                 onTap: unavailable > 0 ? onShowDevices : null,
                 strong: unavailable > 0,
               ),
-              if (avgTemp != null)
-                _HeroPill(icon: Icons.device_thermostat_rounded, label: '${avgTemp.toStringAsFixed(1)} °C'),
+              if (avgTemp != null) _HeroPill(icon: Icons.home_rounded, label: '${avgTemp.toStringAsFixed(1)} °C'),
+              if (power > 0)
+                _HeroPill(icon: Icons.bolt_rounded, label: power >= 1000 ? '${(power / 1000).toStringAsFixed(1)} kW' : '${power.round()} W'),
             ]),
           ]),
         ),
@@ -239,45 +272,28 @@ class _HeroPill extends StatelessWidget {
   final bool strong;
 
   @override
-  Widget build(BuildContext context) => Material(
-        color: strong ? Colors.white : Colors.white.withValues(alpha: .18),
+  Widget build(BuildContext context) {
+    final f = context.flow;
+    return Material(
+      color: strong ? f.brand : Colors.white.withValues(alpha: .1),
+      borderRadius: BorderRadius.circular(999),
+      child: InkWell(
         borderRadius: BorderRadius.circular(999),
-        child: InkWell(
-          borderRadius: BorderRadius.circular(999),
-          onTap: onTap,
-          child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-            child: Row(mainAxisSize: MainAxisSize.min, children: [
-              Icon(icon, size: 16, color: strong ? context.flow.danger : Colors.white),
-              const SizedBox(width: 6),
-              Text(
-                label,
-                style: Theme.of(context).textTheme.labelLarge?.copyWith(color: strong ? context.flow.tileOnInk : Colors.white, fontWeight: FontWeight.w700),
-              ),
-            ]),
-          ),
+        onTap: onTap,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+          child: Row(mainAxisSize: MainAxisSize.min, children: [
+            Icon(icon, size: 16, color: strong ? f.onBrand : f.brand),
+            const SizedBox(width: 6),
+            Text(
+              label,
+              style: Theme.of(context).textTheme.labelLarge?.copyWith(color: strong ? f.onBrand : Colors.white, fontWeight: FontWeight.w700),
+            ),
+          ]),
         ),
-      );
-}
-
-class _WavesPainter extends CustomPainter {
-  @override
-  void paint(Canvas canvas, Size size) {
-    final paint = Paint()
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = 1.4
-      ..color = Colors.white.withValues(alpha: .10);
-    for (var k = 0; k < 4; k++) {
-      final path = Path();
-      final y0 = size.height * (.55 + k * .12);
-      path.moveTo(size.width * .35, y0);
-      path.cubicTo(size.width * .55, y0 - 40, size.width * .75, y0 + 40, size.width * 1.05, y0 - 18);
-      canvas.drawPath(path, paint);
-    }
+      ),
+    );
   }
-
-  @override
-  bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
 }
 
 /// Raccourci de scène : carte en dégradé, lancement en un geste.

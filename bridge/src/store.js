@@ -120,6 +120,30 @@ export class SupabaseStore {
     return () => this.db.removeChannel(channel);
   }
 
+  /** Canal temps réel des caméras : « watch » de l'application, « frame » de la passerelle. */
+  subscribeCameraWatch(homeId, onWatch) {
+    const channel = this.db
+      .channel(`camera:${homeId}`, { config: { broadcast: { self: false } } })
+      .on('broadcast', { event: 'watch' }, ({ payload }) => {
+        if (typeof payload?.device_id === 'string') onWatch(payload.device_id);
+      })
+      .subscribe();
+    return {
+      notify: (deviceId, at) => channel.send({ type: 'broadcast', event: 'frame', payload: { device_id: deviceId, at } }),
+      unsubscribe: () => this.db.removeChannel(channel),
+    };
+  }
+
+  /** Dernière image d'une caméra, dans le bucket privé (lecture réservée aux membres autorisés). */
+  async uploadCameraFrame(homeId, deviceId, bytes, contentType) {
+    const path = `${homeId}/${deviceId}.jpg`;
+    const { error } = await this.db.storage
+      .from('camera-frames')
+      .upload(path, bytes, { upsert: true, contentType, cacheControl: '0' });
+    if (error) throw new Error(`Supabase Storage : ${error.message}`);
+    return path;
+  }
+
   async listAutomations(homeId) {
     return check(await this.db.from('automations').select('*').eq('home_id', homeId).eq('enabled', true).eq('run_locally', true));
   }

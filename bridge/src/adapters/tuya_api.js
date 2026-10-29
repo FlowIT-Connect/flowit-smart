@@ -8,12 +8,13 @@ import { createHash, createHmac, randomUUID } from 'node:crypto';
 
 /** Data centers Tuya (le projet cloud et le compte Smart Life doivent être sur le même). */
 export const TUYA_REGIONS = {
-  eu: { url: 'https://openapi.tuyaeu.com', label: 'Central Europe (Algérie, Europe, Afrique)' },
-  weu: { url: 'https://openapi-weaz.tuyaeu.com', label: 'Western Europe' },
-  us: { url: 'https://openapi.tuyaus.com', label: 'Western America' },
-  eus: { url: 'https://openapi-ueaz.tuyaus.com', label: 'Eastern America' },
-  cn: { url: 'https://openapi.tuyacn.com', label: 'China' },
-  in: { url: 'https://openapi.tuyain.com', label: 'India' },
+  // images : CDN des photos produits (champ « icon » des appareils).
+  eu: { url: 'https://openapi.tuyaeu.com', images: 'https://images.tuyaeu.com', label: 'Central Europe (Algérie, Europe, Afrique)' },
+  weu: { url: 'https://openapi-weaz.tuyaeu.com', images: 'https://images.tuyaeu.com', label: 'Western Europe' },
+  us: { url: 'https://openapi.tuyaus.com', images: 'https://images.tuyaus.com', label: 'Western America' },
+  eus: { url: 'https://openapi-ueaz.tuyaus.com', images: 'https://images.tuyaus.com', label: 'Eastern America' },
+  cn: { url: 'https://openapi.tuyacn.com', images: 'https://images.tuyacn.com', label: 'China' },
+  in: { url: 'https://openapi.tuyain.com', images: 'https://images.tuyain.com', label: 'India' },
 };
 
 const TOKEN_ERRORS = new Set([1010, 1011]); // jeton invalide ou expiré

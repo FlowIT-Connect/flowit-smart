@@ -6,11 +6,13 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 
 import 'app.dart';
 import 'core/config.dart';
+import 'core/device_photos.dart';
 import 'core/l10n.dart';
 import 'core/theme.dart';
 import 'data/backend.dart';
 import 'data/demo_backend.dart';
 import 'data/supabase_backend.dart';
+import 'data/weather.dart';
 import 'state/app_state.dart';
 
 Future<void> main() async {
@@ -21,6 +23,7 @@ Future<void> main() async {
     }
   });
   await ThemeController.instance.load();
+  await DevicePhotoCatalog.load();
 
   final Backend backend;
   if (AppConfig.hasSupabase) {
@@ -37,5 +40,5 @@ Future<void> main() async {
   } catch (_) {}
   locale ??= L10n.resolve(WidgetsBinding.instance.platformDispatcher.locale);
 
-  runApp(FlowItApp(state: AppState(backend, initialLocale: locale)));
+  runApp(FlowItApp(state: AppState(backend, initialLocale: locale, weatherService: OpenMeteoWeather())));
 }

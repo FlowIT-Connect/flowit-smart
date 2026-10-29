@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:typed_data';
 
 import 'package:supabase_flutter/supabase_flutter.dart';
 
@@ -39,6 +40,13 @@ class SupabaseBackend implements Backend {
       }
       if (e.code == 'P0001') throw BackendException('invalid', e.message);
       if (e.code == '23505') throw const BackendException('invalid', 'Cet élément existe déjà.');
+      throw BackendException('unknown', e.message);
+    } on StorageException catch (e) {
+      if (e.statusCode == '401' || e.statusCode == '403') throw const BackendException('denied', 'Accès refusé.');
+      if (e.statusCode == '404' || (e.statusCode == '400' && e.message.toLowerCase().contains('not found'))) {
+        throw const BackendException('notFound', 'Image introuvable.');
+      }
+      if (e.statusCode == '413') throw const BackendException('invalid', 'Image trop lourde.');
       throw BackendException('unknown', e.message);
     } on BackendException {
       rethrow;
@@ -373,6 +381,97 @@ class SupabaseBackend implements Backend {
         return rows.map(EventLog.fromJson).toList();
       });
 
+  // ---------------------------------------------------------------- Caméras et photos
+  /// Un seul canal temps réel « `camera:<maison>` » partagé par toutes les vues ouvertes
+  /// (deux abonnements au même canal sur une connexion se couperaient l'un l'autre).
+  final _cameraHubs = <String, _CameraHub>{};
+
+  @override
+  Stream<CameraFrame> watchCamera(String homeId, String deviceId) {
+    final path = '$homeId/$deviceId.jpg';
+    late final StreamController<CameraFrame> controller;
+    late final _CameraWatcher watcher;
+    Timer? ping;
+    Timer? poll;
+    DateTime? lastNotice;
+    var busy = false;
+
+    Future<void> fetch({String? at}) async {
+      if (busy || controller.isClosed) return;
+      busy = true;
+      try {
+        final bytes = await _client.storage.from('camera-frames').download(path, cacheNonce: at ?? '${DateTime.now().millisecondsSinceEpoch}');
+        final live = lastNotice != null && DateTime.now().difference(lastNotice!) < const Duration(seconds: 6);
+        if (!controller.isClosed) {
+          controller.add(CameraFrame(bytes, at == null ? DateTime.now() : (DateTime.tryParse(at)?.toLocal() ?? DateTime.now()), live: live));
+        }
+      } catch (_) {
+        // Pas encore d'image (passerelle arrêtée ou caméra injoignable) : l'écran l'indique.
+      } finally {
+        busy = false;
+      }
+    }
+
+    controller = StreamController<CameraFrame>(
+      onListen: () {
+        watcher = _CameraWatcher(deviceId, (at) {
+          lastNotice = DateTime.now();
+          fetch(at: at);
+        });
+        final hub = _cameraHubs.putIfAbsent(homeId, () => _CameraHub(_client, homeId));
+        hub.add(watcher);
+        // La passerelle arrête d'envoyer 15 s après le dernier signal : on le renouvelle.
+        ping = Timer.periodic(const Duration(seconds: 5), (_) => hub.watch(deviceId));
+        // Filet de sécurité si un message temps réel se perd.
+        poll = Timer.periodic(const Duration(seconds: 4), (_) => fetch());
+        fetch();
+      },
+      onCancel: () async {
+        ping?.cancel();
+        poll?.cancel();
+        final hub = _cameraHubs[homeId];
+        if (hub != null && hub.remove(watcher)) {
+          _cameraHubs.remove(homeId); // retiré avant la fermeture : une nouvelle vue repart d'un canal neuf
+          await hub.close();
+        }
+      },
+    );
+    return controller.stream;
+  }
+
+  @override
+  Future<Uint8List> downloadDevicePhoto(String path) => _guard(() => _client.storage.from('device-photos').download(path));
+
+  @override
+  Future<String> setDevicePhoto(Device device, Uint8List bytes, String contentType) => _guard(() async {
+        final ext = imageExtension(contentType);
+        if (ext == null) throw const BackendException('invalid', 'Format d\'image non pris en charge (JPEG, PNG ou WebP).');
+        final path = '${device.homeId}/${device.id}-${DateTime.now().millisecondsSinceEpoch}.$ext';
+        await _client.storage.from('device-photos').uploadBinary(
+              path,
+              bytes,
+              fileOptions: FileOptions(contentType: contentType, cacheControl: '31536000'),
+            );
+        await _client.from('devices').update({'photo_path': path}).eq('id', device.id);
+        await _removePhoto(device.photoPath);
+        return path;
+      });
+
+  @override
+  Future<void> clearDevicePhoto(Device device) => _guard(() async {
+        await _client.from('devices').update({'photo_path': null}).eq('id', device.id);
+        await _removePhoto(device.photoPath);
+      });
+
+  Future<void> _removePhoto(String? path) async {
+    if (path == null) return;
+    try {
+      await _client.storage.from('device-photos').remove([path]);
+    } catch (_) {
+      // Ancienne photo orpheline : sans conséquence pour l'affichage.
+    }
+  }
+
   // ---------------------------------------------------------------- Temps réel
   @override
   Stream<RealtimeEvent> watchHome(String homeId, {void Function(bool connected)? onStatus}) {
@@ -406,5 +505,57 @@ class SupabaseBackend implements Backend {
       onStatus?.call(status == RealtimeSubscribeStatus.subscribed);
     });
     return controller.stream;
+  }
+}
+
+class _CameraWatcher {
+  _CameraWatcher(this.deviceId, this.onFrame);
+
+  final String deviceId;
+  final void Function(String? at) onFrame;
+}
+
+/// Canal « `camera:<maison>` » : envoie les signaux « watch », reçoit les avis « frame ».
+class _CameraHub {
+  _CameraHub(this._client, String homeId) {
+    _channel = _client.channel('camera:$homeId')
+      ..onBroadcast(
+        event: 'frame',
+        callback: (payload) {
+          for (final w in List.of(_watchers)) {
+            if (w.deviceId == payload['device_id']) w.onFrame(payload['at']?.toString());
+          }
+        },
+      )
+      ..subscribe((status, _) {
+        _subscribed = status == RealtimeSubscribeStatus.subscribed;
+        if (_subscribed) {
+          for (final id in _watchers.map((w) => w.deviceId).toSet()) {
+            watch(id);
+          }
+        }
+      });
+  }
+
+  final SupabaseClient _client;
+  late final RealtimeChannel _channel;
+  final _watchers = <_CameraWatcher>[];
+  var _subscribed = false;
+
+  void add(_CameraWatcher w) {
+    _watchers.add(w);
+    if (_subscribed) watch(w.deviceId);
+  }
+
+  /// Retire une vue ; true quand plus aucune vue n'utilise le canal.
+  bool remove(_CameraWatcher w) {
+    _watchers.remove(w);
+    return _watchers.isEmpty;
+  }
+
+  Future<void> close() => _client.removeChannel(_channel);
+
+  void watch(String deviceId) {
+    if (_subscribed) _channel.sendBroadcastMessage(event: 'watch', payload: {'device_id': deviceId});
   }
 }
