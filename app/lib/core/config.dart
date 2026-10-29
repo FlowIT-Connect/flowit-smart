@@ -14,5 +14,8 @@ class AppConfig {
     defaultValue: 'sb_publishable_is45UbEkZS6diyGIF0iCxQ_-gqZt0id',
   );
 
+  /// Clé de l'offre commerciale Open-Meteo (météo extérieure). Vide = offre gratuite.
+  static const weatherApiKey = String.fromEnvironment('WEATHER_API_KEY');
+
   static bool get hasSupabase => supabaseUrl.isNotEmpty && supabaseKey.isNotEmpty;
 }

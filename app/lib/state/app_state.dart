@@ -1,10 +1,13 @@
 import 'dart:async';
+import 'dart:convert';
+import 'dart:typed_data';
 
 import 'package:flutter/widgets.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../core/l10n.dart';
 import '../data/backend.dart';
+import '../data/weather.dart';
 import '../models/models.dart';
 
 /// Commande en cours affichée sur un contrôle (attente, puis résultat réel).
@@ -31,7 +34,7 @@ class Notice {
 
 /// État global de l'application (session, maison courante, données, temps réel).
 class AppState extends ChangeNotifier {
-  AppState(this.backend, {Locale? initialLocale, this.commandTimeout = const Duration(seconds: 15)})
+  AppState(this.backend, {Locale? initialLocale, this.commandTimeout = const Duration(seconds: 15), this.weatherService})
       : locale = initialLocale ?? const Locale('fr') {
     _authSub = backend.authChanges.listen(_onAuth);
     _recoverySub = backend.passwordRecovery.listen((_) {
@@ -43,6 +46,9 @@ class AppState extends ChangeNotifier {
 
   final Backend backend;
   final Duration commandTimeout;
+
+  /// Météo extérieure (null : désactivée, par ex. dans les tests).
+  final WeatherService? weatherService;
   late final StreamSubscription<bool> _authSub;
   late final StreamSubscription<void> _recoverySub;
   StreamSubscription<RealtimeEvent>? _realtimeSub;
@@ -66,6 +72,12 @@ class AppState extends ChangeNotifier {
   List<SceneRun> sceneRuns = const [];
   List<Invitation> myInvitations = const [];
   final Map<String, PendingCommand> pending = {};
+
+  WeatherPlace weatherPlace = WeatherPlace.algiers;
+  WeatherReport? weather;
+  bool _weatherLoading = false;
+  DateTime? _weatherTriedAt;
+  final Map<String, Future<Uint8List?>> _photoCache = {};
 
   Stream<Notice> get notices => _notices.stream;
   String tr(String key, [Map<String, Object?> args = const {}]) => L10n.of(locale).t(key, args);
@@ -188,9 +200,13 @@ class AppState extends ChangeNotifier {
     home = h;
     notifyListeners();
     try {
-      (await SharedPreferences.getInstance()).setString('home', h.id);
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString('home', h.id);
+      final saved = prefs.getString('weather.place.${h.id}');
+      if (saved != null) weatherPlace = WeatherPlace.fromJson(jsonDecode(saved) as Map<String, dynamic>);
     } catch (_) {}
     await refreshHome();
+    unawaited(refreshWeather());
     _realtimeSub = backend.watchHome(h.id, onStatus: (connected) {
       if (realtimeConnected == connected) return;
       realtimeConnected = connected;
@@ -208,6 +224,10 @@ class AppState extends ChangeNotifier {
     automations = const [];
     sceneRuns = const [];
     pending.clear();
+    _photoCache.clear();
+    weather = null;
+    _weatherTriedAt = null;
+    weatherPlace = WeatherPlace.algiers;
   }
 
   Future<void> refreshHome({bool silent = false}) async {
@@ -413,6 +433,65 @@ class AppState extends ChangeNotifier {
           notifyListeners();
         }
       }, success: tr('scene.started', {'name': s.name}));
+
+  // ---------------------------------------------------------------- Météo extérieure
+  /// Actualise la météo si elle date de plus de 15 min (appelé à l'affichage de l'accueil).
+  Future<void> refreshWeather({bool force = false}) async {
+    final service = weatherService;
+    if (service == null || _weatherLoading || home == null) return;
+    final last = _weatherTriedAt;
+    if (!force && last != null && DateTime.now().difference(last) < const Duration(minutes: 15)) return;
+    _weatherLoading = true;
+    _weatherTriedAt = DateTime.now();
+    final place = weatherPlace;
+    try {
+      final report = await service.current(place);
+      if (place == weatherPlace) {
+        weather = report;
+        notifyListeners();
+      }
+    } catch (_) {
+      // Météo indisponible : l'accueil n'affiche simplement pas la température extérieure.
+    } finally {
+      _weatherLoading = false;
+    }
+  }
+
+  Future<void> setWeatherPlace(WeatherPlace place) async {
+    weatherPlace = place;
+    weather = null;
+    notifyListeners();
+    try {
+      final h = home;
+      if (h != null) (await SharedPreferences.getInstance()).setString('weather.place.${h.id}', jsonEncode(place.toJson()));
+    } catch (_) {}
+    await refreshWeather(force: true);
+  }
+
+  // ---------------------------------------------------------------- Photos d'appareils
+  /// Photo prise par l'utilisateur (mise en cache ; null si illisible).
+  Future<Uint8List?> devicePhoto(String path) => _photoCache.putIfAbsent(path, () async {
+        try {
+          return await backend.downloadDevicePhoto(path);
+        } on BackendException catch (_) {
+          return null;
+        }
+      });
+
+  Future<bool> setDevicePhoto(Device d, Uint8List bytes, String contentType) => run(() async {
+        final path = await backend.setDevicePhoto(d, bytes, contentType);
+        _photoCache[path] = Future.value(bytes);
+        final current = devices[d.id] ?? d;
+        devices = Map.of(devices)..[d.id] = current.copyWith(photoPath: path);
+        notifyListeners();
+      }, success: tr('photo.saved'));
+
+  Future<bool> clearDevicePhoto(Device d) => run(() async {
+        await backend.clearDevicePhoto(d);
+        final current = devices[d.id] ?? d;
+        devices = Map.of(devices)..[d.id] = current.copyWith(clearPhoto: true);
+        notifyListeners();
+      });
 
   @override
   void dispose() {

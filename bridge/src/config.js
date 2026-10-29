@@ -1,3 +1,4 @@
+import { parseCameras } from './adapters/direct_cameras.js';
 import { TUYA_REGIONS } from './adapters/tuya_api.js';
 
 // Configuration par variables d'environnement (fichier .env chargé par Docker Compose
@@ -39,6 +40,10 @@ export function loadConfig(env = process.env) {
     tuyaAccessId: tuya ? required(env, 'TUYA_ACCESS_ID').trim() : null,
     tuyaAccessSecret: tuya ? required(env, 'TUYA_ACCESS_SECRET').trim() : null,
     tuyaBaseUrl: tuya ? TUYA_REGIONS[tuyaRegion].url : null,
+    tuyaImageUrl: tuya ? TUYA_REGIONS[tuyaRegion].images : null,
+    // Caméras IP lues directement par la passerelle : "Nom=http://…/snapshot.jpg;Nom2=…"
+    cameras: parseCameras(env.CAMERAS),
+    cameraIntervalMs: int(env, 'CAMERA_INTERVAL_MS', 1000),
     tuyaPollMs: int(env, 'TUYA_POLL_SECONDS', 30) * 1000,
     commandTimeoutMs: int(env, 'COMMAND_TIMEOUT_MS', 10_000),
     pendingMaxAgeMs: int(env, 'PENDING_MAX_AGE_MS', 30_000),

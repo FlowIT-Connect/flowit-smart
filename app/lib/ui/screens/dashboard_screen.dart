@@ -7,6 +7,8 @@ import '../../models/models.dart';
 import '../../state/app_state.dart';
 import '../widgets/common.dart';
 import '../widgets/device_controls.dart';
+import '../widgets/device_visual.dart';
+import '../widgets/weather_widgets.dart';
 import 'device_detail.dart';
 import 'rooms_screen.dart';
 
@@ -21,6 +23,8 @@ class DashboardScreen extends StatelessWidget {
     final state = AppScope.of(context);
     final f = context.flow;
     final all = state.visibleDevices;
+    // Météo extérieure : actualisée au plus toutes les 15 min, sans bloquer l'affichage.
+    WidgetsBinding.instance.addPostFrameCallback((_) => state.refreshWeather());
     if (all.isEmpty && state.scenes.isEmpty) {
       return ListView(children: [
         EmptyState(
@@ -76,7 +80,7 @@ class DashboardScreen extends StatelessWidget {
               child: Column(children: [
                 for (final d in attention)
                   ListTile(
-                    leading: IconBubble(icon: deviceIcon(d), color: f.danger, size: 40),
+                    leading: DeviceVisual(d, size: 40, photoSize: 44),
                     title: Text(d.name),
                     subtitle: Text(context.tr('device.lastSeen', {'when': relativeTime(context, d.lastSeenAt)})),
                     trailing: const ForwardChevron(),
@@ -143,6 +147,7 @@ class _HomeHero extends StatelessWidget {
   Widget build(BuildContext context) {
     final f = context.flow;
     final theme = Theme.of(context);
+    final weather = AppScope.of(context).weather;
     final online = devices.where((d) => d.isOnline).length;
     final active = devices.where((d) => d.isOnline && d.isOn == true).length;
     final unavailable = devices.where((d) => d.availability == Availability.unavailable).length;
@@ -235,13 +240,19 @@ class _HomeHero extends StatelessWidget {
             ),
             const SizedBox(height: 14),
             Wrap(spacing: 8, runSpacing: 8, children: [
+              if (weather != null)
+                _HeroPill(
+                  icon: weatherIcon(weather),
+                  label: '${context.tr('weather.outside')} ${formatDegrees(weather.temperature)}',
+                  onTap: () => showWeatherSheet(context),
+                ),
               _HeroPill(
                 icon: unavailable > 0 ? Icons.error_outline_rounded : Icons.check_circle_rounded,
                 label: unavailable > 0 ? context.tr('dashboard.unavailableCount', {'n': unavailable}) : context.tr('dashboard.allGood'),
                 onTap: unavailable > 0 ? onShowDevices : null,
                 strong: unavailable > 0,
               ),
-              if (avgTemp != null) _HeroPill(icon: Icons.device_thermostat_rounded, label: '${avgTemp.toStringAsFixed(1)} °C'),
+              if (avgTemp != null) _HeroPill(icon: Icons.home_rounded, label: '${avgTemp.toStringAsFixed(1)} °C'),
               if (power > 0)
                 _HeroPill(icon: Icons.bolt_rounded, label: power >= 1000 ? '${(power / 1000).toStringAsFixed(1)} kW' : '${power.round()} W'),
             ]),

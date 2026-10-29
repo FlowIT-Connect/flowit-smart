@@ -1,4 +1,5 @@
 import 'dart:math';
+import 'dart:typed_data';
 
 import '../models/models.dart';
 
@@ -90,6 +91,19 @@ abstract class Backend {
   // --- Journal (§5.10)
   Future<List<EventLog>> listEvents(String homeId, {int limit = 100});
 
+  // --- Caméras et photos d'appareils
+  /// Images d'une caméra tant que le flux est écouté (la passerelle n'envoie rien sinon).
+  Stream<CameraFrame> watchCamera(String homeId, String deviceId);
+
+  /// Photo prise par l'utilisateur (bucket privé, accès vérifié côté serveur).
+  Future<Uint8List> downloadDevicePhoto(String path);
+
+  /// Enregistre la photo d'un appareil et renvoie son chemin (photo_path).
+  Future<String> setDevicePhoto(Device device, Uint8List bytes, String contentType);
+
+  /// Revient à la photo automatique (produit ou type d'appareil).
+  Future<void> clearDevicePhoto(Device device);
+
   // --- Temps réel (§10)
   /// Flux des changements de la maison : devices, device_commands, scene_runs…
   /// [onStatus] reçoit `true` quand la connexion temps réel est active.
@@ -97,6 +111,14 @@ abstract class Backend {
 }
 
 /// Identifiant aléatoire RFC 4122 v4 (clé d'idempotence, ids démo).
+/// Extension de fichier d'une image acceptée par les buckets (null si refusée).
+String? imageExtension(String contentType) => switch (contentType.toLowerCase()) {
+      'image/jpeg' || 'image/jpg' => 'jpg',
+      'image/png' => 'png',
+      'image/webp' => 'webp',
+      _ => null,
+    };
+
 String newUuid() {
   final r = Random.secure();
   final b = List<int>.generate(16, (_) => r.nextInt(256));

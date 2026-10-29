@@ -1,8 +1,10 @@
 import 'dart:async';
 import 'dart:math';
+import 'dart:typed_data';
 
 import '../models/models.dart';
 import 'backend.dart';
+import 'demo_camera.dart';
 
 /// Backend de démonstration en mémoire.
 ///
@@ -47,6 +49,7 @@ class DemoBackend implements Backend {
   final _automations = <String, Map<String, dynamic>>{};
   final _integrations = <Map<String, dynamic>>[];
   final _logs = <Map<String, dynamic>>[];
+  final _photos = <String, Uint8List>{};
 
   @override
   bool get isDemo => true;
@@ -170,6 +173,19 @@ class DemoBackend implements Backend {
           ['battery', 'sensor', false, {'unit': '%'}],
         ]);
     device('Télécommande IR', salon, 'other', 'cloud', vendor: 'Générique', model: 'IR blaster');
+    device('Climatiseur salon', salon, 'tuya', 'cloud',
+        vendor: 'Tuya', model: 'Split 12000 BTU', state: {'target_temperature': 24.0, 'hvac_mode': 'cool', 'current_temperature': 27.5},
+        caps: [
+          ['target_temperature', 'number', true, {'min': 16, 'max': 30, 'step': 1, 'unit': '°C'}],
+          ['hvac_mode', 'enum', true, {'options': ['off', 'cool', 'heat', 'dry', 'fan_only']}],
+          ['current_temperature', 'sensor', false, {'unit': '°C'}],
+        ]);
+    device('Caméra entrée', entree, 'wifi', 'local',
+        vendor: 'TP-Link', model: 'Tapo C200', state: {'camera': 'idle', 'motion': false},
+        caps: [
+          ['camera', 'string', false, {'kind': 'camera'}],
+          ['motion', 'sensor', false, {'kind': 'binary'}],
+        ]);
 
     // Amina ne voit que le salon (exemple de droits limités)
     _members[1]['permissions'] = {'devices': [plafonnier, ruban, volet]};
@@ -724,6 +740,53 @@ class DemoBackend implements Backend {
   Future<List<EventLog>> listEvents(String homeId, {int limit = 100}) async {
     await _wait();
     return _logs.where((l) => l['home_id'] == homeId).take(limit).map(EventLog.fromJson).toList();
+  }
+
+  // ------------------------------------------------------------------ Caméras et photos
+  @override
+  Stream<CameraFrame> watchCamera(String homeId, String deviceId) async* {
+    await _wait();
+    final d = _devices[deviceId];
+    if (d == null || d['availability'] == 'unavailable') return;
+    yield CameraFrame(demoCameraFrame(DateTime.now()), DateTime.now());
+    yield* Stream.periodic(const Duration(seconds: 1), (_) {
+      final now = DateTime.now();
+      return CameraFrame(demoCameraFrame(now), now);
+    });
+  }
+
+  @override
+  Future<Uint8List> downloadDevicePhoto(String path) async {
+    await _wait();
+    final bytes = _photos[path];
+    if (bytes == null) throw const BackendException('notFound', 'Image introuvable.');
+    return bytes;
+  }
+
+  @override
+  Future<String> setDevicePhoto(Device device, Uint8List bytes, String contentType) async {
+    await _wait();
+    final ext = imageExtension(contentType);
+    if (ext == null) throw const BackendException('invalid', 'Format d\'image non pris en charge (JPEG, PNG ou WebP).');
+    final path = '${device.homeId}/${device.id}-${DateTime.now().millisecondsSinceEpoch}.$ext';
+    _photos[path] = bytes;
+    _setPhoto(device.id, path);
+    return path;
+  }
+
+  @override
+  Future<void> clearDevicePhoto(Device device) async {
+    await _wait();
+    _setPhoto(device.id, null);
+  }
+
+  void _setPhoto(String deviceId, String? path) {
+    final d = _devices[deviceId]!;
+    final old = d['photo_path'] as String?;
+    if (old != null) _photos.remove(old);
+    d['photo_path'] = path;
+    d['updated_at'] = _now();
+    _events.add(RealtimeEvent('devices', 'UPDATE', Map<String, dynamic>.from(d)));
   }
 
   // ------------------------------------------------------------------ Temps réel

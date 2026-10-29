@@ -57,3 +57,17 @@ test('exécution de scène par automatisation : RPC execute_scene', async () => 
   assert.equal(await store.executeScene('s1', 'a1'), 'run-1');
   assert.deepEqual(r.calls[0].body, { p_scene_id: 's1', p_automation_id: 'a1' });
 });
+
+test('image de caméra : dépôt dans le bucket privé camera-frames, écrasée à chaque image', async () => {
+  const calls = [];
+  const fetch = async (url, init = {}) => {
+    const u = new URL(url);
+    calls.push({ method: init.method, path: u.pathname, upsert: new Headers(init.headers).get('x-upsert') });
+    return new Response(JSON.stringify({ Key: 'camera-frames/h1/d1.jpg' }), { status: 200, headers: { 'content-type': 'application/json' } });
+  };
+  const store = new SupabaseStore('http://db.local', 'service', { fetch });
+  assert.equal(await store.uploadCameraFrame('h1', 'd1', Buffer.from('jpeg'), 'image/jpeg'), 'h1/d1.jpg');
+  assert.equal(calls[0].method, 'POST');
+  assert.equal(calls[0].path, '/storage/v1/object/camera-frames/h1/d1.jpg');
+  assert.equal(calls[0].upsert, 'true');
+});

@@ -11,12 +11,15 @@ import { buildInventory, deviceSnapshot, serviceCall, stateMatches } from './ha_
 
 export class HomeAssistantAdapter extends EventEmitter {
   /**
-   * @param {{url?:string, wsUrl?:string, token:string, filter?:RegExp|null, wsFactory?:(url:string)=>WebSocket}} opts
+   * @param {{url?:string, wsUrl?:string, token:string, filter?:RegExp|null, wsFactory?:(url:string)=>WebSocket, fetchImpl?:typeof fetch}} opts
    */
-  constructor({ url, wsUrl, token, filter = null, wsFactory = (u) => new WebSocket(u) }) {
+  constructor({ url, wsUrl, token, filter = null, wsFactory = (u) => new WebSocket(u), fetchImpl = (...a) => fetch(...a) }) {
     super();
     // wsUrl direct : utilisé par le module complémentaire Home Assistant (ws://supervisor/core/websocket).
     this.wsUrl = wsUrl ?? `${url.replace(/^http/, 'ws')}/api/websocket`;
+    // API REST (images de caméras) : http://ha:8123 ou http://supervisor/core dans le module.
+    this.httpUrl = url ?? this.wsUrl.replace(/^ws/, 'http').replace(/\/(api\/)?websocket$/, '');
+    this.fetchImpl = fetchImpl;
     this.token = token;
     this.filter = filter;
     this.wsFactory = wsFactory;
@@ -141,6 +144,21 @@ export class HomeAssistantAdapter extends EventEmitter {
     for (const d of list) for (const e of Object.values(d.capMap)) this.byEntity.set(e.entityId, d.externalId);
     log.info('home_assistant.inventory', { devices: list.length, entities: states.length });
     this.emit('inventory');
+  }
+
+  /**
+   * Image actuelle d'une caméra (API camera_proxy de Home Assistant).
+   * @returns {Promise<{bytes:Buffer, contentType:string}|null>} null si l'appareil n'a pas de caméra
+   */
+  async cameraSnapshot(externalId, key = 'camera') {
+    const entry = this.inventory.get(externalId)?.capMap[key];
+    if (!entry || entry.base !== 'camera') return null;
+    const res = await this.fetchImpl(`${this.httpUrl}/api/camera_proxy/${encodeURIComponent(entry.entityId)}`, {
+      headers: { Authorization: `Bearer ${this.token}` },
+      signal: AbortSignal.timeout(8000),
+    });
+    if (!res.ok) throw new Error(`Image de caméra indisponible (HTTP ${res.status})`);
+    return { bytes: Buffer.from(await res.arrayBuffer()), contentType: res.headers.get('content-type')?.split(';')[0] || 'image/jpeg' };
   }
 
   /**

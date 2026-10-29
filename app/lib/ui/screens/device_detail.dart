@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:image_picker/image_picker.dart';
 
 import '../../core/icons.dart';
 import '../../core/l10n.dart';
@@ -7,6 +8,7 @@ import '../../models/models.dart';
 import '../../state/app_state.dart';
 import '../widgets/common.dart';
 import '../widgets/device_controls.dart';
+import '../widgets/device_visual.dart';
 
 /// Ouvre la fiche d'un appareil (feuille modale, suit l'état en direct).
 Future<void> showDeviceDetail(BuildContext context, String deviceId) => showModalBottomSheet(
@@ -41,7 +43,6 @@ class DeviceDetail extends StatelessWidget {
     final f = context.flow;
     final room = state.roomById(d.roomId);
     final canEdit = state.role.canConfigureDevices;
-    final accent = deviceAccent(context, d);
     final active = d.isOnline && d.isOn == true;
 
     return ListView(
@@ -51,7 +52,7 @@ class DeviceDetail extends StatelessWidget {
         Padding(
           padding: const EdgeInsets.fromLTRB(20, 0, 12, 0),
           child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            IconBubble(icon: deviceIcon(d), color: d.isOnline ? accent : f.inkFaint, size: 64, filled: active, glow: active),
+            DeviceVisual(d, size: 64, photoSize: 92, active: active),
             const SizedBox(width: 16),
             Expanded(
               child: Padding(
@@ -102,6 +103,13 @@ class DeviceDetail extends StatelessWidget {
               },
             ),
             ListTile(
+              leading: TileIcon(Icons.photo_camera_rounded, color: f.orange),
+              title: Text(context.tr('photo.title')),
+              subtitle: Text(context.tr(d.photoPath != null ? 'photo.custom' : 'photo.auto')),
+              trailing: const ForwardChevron(),
+              onTap: () => _editPhoto(context, state, d),
+            ),
+            ListTile(
               leading: TileIcon(Icons.meeting_room_rounded, color: f.blue),
               title: Text(context.tr('device.move')),
               subtitle: Text(room?.name ?? context.tr('room.none')),
@@ -118,6 +126,48 @@ class DeviceDetail extends StatelessWidget {
           ]),
       ],
     );
+  }
+
+  Future<void> _editPhoto(BuildContext context, AppState state, Device d) async {
+    final choice = await showModalBottomSheet<String>(
+      context: context,
+      showDragHandle: true,
+      builder: (ctx) => SafeArea(
+        child: Column(mainAxisSize: MainAxisSize.min, children: [
+          ListTile(leading: const Icon(Icons.photo_camera_rounded), title: Text(context.tr('photo.take')), onTap: () => Navigator.pop(ctx, 'camera')),
+          ListTile(leading: const Icon(Icons.photo_library_rounded), title: Text(context.tr('photo.pick')), onTap: () => Navigator.pop(ctx, 'gallery')),
+          if (d.photoPath != null)
+            ListTile(leading: const Icon(Icons.auto_awesome_rounded), title: Text(context.tr('photo.reset')), onTap: () => Navigator.pop(ctx, 'reset')),
+        ]),
+      ),
+    );
+    if (choice == null) return;
+    if (choice == 'reset') {
+      await state.clearDevicePhoto(d);
+      return;
+    }
+    final XFile? file;
+    try {
+      file = await ImagePicker().pickImage(
+        source: choice == 'camera' ? ImageSource.camera : ImageSource.gallery,
+        maxWidth: 1024,
+        maxHeight: 1024,
+        imageQuality: 85,
+      );
+    } catch (_) {
+      state.notify(state.tr('photo.invalid'), error: true);
+      return;
+    }
+    if (file == null) return;
+    final bytes = await file.readAsBytes();
+    final type = photoContentType(file.mimeType, file.name);
+    if (type == null) {
+      state.notify(state.tr('photo.invalid'), error: true);
+    } else if (bytes.length > 5 * 1024 * 1024) {
+      state.notify(state.tr('photo.tooBig'), error: true);
+    } else {
+      await state.setDevicePhoto(d, bytes, type);
+    }
   }
 
   Future<void> _pickRoom(BuildContext context, AppState state, Device d) async {
@@ -145,4 +195,17 @@ class DeviceDetail extends StatelessWidget {
       await state.updateDevice(d, roomId: selected);
     }
   }
+}
+
+/// Type d'image d'après le sélecteur (ou l'extension du fichier quand il ne le donne pas).
+String? photoContentType(String? mime, String name) {
+  final m = mime?.toLowerCase();
+  if (m == 'image/jpeg' || m == 'image/png' || m == 'image/webp') return m;
+  final ext = name.toLowerCase().split('.').last;
+  return switch (ext) {
+    'jpg' || 'jpeg' => 'image/jpeg',
+    'png' => 'image/png',
+    'webp' => 'image/webp',
+    _ => null,
+  };
 }

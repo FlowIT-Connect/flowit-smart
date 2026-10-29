@@ -44,7 +44,7 @@ const cmd = (device, capability_key, value, extra = {}) =>
   store.insertCommand({ home_id: 'home-1', device_id: device.id, capability_key, value, idempotency_key: Math.random().toString(), requested_by: 'u1', ...extra });
 
 test('synchronisation : appareils, capacités, disponibilité, intégration connectée', () => {
-  assert.equal(store.devices.size, 10);
+  assert.equal(store.devices.size, 11);
   assert.equal(store.integrations.get('integ-1').status, 'connected');
   const lock = store.deviceByName('Serrure');
   assert.equal(lock.is_sensitive, true);

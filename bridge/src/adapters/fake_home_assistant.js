@@ -22,6 +22,8 @@ export function demoHome() {
     st('light.ampoule_chevet', 'unavailable', { friendly_name: 'Ampoule chevet', supported_color_modes: ['brightness'] }),
     st('binary_sensor.couloir_motion', 'off', { friendly_name: 'Détecteur couloir', device_class: 'motion' }),
     st('sensor.couloir_battery', '76', { device_class: 'battery', unit_of_measurement: '%', friendly_name: 'Détecteur couloir batterie' }),
+    st('camera.entree', 'idle', { friendly_name: 'Caméra entrée', brand: 'TP-Link' }),
+    st('binary_sensor.entree_motion', 'off', { friendly_name: 'Caméra entrée mouvement', device_class: 'motion' }),
   ];
   const devices = [
     { id: 'd_plafonnier', name: 'Plafonnier', manufacturer: 'IKEA', model: 'LED1836G9', identifiers: [['mqtt', 'zigbee2mqtt_0x01']] },
@@ -34,6 +36,7 @@ export function demoHome() {
     { id: 'd_serrure', name: 'Serrure', manufacturer: 'SwitchBot', model: 'Lock' },
     { id: 'd_ampoule', name: 'Ampoule chevet', manufacturer: 'Tuya', model: 'Smart bulb E27' },
     { id: 'd_couloir', name: 'Détecteur couloir', manufacturer: 'Sonoff', model: 'SNZB-03', identifiers: [['mqtt', 'zigbee2mqtt_0x05']] },
+    { id: 'd_camera', name: 'Caméra entrée', manufacturer: 'TP-Link', model: 'Tapo C200' },
   ];
   const entities = [
     ['light.salon_plafonnier', 'd_plafonnier', 'mqtt'],
@@ -49,6 +52,8 @@ export function demoHome() {
     ['light.ampoule_chevet', 'd_ampoule', 'tuya'],
     ['binary_sensor.couloir_motion', 'd_couloir', 'mqtt'],
     ['sensor.couloir_battery', 'd_couloir', 'mqtt'],
+    ['camera.entree', 'd_camera', 'onvif'],
+    ['binary_sensor.entree_motion', 'd_camera', 'onvif'],
   ].map(([entity_id, device_id, platform]) => ({ entity_id, device_id, platform }));
   return { states, devices, entities };
 }

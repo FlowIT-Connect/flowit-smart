@@ -38,6 +38,8 @@ dependencies:
   flutter_localizations:
     sdk: flutter
   shared_preferences: ^2.5.6
+  http: ^1.6.0
+  image_picker: ^1.2.4
 
 dev_dependencies:
   flutter_test:
@@ -94,6 +96,8 @@ flutter:
   assets:
     - assets/fonts/OFL-Manrope.txt
     - assets/fonts/OFL-IBMPlexSansArabic.txt
+    # Photos par type d'appareil (voir assets/devices/LISEZMOI.md)
+    - assets/devices/
   fonts:
     - family: Manrope
       fonts:

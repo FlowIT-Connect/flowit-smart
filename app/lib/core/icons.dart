@@ -51,13 +51,20 @@ List<Color> sceneGradient(BuildContext context, String? key) {
   };
 }
 
-enum DeviceKind { light, plug, cover, climate, lock, door, motion, sensor, other }
+enum DeviceKind { camera, light, plug, cover, airConditioner, climate, lock, door, motion, sensor, other }
+
+/// Modes propres à un climatiseur (un thermostat de chauffage ne les a pas).
+const _acModes = {'cool', 'dry', 'fan_only'};
 
 DeviceKind deviceKind(Device d) {
   bool has(String k) => d.capability(k) != null;
+  if (d.isCamera) return DeviceKind.camera;
   if (d.isSensitive || has('lock')) return DeviceKind.lock;
   if (has('cover_position')) return DeviceKind.cover;
-  if (has('target_temperature')) return DeviceKind.climate;
+  if (has('target_temperature')) {
+    final modes = d.capability('hvac_mode')?.options ?? const [];
+    return modes.any(_acModes.contains) ? DeviceKind.airConditioner : DeviceKind.climate;
+  }
   if (has('color') || has('brightness') || has('color_temp')) return DeviceKind.light;
   if (has('switch')) return DeviceKind.plug;
   if (has('contact')) return DeviceKind.door;
@@ -67,6 +74,8 @@ DeviceKind deviceKind(Device d) {
 }
 
 IconData deviceIcon(Device d) => switch (deviceKind(d)) {
+      DeviceKind.camera => Icons.videocam_rounded,
+      DeviceKind.airConditioner => Icons.ac_unit_rounded,
       DeviceKind.lock => Icons.lock_rounded,
       DeviceKind.cover => Icons.blinds_rounded,
       DeviceKind.climate => Icons.thermostat_rounded,
@@ -96,6 +105,8 @@ Color deviceAccent(BuildContext context, Device d) {
     DeviceKind.plug => f.brand,
     DeviceKind.cover => f.blue,
     DeviceKind.climate => f.orange,
+    DeviceKind.airConditioner => f.blue,
+    DeviceKind.camera => f.violet,
     DeviceKind.lock => f.violet,
     DeviceKind.door => f.cyan,
     DeviceKind.motion => f.pink,

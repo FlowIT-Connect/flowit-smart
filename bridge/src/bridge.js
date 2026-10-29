@@ -2,6 +2,7 @@
 // (pending → sent → confirmed | failed | timeout | rejected) et automatisations locales.
 
 import { conditionsHold, localTime, stateTriggerFired, timeTriggerDue } from './automations.js';
+import { CameraStreamer } from './cameras.js';
 import { log } from './log.js';
 import { validateValue } from './validate.js';
 
@@ -66,12 +67,23 @@ export class Bridge {
       every(this.config.automationRefreshMs, () => this.refreshAutomations());
       every(10_000, () => this.tickTimeTriggers());
     }
+    if (this.store.subscribeCameraWatch) {
+      this.cameras = new CameraStreamer({
+        store: this.store,
+        adapter: this.adapter,
+        homeId: this.homeId,
+        resolve: (deviceId) => this.cameraTarget(deviceId),
+        intervalMs: this.config.cameraIntervalMs ?? 1000,
+      });
+      this.cameras.start();
+    }
     await this.processQueue();
   }
 
   async stop() {
     for (const t of this.timers) clearInterval(t);
     this.unsubscribe?.();
+    await this.cameras?.stop();
     this.adapter.stop();
     await Promise.allSettled([...this.running]);
   }
@@ -96,6 +108,7 @@ export class Bridge {
         model: desc.model,
         protocol: desc.protocol,
         connection_source: desc.connectionSource,
+        ...(desc.imageUrl ? { image_url: desc.imageUrl } : {}), // photo officielle du produit
         availability: snap.availability,
         state: snap.state,
         ...(snap.availability === 'available' ? { last_seen_at: now } : {}),
@@ -144,6 +157,14 @@ export class Bridge {
       ...(snap.availability === 'available' ? { last_seen_at: this.clock().toISOString() } : {}),
     });
     if (this.config.runAutomations !== false) await this.evaluateStateTriggers(deviceId, before, snap.state);
+  }
+
+  /** Caméra d'un appareil connu de cette passerelle (null sinon). */
+  cameraTarget(deviceId) {
+    const dev = this.devices.get(deviceId);
+    if (!dev) return null;
+    for (const [key, cap] of dev.caps) if (cap.metadata?.kind === 'camera') return { externalId: dev.externalId, key };
+    return null;
   }
 
   // ------------------------------------------------------------------ Commandes

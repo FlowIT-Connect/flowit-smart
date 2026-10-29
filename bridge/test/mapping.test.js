@@ -35,7 +35,7 @@ test('inventaire : regroupement par appareil, protocole, serrure sensible, doubl
   const { states, devices, entities } = demoHome();
   const inv = buildInventory(states, entities, devices);
   const byName = Object.fromEntries(inv.map((d) => [d.name, d]));
-  assert.equal(inv.length, 10);
+  assert.equal(inv.length, 11);
   assert.deepEqual(byName['Prise café'].capabilities.map((c) => c.capability_key), ['switch', 'power']);
   assert.equal(byName['Plafonnier'].protocol, 'zigbee');
   assert.equal(byName['Ruban LED TV'].connectionSource, 'cloud');

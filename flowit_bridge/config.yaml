@@ -1,7 +1,7 @@
 # Module complémentaire Home Assistant « FlowIT Bridge » : la passerelle bridge/ empaquetée
 # pour s'installer en quelques clics, sans Docker ni jeton Home Assistant à créer.
 name: FlowIT Bridge
-version: "1.0.0"
+version: "1.1.0"
 slug: flowit_bridge
 description: Relie Home Assistant à l'application FlowIT Smart
 url: https://github.com/flowit-connect/flowit-smart

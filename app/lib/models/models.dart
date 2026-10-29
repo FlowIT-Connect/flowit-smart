@@ -1,5 +1,7 @@
 // Modèles applicatifs alignés sur le schéma Supabase (supabase/migrations).
 
+import 'dart:typed_data';
+
 enum HomeRole { owner, admin, member, installer }
 
 enum Availability { available, unavailable, unknown }
@@ -192,6 +194,9 @@ class Capability {
 
   /// Capacité réellement pilotable depuis l'interface.
   bool get isControl => writable && type != CapabilityType.sensor;
+
+  /// Flux d'images d'une caméra (lu par la passerelle, jamais une mesure à afficher).
+  bool get isCamera => metadata['kind'] == 'camera';
 }
 
 class Device {
@@ -212,6 +217,12 @@ class Device {
   final bool isSensitive;
   final List<Capability> capabilities;
 
+  /// Photo officielle du produit fournie par la passerelle (ex. Tuya / Smart Life).
+  final String? imageUrl;
+
+  /// Photo prise par l'utilisateur (chemin dans le bucket privé device-photos).
+  final String? photoPath;
+
   const Device({
     required this.id,
     required this.homeId,
@@ -229,6 +240,8 @@ class Device {
     this.isHidden = false,
     this.isSensitive = false,
     this.capabilities = const [],
+    this.imageUrl,
+    this.photoPath,
   });
 
   factory Device.fromJson(Map<String, dynamic> j, {List<Capability>? capabilities}) => Device(
@@ -247,6 +260,8 @@ class Device {
         isPinned: (j['is_pinned'] as bool?) ?? false,
         isHidden: (j['is_hidden'] as bool?) ?? false,
         isSensitive: (j['is_sensitive'] as bool?) ?? false,
+        imageUrl: j['image_url'] as String?,
+        photoPath: j['photo_path'] as String?,
         capabilities: capabilities ??
             ((j['device_capabilities'] as List?) ?? const [])
                 .map((c) => Capability.fromJson(Map<String, dynamic>.from(c as Map)))
@@ -266,6 +281,8 @@ class Device {
     Availability? availability,
     DateTime? lastSeenAt,
     List<Capability>? capabilities,
+    String? photoPath,
+    bool clearPhoto = false,
   }) =>
       Device(
         id: id,
@@ -284,6 +301,8 @@ class Device {
         isHidden: isHidden ?? this.isHidden,
         isSensitive: isSensitive,
         capabilities: capabilities ?? this.capabilities,
+        imageUrl: imageUrl,
+        photoPath: clearPhoto ? null : (photoPath ?? this.photoPath),
       );
 
   Capability? capability(String key) {
@@ -295,14 +314,17 @@ class Device {
 
   bool get isOnline => availability == Availability.available;
   List<Capability> get controls => capabilities.where((c) => c.isControl).toList();
-  List<Capability> get readings => capabilities.where((c) => !c.isControl).toList();
+  List<Capability> get readings => capabilities.where((c) => !c.isControl && !c.isCamera).toList();
+
+  /// Caméra IP : image en direct dans la fiche.
+  bool get isCamera => capabilities.any((c) => c.isCamera);
 
   /// Interrupteur principal (tuile : appui = bascule).
   Capability? get primarySwitch => capability('switch');
   bool? get isOn => state['switch'] is bool ? state['switch'] as bool : null;
 
   /// L'appareil n'expose aucune commande prise en charge.
-  bool get isUnsupported => controls.isEmpty && readings.isEmpty;
+  bool get isUnsupported => controls.isEmpty && readings.isEmpty && !isCamera;
 }
 
 class DeviceCommand {
@@ -586,6 +608,17 @@ class Integration {
         lastSyncAt: _date(j['last_sync_at']),
         lastError: j['last_error'] as String?,
       );
+}
+
+/// Image d'une caméra reçue de la passerelle.
+class CameraFrame {
+  final Uint8List bytes;
+  final DateTime at;
+
+  /// false : dernière image connue, en attendant que la passerelle envoie la suivante.
+  final bool live;
+
+  const CameraFrame(this.bytes, this.at, {this.live = true});
 }
 
 /// Évènement temps réel transmis par le backend (Supabase Realtime ou démo).

@@ -6,7 +6,9 @@ import '../../core/theme.dart';
 import '../../models/models.dart';
 import '../../state/app_state.dart';
 import '../screens/device_detail.dart';
+import 'camera_view.dart';
 import 'common.dart';
+import 'device_visual.dart';
 
 String capabilityLabel(BuildContext context, String key) => context.tryTr('cap.$key') ?? key.replaceAll('_', ' ');
 
@@ -90,7 +92,6 @@ class DeviceTile extends StatelessWidget {
     final pending = sw == null ? null : state.pendingFor(d.id, 'switch');
     final on = (pending?.isWaiting ?? false) ? pending!.value == true : d.isOn == true;
     final active = d.isOnline && d.isOn == true; // couleur = état confirmé, pas la demande en cours
-    final accent = deviceAccent(context, d);
     final subtitle = _summary(context, d);
     final room = showRoom ? state.roomById(d.roomId)?.name : null;
     final reading = sw == null ? _headline(context, d) : null;
@@ -116,7 +117,7 @@ class DeviceTile extends StatelessWidget {
               Row(children: [
                 Opacity(
                   opacity: d.isOnline ? 1 : .55,
-                  child: IconBubble(icon: deviceIcon(d), color: d.isOnline ? accent : f.inkFaint, size: 42, filled: active, glow: active),
+                  child: DeviceVisual(d, size: 42, photoSize: 52, active: active),
                 ),
                 const Spacer(),
                 if (pending != null)
@@ -175,6 +176,7 @@ class DeviceTile extends StatelessWidget {
     if (d.isUnsupported) return context.tr('device.unsupportedShort');
     if (d.isSensitive) return context.tr('device.sensitiveShort');
     if (d.availability == Availability.unknown && d.state.isEmpty) return context.tr('availability.unknown');
+    if (d.isCamera) return context.tr('camera.tapToView');
     for (final key in ['switch', 'cover_position', 'target_temperature', 'temperature', 'contact', 'motion', 'power']) {
       final cap = d.capability(key);
       if (cap != null && d.state.containsKey(key)) {
@@ -226,6 +228,17 @@ class DeviceControlPanel extends StatelessWidget {
     }
     if (d.isUnsupported) {
       children.add(_Notice(icon: Icons.info_outline_rounded, text: context.tr('device.unsupported')));
+    }
+    if (d.isCamera) {
+      if (d.availability == Availability.unavailable) {
+        children.add(_Notice(icon: Icons.videocam_off_rounded, text: context.tr('camera.offline')));
+      } else {
+        children.add(CameraLiveView(key: ValueKey('camera-${d.id}'), device: d));
+        children.add(Padding(
+          padding: const EdgeInsets.fromLTRB(22, 2, 22, 8),
+          child: Text(context.tr('camera.privacy'), style: Theme.of(context).textTheme.bodySmall?.copyWith(color: context.flow.inkSoft)),
+        ));
+      }
     }
     for (final cap in d.controls) {
       if (d.isSensitive) break;

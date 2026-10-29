@@ -16,9 +16,10 @@ export class TuyaCloudAdapter extends EventEmitter {
   /**
    * @param {{client:import('./tuya_api.js').TuyaClient, pollMs?:number, confirmPollMs?:number, inventoryEveryMs?:number}} opts
    */
-  constructor({ client, pollMs = 30_000, confirmPollMs = 1_000, inventoryEveryMs = 30 * 60_000 }) {
+  constructor({ client, pollMs = 30_000, confirmPollMs = 1_000, inventoryEveryMs = 30 * 60_000, imageBase = null }) {
     super();
     this.client = client;
+    this.imageBase = imageBase;
     this.pollMs = pollMs;
     this.confirmPollMs = confirmPollMs;
     this.inventoryEveryMs = inventoryEveryMs;
@@ -70,7 +71,7 @@ export class TuyaCloudAdapter extends EventEmitter {
           continue; // réessayé au prochain inventaire
         }
       }
-      const desc = buildTuyaDevice(dev, spec);
+      const desc = buildTuyaDevice(dev, spec, { imageBase: this.imageBase });
       if (!desc.capabilities.length) {
         log.info('tuya.device_ignored', { device: dev.id, category: dev.category, reason: 'aucune fonction reconnue' });
         continue;
