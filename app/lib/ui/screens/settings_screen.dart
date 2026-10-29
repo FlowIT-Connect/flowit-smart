@@ -172,11 +172,11 @@ class SettingsScreen extends StatelessWidget {
       const SizedBox(height: 12),
       SettingsGroup(children: [
         ListTile(
-          leading: const Padding(padding: EdgeInsets.all(2), child: FlowLogo(size: 30)),
-          title: const Text('FlowIT Smart 1.0.0'),
+          leading: const Padding(padding: EdgeInsets.all(2), child: SoleaLogo(size: 30)),
+          title: const Text('Solea 1.0.0'),
           subtitle: Text(state.backend.isDemo ? context.tr('demo.about') : context.tr('settings.about')),
           trailing: const ForwardChevron(),
-          onTap: () => showLicensePage(context: context, applicationName: 'FlowIT Smart', applicationVersion: '1.0.0'),
+          onTap: () => showLicensePage(context: context, applicationName: 'Solea', applicationVersion: '1.0.0'),
         ),
       ]),
     ]);

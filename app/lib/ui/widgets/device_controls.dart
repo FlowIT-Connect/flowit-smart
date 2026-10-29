@@ -99,11 +99,11 @@ class DeviceTile extends StatelessWidget {
 
     return Card(
       color: active ? f.tileOn : f.tileOff,
-      elevation: active ? 10 : 0,
-      shadowColor: active ? accent.withValues(alpha: .35) : Colors.transparent,
+      elevation: active ? 6 : 0,
+      shadowColor: active ? f.brand.withValues(alpha: .18) : Colors.transparent,
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(26),
-        side: BorderSide(color: active ? accent.withValues(alpha: .25) : f.cardBorder),
+        side: BorderSide(color: active ? f.brand.withValues(alpha: .28) : f.cardBorder),
       ),
       clipBehavior: Clip.antiAlias,
       child: InkWell(
@@ -140,7 +140,7 @@ class DeviceTile extends StatelessWidget {
               if (reading != null)
                 Padding(
                   padding: const EdgeInsets.only(bottom: 2),
-                  child: Text(reading, style: theme.textTheme.headlineSmall?.copyWith(color: ink, height: 1.1)),
+                  child: Text(reading, style: theme.textTheme.headlineSmall?.copyWith(color: ink, height: 1.1, fontWeight: FontWeight.w300)),
                 ),
               Text(d.name, maxLines: 1, overflow: TextOverflow.ellipsis, style: theme.textTheme.titleSmall?.copyWith(color: ink, fontWeight: FontWeight.w800)),
               const SizedBox(height: 2),
@@ -281,7 +281,7 @@ class _ReadingCard extends StatelessWidget {
         child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
           Icon(capabilityIcon(cap.key), size: 20, color: f.brand),
           const SizedBox(height: 10),
-          Text(formatValue(context, cap, cap.key, device.state[cap.key]), style: theme.textTheme.titleLarge, maxLines: 1, overflow: TextOverflow.ellipsis),
+          Text(formatValue(context, cap, cap.key, device.state[cap.key]), style: theme.textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.w300), maxLines: 1, overflow: TextOverflow.ellipsis),
           Text(capabilityLabel(context, cap.key), style: theme.textTheme.bodySmall?.copyWith(color: f.inkSoft), maxLines: 1, overflow: TextOverflow.ellipsis),
         ]),
       ),
@@ -307,6 +307,88 @@ class _Notice extends StatelessWidget {
         const SizedBox(width: 12),
         Expanded(child: Text(text, style: TextStyle(color: f.ink, height: 1.4, fontWeight: FontWeight.w600))),
       ]),
+    );
+  }
+}
+
+IconData _modeIcon(String o) => switch (o) {
+      'off' => Icons.power_settings_new_rounded,
+      'heat' => Icons.local_fire_department_rounded,
+      'cool' => Icons.ac_unit_rounded,
+      'auto' || 'heat_cool' => Icons.autorenew_rounded,
+      'dry' => Icons.water_drop_rounded,
+      'fan_only' => Icons.air_rounded,
+      _ => Icons.tune_rounded,
+    };
+
+/// Bouton rond − / + (plein = action principale, orange).
+class _RoundButton extends StatelessWidget {
+  const _RoundButton({required this.icon, required this.tooltip, this.onPressed, this.filled = false});
+
+  final IconData icon;
+  final String tooltip;
+  final VoidCallback? onPressed;
+  final bool filled;
+
+  @override
+  Widget build(BuildContext context) {
+    final f = context.flow;
+    return IconButton(
+      tooltip: tooltip,
+      onPressed: onPressed,
+      iconSize: 26,
+      style: IconButton.styleFrom(
+        fixedSize: const Size(58, 58),
+        backgroundColor: filled ? f.brand : f.chip,
+        foregroundColor: filled ? f.onBrand : f.ink,
+        disabledBackgroundColor: f.chip.withValues(alpha: .5),
+        disabledForegroundColor: f.inkFaint,
+        shadowColor: f.brand.withValues(alpha: .4),
+        elevation: filled && onPressed != null ? 6 : 0,
+      ),
+      icon: Icon(icon),
+    );
+  }
+}
+
+/// Mode (chaud, froid…) : cercle avec icône et libellé dessous.
+class _ModeButton extends StatelessWidget {
+  const _ModeButton({required this.icon, required this.label, required this.selected, this.onPressed});
+
+  final IconData icon;
+  final String label;
+  final bool selected;
+  final VoidCallback? onPressed;
+
+  @override
+  Widget build(BuildContext context) {
+    final f = context.flow;
+    return Semantics(
+      button: true,
+      selected: selected,
+      child: InkWell(
+        onTap: onPressed,
+        borderRadius: BorderRadius.circular(20),
+        child: SizedBox(
+          width: 68,
+          child: Column(children: [
+            AnimatedContainer(
+              duration: const Duration(milliseconds: 200),
+              width: 60,
+              height: 60,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                color: selected ? f.brand : Colors.transparent,
+                border: Border.all(color: selected ? f.brand : f.line, width: 1.4),
+                boxShadow: selected ? [BoxShadow(color: f.brand.withValues(alpha: .35), blurRadius: 14, offset: const Offset(0, 6))] : null,
+              ),
+              child: Icon(icon, color: selected ? f.onBrand : f.inkSoft, size: 26),
+            ),
+            const SizedBox(height: 6),
+            Text(label, maxLines: 1, overflow: TextOverflow.ellipsis, textAlign: TextAlign.center, style: Theme.of(context).textTheme.labelMedium?.copyWith(color: selected ? f.ink : f.inkSoft)),
+          ]),
+        ),
+      ),
     );
   }
 }
@@ -349,26 +431,39 @@ class _CapabilityControlState extends State<_CapabilityControl> {
         );
       case CapabilityType.number:
         if (cap.key == 'target_temperature') {
+          // Grand chiffre fin et boutons ronds − / +, façon thermostat.
           final v = (current as num?) ?? cap.min;
-          return ListTile(
-            leading: TileIcon(capabilityIcon(cap.key)),
-            title: title,
-            subtitle: pending != null ? Align(alignment: AlignmentDirectional.centerStart, child: indicator) : null,
-            trailing: Row(mainAxisSize: MainAxisSize.min, children: [
-              IconButton.filledTonal(
-                tooltip: context.tr('common.decrease'),
-                onPressed: enabled && v > cap.min ? () => send(_round(v - cap.step, cap)) : null,
-                icon: const Icon(Icons.remove_rounded),
-              ),
-              SizedBox(
-                width: 72,
-                child: Text(formatValue(context, cap, cap.key, v), textAlign: TextAlign.center, style: Theme.of(context).textTheme.titleMedium),
-              ),
-              IconButton.filledTonal(
-                tooltip: context.tr('common.increase'),
-                onPressed: enabled && v < cap.max ? () => send(_round(v + cap.step, cap)) : null,
-                icon: const Icon(Icons.add_rounded),
-              ),
+          final f = context.flow;
+          return Padding(
+            padding: const EdgeInsets.fromLTRB(16, 8, 16, 10),
+            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Row(children: [
+                TileIcon(capabilityIcon(cap.key), color: f.orange),
+                const SizedBox(width: 14),
+                Expanded(child: DefaultTextStyle.merge(style: Theme.of(context).textTheme.bodyLarge?.copyWith(fontWeight: FontWeight.w600), child: title)),
+                if (pending != null) indicator,
+              ]),
+              const SizedBox(height: 6),
+              Row(children: [
+                Expanded(
+                  child: Text(
+                    formatValue(context, cap, cap.key, v),
+                    style: Theme.of(context).textTheme.displayMedium?.copyWith(fontWeight: FontWeight.w300, color: f.ink),
+                  ),
+                ),
+                _RoundButton(
+                  tooltip: context.tr('common.decrease'),
+                  icon: Icons.remove_rounded,
+                  onPressed: enabled && v > cap.min ? () => send(_round(v - cap.step, cap)) : null,
+                ),
+                const SizedBox(width: 14),
+                _RoundButton(
+                  tooltip: context.tr('common.increase'),
+                  icon: Icons.add_rounded,
+                  filled: true,
+                  onPressed: enabled && v < cap.max ? () => send(_round(v + cap.step, cap)) : null,
+                ),
+              ]),
             ]),
           );
         }
@@ -429,6 +524,30 @@ class _CapabilityControlState extends State<_CapabilityControl> {
           ]),
         );
       case CapabilityType.enumeration:
+        if (cap.key == 'hvac_mode') {
+          // Modes en gros boutons ronds, le mode actif rempli d'orange.
+          return Padding(
+            padding: const EdgeInsets.fromLTRB(16, 10, 16, 12),
+            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Row(children: [
+                TileIcon(capabilityIcon(cap.key)),
+                const SizedBox(width: 14),
+                Expanded(child: DefaultTextStyle.merge(style: Theme.of(context).textTheme.bodyLarge?.copyWith(fontWeight: FontWeight.w600), child: title)),
+                if (pending != null) indicator,
+              ]),
+              const SizedBox(height: 14),
+              Wrap(spacing: 14, runSpacing: 12, children: [
+                for (final o in cap.options)
+                  _ModeButton(
+                    icon: _modeIcon(o),
+                    label: optionLabel(context, o),
+                    selected: current == o,
+                    onPressed: enabled && current != o ? () => send(o) : null,
+                  ),
+              ]),
+            ]),
+          );
+        }
         return ListTile(
           leading: TileIcon(capabilityIcon(cap.key)),
           title: title,

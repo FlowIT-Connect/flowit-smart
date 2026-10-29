@@ -16,9 +16,9 @@ class OnboardingScreen extends StatelessWidget {
       child: Scaffold(
       backgroundColor: Colors.transparent,
       appBar: AppBar(
-        leading: const Padding(padding: EdgeInsetsDirectional.only(start: 16), child: Center(child: FlowLogo(size: 34))),
+        leading: const Padding(padding: EdgeInsetsDirectional.only(start: 16), child: Center(child: SoleaLogo(size: 34))),
         leadingWidth: 60,
-        title: const Text('FlowIT Smart'),
+        title: const Text('Solea'),
         actions: [
           const LanguageMenu(),
           IconButton(tooltip: context.tr('auth.signOut'), onPressed: state.signOut, icon: const Icon(Icons.logout_rounded)),

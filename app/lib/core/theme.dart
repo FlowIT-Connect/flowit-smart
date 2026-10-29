@@ -1,14 +1,14 @@
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
-/// Identité visuelle propre à FlowIT (aucune ressource Smart Life, §5.11).
+/// Identité visuelle Solea (aucune ressource Smart Life, §5.11).
 ///
-/// Direction : « flux de lumière ». Fonds calmes, cartes douces très arrondies,
-/// un turquoise FlowIT comme fil conducteur et une couleur d'accent par famille
-/// d'appareil (lumière ambrée, climat orangé, volets bleus…). Les appareils
-/// allumés s'illuminent, les appareils éteints restent en retrait.
+/// Direction : « lumière du soleil ». Fonds blancs et crème très aérés, un
+/// orange soleil comme unique accent, le noir pour les actions principales,
+/// des cartes douces très arrondies et de grands chiffres fins. Les appareils
+/// allumés prennent une teinte chaude, les appareils éteints restent neutres.
 class AppTheme {
-  static const seed = Color(0xFF0E9E9A);
+  static const seed = Color(0xFFF28C1B);
   static const fontFamily = 'Manrope';
   static const fontFallback = ['IBMPlexSansArabic'];
 
@@ -87,19 +87,29 @@ class AppTheme {
       inputDecorationTheme: InputDecorationTheme(
         filled: true,
         fillColor: c.field,
-        contentPadding: const EdgeInsets.symmetric(horizontal: 18, vertical: 16),
-        border: OutlineInputBorder(borderRadius: BorderRadius.circular(16), borderSide: BorderSide.none),
-        enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(16), borderSide: BorderSide(color: c.line)),
-        focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(16), borderSide: BorderSide(color: c.brand, width: 1.6)),
-        errorBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(16), borderSide: BorderSide(color: c.danger)),
-        focusedErrorBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(16), borderSide: BorderSide(color: c.danger, width: 1.6)),
+        contentPadding: const EdgeInsets.symmetric(horizontal: 22, vertical: 18),
+        border: OutlineInputBorder(borderRadius: BorderRadius.circular(999), borderSide: BorderSide(color: c.line)),
+        enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(999), borderSide: BorderSide(color: c.line)),
+        focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(999), borderSide: BorderSide(color: c.brand, width: 1.6)),
+        errorBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(999), borderSide: BorderSide(color: c.danger)),
+        focusedErrorBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(999), borderSide: BorderSide(color: c.danger, width: 1.6)),
         labelStyle: TextStyle(color: c.inkSoft),
         hintStyle: TextStyle(color: c.inkFaint),
         prefixIconColor: c.inkSoft,
         suffixIconColor: c.inkSoft,
       ),
       filledButtonTheme: FilledButtonThemeData(
-        style: FilledButton.styleFrom(shape: pill, padding: buttonPadding, textStyle: buttonText, minimumSize: const Size(64, 50)),
+        style: FilledButton.styleFrom(
+          shape: pill,
+          padding: buttonPadding,
+          textStyle: buttonText,
+          minimumSize: const Size(64, 50),
+          // Actions principales en noir (blanc en sombre), l'orange reste l'accent.
+          backgroundColor: c.ink,
+          foregroundColor: c.background,
+          disabledBackgroundColor: c.chip,
+          disabledForegroundColor: c.inkFaint,
+        ),
       ),
       elevatedButtonTheme: ElevatedButtonThemeData(
         style: ElevatedButton.styleFrom(shape: pill, padding: buttonPadding, textStyle: buttonText, elevation: 0),
@@ -161,20 +171,20 @@ class AppTheme {
         elevation: 0,
         backgroundColor: c.navBar,
         surfaceTintColor: Colors.transparent,
-        indicatorColor: c.brandSoft,
+        indicatorColor: c.brand,
         indicatorShape: pill,
         labelTextStyle: WidgetStateProperty.resolveWith(
           (s) => text.labelSmall?.copyWith(fontWeight: FontWeight.w700, color: s.contains(WidgetState.selected) ? c.ink : c.inkSoft),
         ),
         iconTheme: WidgetStateProperty.resolveWith(
-          (s) => IconThemeData(size: 24, color: s.contains(WidgetState.selected) ? c.brandInk : c.inkSoft),
+          (s) => IconThemeData(size: 24, color: s.contains(WidgetState.selected) ? c.onBrand : c.inkFaint),
         ),
       ),
       navigationRailTheme: NavigationRailThemeData(
         backgroundColor: Colors.transparent,
-        indicatorColor: c.brandSoft,
+        indicatorColor: c.brand,
         indicatorShape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-        selectedIconTheme: IconThemeData(color: c.brandInk, size: 24),
+        selectedIconTheme: IconThemeData(color: c.onBrand, size: 24),
         unselectedIconTheme: IconThemeData(color: c.inkSoft, size: 24),
         selectedLabelTextStyle: text.labelMedium?.copyWith(fontWeight: FontWeight.w800, color: c.ink),
         unselectedLabelTextStyle: text.labelMedium?.copyWith(fontWeight: FontWeight.w600, color: c.inkSoft),
@@ -241,12 +251,12 @@ class AppTheme {
     TextStyle? w(TextStyle? s, FontWeight weight, [double? spacing]) =>
         s?.copyWith(fontWeight: weight, letterSpacing: spacing, fontFamilyFallback: fontFallback);
     return t.copyWith(
-      displayLarge: w(t.displayLarge, FontWeight.w800, -1.5),
-      displayMedium: w(t.displayMedium, FontWeight.w800, -1.2),
+      displayLarge: w(t.displayLarge, FontWeight.w300, -2),
+      displayMedium: w(t.displayMedium, FontWeight.w300, -1.5),
       displaySmall: w(t.displaySmall, FontWeight.w800, -1),
-      headlineLarge: w(t.headlineLarge, FontWeight.w800, -.8),
-      headlineMedium: w(t.headlineMedium, FontWeight.w800, -.6),
-      headlineSmall: w(t.headlineSmall, FontWeight.w800, -.4),
+      headlineLarge: w(t.headlineLarge, FontWeight.w700, -.8),
+      headlineMedium: w(t.headlineMedium, FontWeight.w700, -.6),
+      headlineSmall: w(t.headlineSmall, FontWeight.w700, -.4),
       titleLarge: w(t.titleLarge, FontWeight.w700, -.2),
       titleMedium: w(t.titleMedium, FontWeight.w700, -.1),
       titleSmall: w(t.titleSmall, FontWeight.w700, 0),
@@ -260,7 +270,7 @@ class AppTheme {
   }
 }
 
-/// Jetons de couleur FlowIT, disponibles via `context.flow`.
+/// Jetons de couleur Solea, disponibles via `context.flow`.
 @immutable
 class FlowColors extends ThemeExtension<FlowColors> {
   const FlowColors({
@@ -311,91 +321,93 @@ class FlowColors extends ThemeExtension<FlowColors> {
   final Color success, warning, danger, dangerSoft, dangerInk, shadow;
 
   static const light = FlowColors(
-    background: Color(0xFFF2F4F7),
+    background: Color(0xFFFBF8F4),
     surface: Color(0xFFFFFFFF),
-    surfaceAlt: Color(0xFFF7F8FA),
-    sheet: Color(0xFFF7F8FA),
-    field: Color(0xFFF1F3F6),
-    chip: Color(0xFFE8ECF1),
-    line: Color(0xFFDDE3EA),
-    cardBorder: Color(0x0F0E1726),
-    ink: Color(0xFF0E1726),
-    inkSoft: Color(0xFF5A6677),
-    inkFaint: Color(0xFF98A2B3),
-    brand: Color(0xFF0E9E9A),
-    brandStrong: Color(0xFF0A7F7C),
-    brandDeep: Color(0xFF0B5563),
-    brandSoft: Color(0xFFD5F3F0),
-    brandInk: Color(0xFF075E5B),
+    surfaceAlt: Color(0xFFF7F3EE),
+    sheet: Color(0xFFFFFFFF),
+    field: Color(0xFFFFFFFF),
+    chip: Color(0xFFF2ECE4),
+    line: Color(0xFFE9E2D8),
+    cardBorder: Color(0xFFF0EAE2),
+    ink: Color(0xFF1F1C19),
+    inkSoft: Color(0xFF71695F),
+    inkFaint: Color(0xFFA9A094),
+    brand: Color(0xFFF28C1B),
+    brandStrong: Color(0xFFD9730A),
+    brandDeep: Color(0xFFB45A07),
+    brandSoft: Color(0xFFFDEBD4),
+    brandInk: Color(0xFF8F4706),
     onBrand: Color(0xFFFFFFFF),
-    tileOff: Color(0xFFE6EAF0),
-    tileOn: Color(0xFFFFFFFF),
-    tileOnInk: Color(0xFF0E1726),
-    tileOnInkSoft: Color(0xFF5A6677),
-    navBar: Color(0xF2FFFFFF),
-    glowA: Color(0x3314B8A6),
-    glowB: Color(0x228B7CFF),
+    tileOff: Color(0xFFF6F2ED),
+    tileOn: Color(0xFFFDEFDC),
+    tileOnInk: Color(0xFF1F1C19),
+    tileOnInkSoft: Color(0xFF7A6248),
+    navBar: Color(0xF7FFFFFF),
+    glowA: Color(0x26FFC23D),
+    glowB: Color(0x14F28C1B),
     amber: Color(0xFFF5A524),
-    orange: Color(0xFFF26B3A),
+    orange: Color(0xFFEE6A1F),
     blue: Color(0xFF3B82F6),
     violet: Color(0xFF7C5CFF),
-    cyan: Color(0xFF06B6D4),
-    pink: Color(0xFFEC4899),
-    success: Color(0xFF16A36F),
-    warning: Color(0xFFE08A00),
+    cyan: Color(0xFF0EA5B7),
+    pink: Color(0xFFE5487D),
+    success: Color(0xFF1F9D63),
+    warning: Color(0xFFD9730A),
     danger: Color(0xFFDC3B42),
-    dangerSoft: Color(0xFFFDE4E4),
+    dangerSoft: Color(0xFFFDE6E3),
     dangerInk: Color(0xFF8E1C22),
-    shadow: Color(0x1A0E1726),
+    shadow: Color(0x141F1C19),
   );
 
   static const dark = FlowColors(
-    background: Color(0xFF080C11),
-    surface: Color(0xFF121820),
-    surfaceAlt: Color(0xFF171E28),
-    sheet: Color(0xFF10161E),
-    field: Color(0xFF19212C),
-    chip: Color(0xFF222B37),
-    line: Color(0xFF263040),
-    cardBorder: Color(0x14FFFFFF),
-    ink: Color(0xFFEEF2F7),
-    inkSoft: Color(0xFF97A3B4),
-    inkFaint: Color(0xFF5F6B7C),
-    brand: Color(0xFF2DD4C4),
-    brandStrong: Color(0xFF5EE3D6),
-    brandDeep: Color(0xFF0E9E9A),
-    brandSoft: Color(0xFF123E3D),
-    brandInk: Color(0xFF8BF1E6),
-    onBrand: Color(0xFF032B29),
-    tileOff: Color(0xFF151C25),
-    tileOn: Color(0xFFF4F6F9),
-    tileOnInk: Color(0xFF0E1726),
-    tileOnInkSoft: Color(0xFF5A6677),
-    navBar: Color(0xF00D1218),
-    glowA: Color(0x2E14B8A6),
-    glowB: Color(0x247C5CFF),
+    background: Color(0xFF12100D),
+    surface: Color(0xFF1C1915),
+    surfaceAlt: Color(0xFF23201B),
+    sheet: Color(0xFF1A1713),
+    field: Color(0xFF1C1915),
+    chip: Color(0xFF2A2620),
+    line: Color(0xFF353029),
+    cardBorder: Color(0x12FFFFFF),
+    ink: Color(0xFFF7F2EA),
+    inkSoft: Color(0xFFB5AB9E),
+    inkFaint: Color(0xFF7B7166),
+    brand: Color(0xFFFF9F2E),
+    brandStrong: Color(0xFFFFB45C),
+    brandDeep: Color(0xFFF28C1B),
+    brandSoft: Color(0xFF3B2813),
+    brandInk: Color(0xFFFFC98A),
+    onBrand: Color(0xFF231200),
+    tileOff: Color(0xFF1C1915),
+    tileOn: Color(0xFF37281A),
+    tileOnInk: Color(0xFFFFF5E8),
+    tileOnInkSoft: Color(0xFFE2C29C),
+    navBar: Color(0xF71C1915),
+    glowA: Color(0x1FFFB13D),
+    glowB: Color(0x14F28C1B),
     amber: Color(0xFFFFB547),
-    orange: Color(0xFFFF7A45),
+    orange: Color(0xFFFF7A3D),
     blue: Color(0xFF60A5FA),
     violet: Color(0xFF9B87FF),
-    cyan: Color(0xFF22D3EE),
+    cyan: Color(0xFF22C5DA),
     pink: Color(0xFFF472B6),
     success: Color(0xFF34D399),
-    warning: Color(0xFFFBBF24),
+    warning: Color(0xFFFFB45C),
     danger: Color(0xFFFF6369),
     dangerSoft: Color(0xFF3A1518),
     dangerInk: Color(0xFFFFB4B6),
     shadow: Color(0x66000000),
   );
 
-  /// Dégradé signature FlowIT (carte d'accueil, logo, écran de connexion).
-  LinearGradient get brandGradient => LinearGradient(
+  /// Dégradé soleil Solea (logo, écran de connexion), du jaune à l'orange.
+  LinearGradient get brandGradient => const LinearGradient(
         begin: Alignment.topLeft,
         end: Alignment.bottomRight,
-        // Identique en clair et en sombre : c'est la signature de la marque.
-        colors: const [Color(0xFF0B5563), Color(0xFF0E9E9A), Color(0xFF38D9C3)],
-        stops: const [0, .6, 1],
+        colors: [Color(0xFFFFC93C), Color(0xFFF7941D), Color(0xFFEE6A1F)],
+        stops: [0, .55, 1],
       );
+
+  /// Carte « résumé » sombre de l'accueil, façon pilule énergie.
+  Color get panel => ink == FlowColors.light.ink ? const Color(0xFF1F1C19) : const Color(0xFF26221D);
 
   @override
   FlowColors copyWith() => this;

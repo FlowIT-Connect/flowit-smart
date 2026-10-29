@@ -7,52 +7,63 @@ import '../../core/theme.dart';
 import '../../models/models.dart';
 import '../../state/app_state.dart';
 
-/// Logo FlowIT : toit de maison et onde de flux sur le dégradé de la marque.
-class FlowLogo extends StatelessWidget {
-  const FlowLogo({super.key, this.size = 40});
+/// Logo Solea : un soleil en dégradé, du jaune à l'orange.
+class SoleaLogo extends StatelessWidget {
+  const SoleaLogo({super.key, this.size = 40});
 
   final double size;
 
   @override
-  Widget build(BuildContext context) {
-    final f = context.flow;
-    return Container(
-      width: size,
-      height: size,
-      decoration: BoxDecoration(
-        gradient: f.brandGradient,
-        borderRadius: BorderRadius.circular(size * .3),
-        boxShadow: [BoxShadow(color: f.brand.withValues(alpha: .35), blurRadius: size * .4, offset: Offset(0, size * .12))],
-      ),
-      child: CustomPaint(painter: _LogoPainter()),
-    );
-  }
+  Widget build(BuildContext context) => SizedBox.square(
+        dimension: size,
+        child: CustomPaint(painter: SunPainter(context.flow.brandGradient)),
+      );
 }
 
-class _LogoPainter extends CustomPainter {
+/// Logo accompagné du nom de la marque.
+class SoleaWordmark extends StatelessWidget {
+  const SoleaWordmark({super.key, this.size = 32, this.color});
+
+  final double size;
+  final Color? color;
+
+  @override
+  Widget build(BuildContext context) => Row(mainAxisSize: MainAxisSize.min, children: [
+        SoleaLogo(size: size),
+        SizedBox(width: size * .3),
+        Text(
+          'Solea',
+          style: TextStyle(fontSize: size * .62, fontWeight: FontWeight.w800, letterSpacing: -.3, color: color ?? context.flow.ink),
+        ),
+      ]);
+}
+
+/// Dessin du soleil : disque central et rayons arrondis.
+class SunPainter extends CustomPainter {
+  SunPainter(this.gradient);
+
+  final Gradient gradient;
+
   @override
   void paint(Canvas canvas, Size s) {
-    final p = Paint()
-      ..color = Colors.white
-      ..style = PaintingStyle.stroke
+    final rect = Offset.zero & s;
+    final c = rect.center;
+    final r = s.shortestSide / 2;
+    final shader = gradient.createShader(rect);
+    canvas.drawCircle(c, r * .44, Paint()..shader = shader);
+    final ray = Paint()
+      ..shader = shader
       ..strokeCap = StrokeCap.round
-      ..strokeJoin = StrokeJoin.round
-      ..strokeWidth = s.width * .085;
-    final roof = Path()
-      ..moveTo(s.width * .24, s.height * .47)
-      ..lineTo(s.width * .5, s.height * .25)
-      ..lineTo(s.width * .76, s.height * .47);
-    canvas.drawPath(roof, p);
-    final wave = Path()..moveTo(s.width * .26, s.height * .66);
-    for (var i = 0; i <= 24; i++) {
-      final t = i / 24;
-      wave.lineTo(s.width * (.26 + .48 * t), s.height * (.66 - .07 * math.sin(t * 2 * math.pi)));
+      ..strokeWidth = r * .15;
+    for (var i = 0; i < 8; i++) {
+      final a = i * math.pi / 4 - math.pi / 2;
+      final d = Offset(math.cos(a), math.sin(a));
+      canvas.drawLine(c + d * (r * .64), c + d * (r * .9), ray);
     }
-    canvas.drawPath(wave, p..strokeWidth = s.width * .075);
   }
 
   @override
-  bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
+  bool shouldRepaint(covariant SunPainter oldDelegate) => oldDelegate.gradient != gradient;
 }
 
 /// Fond d'ambiance : halos de lumière doux derrière le contenu.

@@ -65,7 +65,7 @@ class _FlowItAppState extends State<FlowItApp> {
         return ValueListenableBuilder<ThemeMode>(
           valueListenable: ThemeController.instance,
           builder: (context, mode, _) => MaterialApp(
-          title: 'FlowIT Smart',
+          title: 'Solea',
           debugShowCheckedModeBanner: false,
           navigatorKey: _navigator,
           scaffoldMessengerKey: _messenger,

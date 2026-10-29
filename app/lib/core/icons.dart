@@ -38,15 +38,16 @@ IconData sceneIcon(String? key) => sceneIcons[key] ?? Icons.auto_awesome_rounded
 /// Dégradé d'une scène, choisi d'après son icône pour rester stable.
 List<Color> sceneGradient(BuildContext context, String? key) {
   final f = context.flow;
+  // Tons chauds et terreux, en accord avec l'identité Solea.
   return switch (key) {
-    'movie' => [const Color(0xFF4C2BD9), f.violet],
-    'night' => [const Color(0xFF1E2A78), const Color(0xFF5B6CF0)],
-    'sun' => [const Color(0xFFF08A24), f.amber],
-    'logout' => [f.brandDeep, f.brand],
-    'home' => [const Color(0xFF0F7B6C), const Color(0xFF3CCB9F)],
-    'party' => [const Color(0xFFD9327A), f.pink],
-    'meal' => [const Color(0xFFD9542B), f.orange],
-    _ => [f.brandDeep, f.cyan],
+    'movie' => [const Color(0xFF2B211B), const Color(0xFF6A4630)],
+    'night' => [const Color(0xFF1E2232), const Color(0xFF46507A)],
+    'sun' => [const Color(0xFFFFB53D), const Color(0xFFF07B1F)],
+    'logout' => [const Color(0xFF3A332C), const Color(0xFF7A6B5A)],
+    'home' => [const Color(0xFFC9772F), const Color(0xFFE9A35A)],
+    'party' => [const Color(0xFFC94A6E), const Color(0xFFF08A5D)],
+    'meal' => [const Color(0xFFD9652B), const Color(0xFFF2AE5E)],
+    _ => [f.brandDeep, f.brand],
   };
 }
 
