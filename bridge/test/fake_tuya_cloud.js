@@ -58,6 +58,23 @@ export function demoTuyaDevices() {
       spec: spec('cz', [fn('switch_1', 'Boolean')]),
     },
     {
+      id: 'curtain1', name: 'Rideau salon', category: 'cl', product_name: 'Curtain Motor', online: true,
+      status: [{ code: 'control', value: 'stop' }, { code: 'percent_control', value: 30 }, { code: 'percent_state', value: 30 }],
+      spec: spec('cl', [
+        fn('control', 'Enum', { range: ['open', 'stop', 'close', 'continue'] }),
+        fn('percent_control', 'Integer', { unit: '%', min: 0, max: 100, scale: 0, step: 1 }),
+      ], [
+        fn('control', 'Enum', { range: ['open', 'stop', 'close', 'continue'] }),
+        fn('percent_control', 'Integer', { unit: '%', min: 0, max: 100, scale: 0, step: 1 }),
+        fn('percent_state', 'Integer', { unit: '%', min: 0, max: 100, scale: 0, step: 1 }),
+      ]),
+    },
+    {
+      id: 'curtain2', name: 'Rideau chambre', category: 'cl', product_name: 'Curtain Switch', online: true,
+      status: [{ code: 'control', value: 'close' }],
+      spec: spec('cl', [fn('control', 'Enum', { range: ['close', 'open', 'stop'] })]),
+    },
+    {
       id: 'ir1', name: 'Télécommande IR', category: 'wnykq', product_name: 'IR Blaster', online: true,
       status: [], spec: spec('wnykq', []),
     },

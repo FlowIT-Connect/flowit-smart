@@ -491,7 +491,8 @@ class _CapabilityControlState extends State<_CapabilityControl> {
               subtitle: pending != null ? Align(alignment: AlignmentDirectional.centerStart, child: indicator) : null,
               trailing: Text(formatValue(context, cap, cap.key, _round(v, cap)), style: Theme.of(context).textTheme.titleMedium),
             ),
-            if (cap.key == 'cover_position')
+            // Un rideau qui a ses propres boutons Ouvrir / Stop / Fermer les affiche à part.
+            if (cap.key == 'cover_position' && d.capability('cover_control') == null)
               Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 16),
                 child: Row(children: [
@@ -537,6 +538,39 @@ class _CapabilityControlState extends State<_CapabilityControl> {
           ]),
         );
       case CapabilityType.enumeration:
+        if (cap.key == 'cover_control') {
+          // Actions ponctuelles : chaque bouton reste disponible, même pour répéter la dernière.
+          return Padding(
+            padding: const EdgeInsets.fromLTRB(16, 10, 16, 12),
+            child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+              Row(children: [
+                TileIcon(capabilityIcon(cap.key)),
+                const SizedBox(width: 14),
+                Expanded(child: DefaultTextStyle.merge(style: Theme.of(context).textTheme.bodyLarge?.copyWith(fontWeight: FontWeight.w600), child: title)),
+                if (pending != null) indicator,
+              ]),
+              const SizedBox(height: 12),
+              Row(children: [
+                for (final (i, o) in cap.options.indexed) ...[
+                  if (i > 0) const SizedBox(width: 8),
+                  Expanded(
+                    child: o == 'stop'
+                        ? FilledButton.icon(
+                            onPressed: enabled ? () => send(o) : null,
+                            icon: Icon(_coverIcon(o)),
+                            label: Text(context.tr('cover.$o')),
+                          )
+                        : OutlinedButton.icon(
+                            onPressed: enabled ? () => send(o) : null,
+                            icon: Icon(_coverIcon(o)),
+                            label: Text(context.tr('cover.$o')),
+                          ),
+                  ),
+                ],
+              ]),
+            ]),
+          );
+        }
         if (cap.key == 'hvac_mode') {
           // Modes en gros boutons ronds, le mode actif rempli d'orange.
           return Padding(
@@ -631,3 +665,9 @@ class _CapabilityControlState extends State<_CapabilityControl> {
     return cap.step is int && cap.min is int ? r.round() : double.parse(r.toStringAsFixed(2));
   }
 }
+
+IconData _coverIcon(String action) => switch (action) {
+      'open' => Icons.keyboard_arrow_up_rounded,
+      'close' => Icons.keyboard_arrow_down_rounded,
+      _ => Icons.stop_rounded,
+    };

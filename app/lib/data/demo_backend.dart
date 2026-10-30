@@ -125,9 +125,10 @@ class DemoBackend implements Backend {
           ['color', 'color', true],
         ]);
     final volet = device('Volet salon', salon, 'zigbee', 'gateway',
-        vendor: 'Moes', model: 'ZigBee curtain switch', pinned: true, state: {'cover_position': 100},
+        vendor: 'Moes', model: 'ZigBee curtain switch', pinned: true, state: {'cover_position': 100, 'cover_control': 'open'},
         caps: [
           ['cover_position', 'number', true, {'min': 0, 'max': 100, 'step': 5, 'unit': '%'}],
+          ['cover_control', 'enum', true, {'options': ['open', 'stop', 'close']}],
         ]);
     final cafe = device('Prise café', cuisine, 'wifi', 'local',
         vendor: 'Shelly', model: 'Plug S', pinned: true, state: {'switch': false, 'power': 0.0},
@@ -569,6 +570,7 @@ class DemoBackend implements Backend {
         row['status'] = 'confirmed';
         final state = Map<String, dynamic>.from(d['state'] as Map)..[row['capability_key'] as String] = row['value'];
         if (row['capability_key'] == 'switch' && d['name'] == 'Prise café') state['power'] = row['value'] == true ? 1180.0 : 0.0;
+        if (row['capability_key'] == 'cover_control' && row['value'] != 'stop') state['cover_position'] = row['value'] == 'open' ? 100 : 0;
         d['state'] = state;
         d['last_seen_at'] = _now();
         d['updated_at'] = _now();

@@ -85,7 +85,7 @@ Pour changer une clé plus tard : fermer la fenêtre, double-cliquer sur
 |---|---|
 | Prise, multiprise, interrupteur | marche / arrêt (une commande par prise), puissance (W), énergie (kWh) |
 | Ampoule, ruban LED | marche / arrêt, luminosité, blanc chaud ↔ froid, couleur |
-| Rideau / volet avec pourcentage | position 0 à 100 % |
+| Rideau / volet | boutons Ouvrir, Stop, Fermer, et position 0 à 100 % si le moteur la donne |
 | Thermostat | consigne, température mesurée |
 | Capteurs | température, humidité, batterie, porte (ouverte / fermée), mouvement |
 | Serrure, coffre | visibles mais **bloquées** (sécurité) |
