@@ -1,0 +1,140 @@
+# Publie Solea sur Google Play et l'App Store (TestFlight) avec fastlane.
+# Lancement : onglet Actions › « Publier sur les stores » › Run workflow,
+# ou automatiquement en poussant une étiquette de version (ex. v1.0.1).
+# Secrets à créer une seule fois : voir docs/PUBLIER_SUR_LES_STORES.md
+name: Publier sur les stores
+
+on:
+  workflow_dispatch:
+    inputs:
+      plateforme:
+        description: "Store visé"
+        type: choice
+        options: [les-deux, android, ios]
+        default: les-deux
+      piste_android:
+        description: "Piste Google Play"
+        type: choice
+        options: [internal, alpha, beta, production]
+        default: internal
+      statut_android:
+        description: "Statut de la version Google Play (draft tant que l'app n'est pas publiée)"
+        type: choice
+        options: [draft, completed]
+        default: draft
+      fiches:
+        description: "Mettre aussi à jour les textes des fiches (app/fastlane/metadata)"
+        type: boolean
+        default: false
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: stores-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  FLUTTER_VERSION: 3.47.8
+  # Numéro de build croissant, exigé par les deux stores.
+  BUILD_NUMBER: ${{ github.run_number }}
+
+jobs:
+  android:
+    if: github.event_name == 'push' || inputs.plateforme != 'ios'
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: app
+    env:
+      ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+      ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+      ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+      ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+      PLAY_SERVICE_ACCOUNT_JSON: ${{ secrets.PLAY_SERVICE_ACCOUNT_JSON }}
+      PLAY_TRACK: ${{ inputs.piste_android || 'internal' }}
+      PLAY_RELEASE_STATUS: ${{ inputs.statut_android || 'draft' }}
+      UPLOAD_METADATA: ${{ inputs.fiches && 'true' || 'false' }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Vérifier la clé de signature
+        run: |
+          if [ -z "$ANDROID_KEYSTORE_BASE64" ]; then
+            echo "::error::Secret ANDROID_KEYSTORE_BASE64 manquant : voir docs/PUBLIER_SUR_LES_STORES.md, étape Android 1."
+            exit 1
+          fi
+          echo "$ANDROID_KEYSTORE_BASE64" | base64 --decode > "$RUNNER_TEMP/upload.jks"
+          echo "ANDROID_KEYSTORE_PATH=$RUNNER_TEMP/upload.jks" >> "$GITHUB_ENV"
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          channel: stable
+          cache: true
+      - run: flutter pub get
+      - run: flutter test
+      - run: flutter build appbundle --release --build-number "$BUILD_NUMBER"
+      # Le fichier .aab reste téléchargeable : la toute première version doit être déposée à la main.
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Solea-google-play-${{ env.BUILD_NUMBER }}
+          path: app/build/app/outputs/bundle/release/app-release.aab
+          retention-days: 30
+      - uses: ruby/setup-ruby@v1
+        if: env.PLAY_SERVICE_ACCOUNT_JSON != ''
+        with:
+          ruby-version: "3.3"
+          bundler-cache: true
+          working-directory: app
+      - name: Envoyer sur Google Play
+        if: env.PLAY_SERVICE_ACCOUNT_JSON != ''
+        run: bundle exec fastlane android deploy
+      - name: Envoi Google Play non configuré
+        if: env.PLAY_SERVICE_ACCOUNT_JSON == ''
+        run: |
+          echo "::warning::Secret PLAY_SERVICE_ACCOUNT_JSON absent, le .aab est seulement disponible en téléchargement (Artifacts)."
+
+  ios:
+    if: github.event_name == 'push' || inputs.plateforme != 'android'
+    runs-on: macos-15
+    defaults:
+      run:
+        working-directory: app
+    env:
+      ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
+      ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
+      ASC_KEY_P8_BASE64: ${{ secrets.ASC_KEY_P8_BASE64 }}
+      APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+      MATCH_GIT_URL: ${{ secrets.MATCH_GIT_URL }}
+      MATCH_GIT_BASIC_AUTHORIZATION: ${{ secrets.MATCH_GIT_BASIC_AUTHORIZATION }}
+      MATCH_PASSWORD: ${{ secrets.MATCH_PASSWORD }}
+      UPLOAD_METADATA: ${{ inputs.fiches && 'true' || 'false' }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          channel: stable
+          cache: true
+      - uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: "3.3"
+          bundler-cache: true
+          working-directory: app
+      - run: flutter pub get
+      # Compile Flutter et installe les dépendances iOS (CocoaPods) ; la signature est faite par fastlane.
+      - run: flutter build ios --release --no-codesign --build-number "$BUILD_NUMBER"
+      - name: Signer et envoyer sur TestFlight
+        run: bundle exec fastlane ios deploy
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: Solea-ios-${{ env.BUILD_NUMBER }}
+          path: app/build/ios/fastlane/Solea.ipa
+          if-no-files-found: ignore
+          retention-days: 30

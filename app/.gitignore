@@ -46,3 +46,12 @@ app.*.map.json
 
 # Widget Preview related
 .widget_preview/
+
+# fastlane (publication sur les stores)
+/fastlane/report.xml
+/fastlane/README.md
+/fastlane/test_output
+/vendor/bundle
+/.bundle
+*.p8
+*.mobileprovision

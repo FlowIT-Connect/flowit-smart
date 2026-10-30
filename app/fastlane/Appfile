@@ -1,0 +1,3 @@
+# Identifiant définitif de Solea sur Google Play et l'App Store.
+package_name("com.soleadz.app")
+app_identifier("com.soleadz.app")

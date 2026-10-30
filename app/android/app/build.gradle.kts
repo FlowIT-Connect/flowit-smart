@@ -1,3 +1,5 @@
+import java.util.Properties
+
 plugins {
     id("com.android.application")
     // The Flutter Gradle Plugin must be applied after the Android and Kotlin Gradle plugins.
@@ -15,8 +17,8 @@ android {
     }
 
     defaultConfig {
-        // TODO: Specify your own unique Application ID (https://developer.android.com/studio/build/application-id.html).
-        applicationId = "dz.flowit.flowit_smart"
+        // Identifiant définitif sur Google Play : ne plus le changer après la 1re publication.
+        applicationId = "com.soleadz.app"
         // You can update the following values to match your application needs.
         // For more information, see: https://flutter.dev/to/review-gradle-config.
         minSdk = flutter.minSdkVersion
@@ -29,11 +31,31 @@ android {
         versionName = flutter.versionName
     }
 
+    // Clé de publication (upload key Google Play), lue dans android/key.properties
+    // ou dans les variables ANDROID_KEYSTORE_* (GitHub Actions). Voir docs/PUBLIER_SUR_LES_STORES.md.
+    // Sans clé, la version release reste signée avec la clé debug (APK de test seulement).
+    val keyProps = Properties().apply {
+        val f = rootProject.file("key.properties")
+        if (f.exists()) f.inputStream().use { load(it) }
+    }
+    fun keyValue(prop: String, env: String): String? =
+        keyProps.getProperty(prop) ?: System.getenv(env)?.takeIf { it.isNotEmpty() }
+    val storeFilePath = keyValue("storeFile", "ANDROID_KEYSTORE_PATH")
+
+    signingConfigs {
+        if (storeFilePath != null) {
+            create("release") {
+                storeFile = file(storeFilePath)
+                storePassword = keyValue("storePassword", "ANDROID_KEYSTORE_PASSWORD")
+                keyAlias = keyValue("keyAlias", "ANDROID_KEY_ALIAS")
+                keyPassword = keyValue("keyPassword", "ANDROID_KEY_PASSWORD")
+            }
+        }
+    }
+
     buildTypes {
         release {
-            // TODO: Add your own signing config for the release build.
-            // Signing with the debug keys for now, so `flutter run --release` works.
-            signingConfig = signingConfigs.getByName("debug")
+            signingConfig = signingConfigs.findByName("release") ?: signingConfigs.getByName("debug")
             // Le SDK Bluetooth TTLock ne supporte pas l'obfuscation R8.
             isMinifyEnabled = false
             isShrinkResources = false
