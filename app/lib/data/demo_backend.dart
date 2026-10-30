@@ -53,6 +53,11 @@ class DemoBackend implements Backend {
   final _accessCodes = <Map<String, dynamic>>[];
   final _pairings = <String, Map<String, dynamic>>{};
 
+  /// Limite d'appareils par logement en démo (déblocage payé fictif) ; demandes de déblocage.
+  final _deviceLimits = <String, int>{};
+  final _upgrades = <String, Map<String, dynamic>>{};
+  static const demoDeviceLimit = 20;
+
   /// Délai simulé de la passerelle pour un ajout d'appareil.
   Duration pairingDelay = const Duration(seconds: 3);
 
@@ -346,6 +351,9 @@ class DemoBackend implements Backend {
 
   @override
   Future<void> resetPassword(String email) => _wait();
+
+  @override
+  Future<void> resendConfirmation(String email) => _wait();
 
   @override
   Future<void> updatePassword(String newPassword) => _wait();
@@ -706,12 +714,85 @@ class DemoBackend implements Backend {
         details: {'capability': 'lock_action', 'value': unlock ? 'unlock' : 'lock', 'channel': 'bluetooth', 'error': ?error});
   }
 
+  // ------------------------------------------------------------------ Offre du logement
+  int _limitOf(String homeId) => _deviceLimits[homeId] ?? demoDeviceLimit;
+  int _countDevices(String homeId) => _devices.values.where((d) => d['home_id'] == homeId).length;
+
+  /// Change la limite d'un logement (tests et démonstration).
+  void setDeviceLimit(String homeId, int limit) => _deviceLimits[homeId] = limit;
+
+  @override
+  Future<HomePlan> getHomePlan(String homeId) async {
+    await _wait();
+    if (_member(homeId) == null) throw const BackendException('denied', 'Accès refusé.');
+    final limit = _limitOf(homeId);
+    return HomePlan(
+      deviceCount: _countDevices(homeId),
+      deviceLimit: limit,
+      paidUntil: limit > HomePlan.freeLimit ? DateTime.now().add(const Duration(days: 30)) : null,
+      pendingRequest: _upgrades.values.any((u) => u['home_id'] == homeId && u['status'] == 'pending'),
+    );
+  }
+
+  @override
+  Future<void> requestUpgrade(String homeId, {String? note}) async {
+    await _wait();
+    final role = _member(homeId)?['role'];
+    if (role != 'owner' && role != 'admin') throw const BackendException('denied', 'Réservé au propriétaire ou à un administrateur');
+    if (_upgrades.values.any((u) => u['home_id'] == homeId && u['status'] == 'pending')) return;
+    final id = newUuid();
+    _upgrades[id] = {'request_id': id, 'home_id': homeId, 'status': 'pending', 'note': note, 'created_at': _now()};
+    _log(homeId, 'config_changed', requestId: id, result: 'upgrade_requested');
+  }
+
+  @override
+  Future<bool> isPlatformAdmin() async => _signedIn;
+
+  @override
+  Future<List<UpgradeRequest>> adminListUpgrades() async {
+    await _wait();
+    return _upgrades.values.map((u) {
+      final homeId = u['home_id'] as String;
+      final limit = _limitOf(homeId);
+      return UpgradeRequest.fromJson({
+        ...u,
+        'home_name': _homes[homeId]?['name'] ?? '—',
+        'owner_email': _email,
+        'device_count': _countDevices(homeId),
+        'device_limit': limit,
+        'paid_until': u['paid_until'],
+      });
+    }).toList()
+      ..sort((a, b) => (b.isPending ? 1 : 0) - (a.isPending ? 1 : 0));
+  }
+
+  @override
+  Future<void> adminDecideUpgrade(String requestId, {required bool approve, int? deviceLimit, int? months}) async {
+    await _wait();
+    final u = _upgrades[requestId];
+    if (u == null || u['status'] != 'pending') throw const BackendException('invalid', 'Demande introuvable ou déjà traitée');
+    if (!approve) {
+      u['status'] = 'rejected';
+      return;
+    }
+    if (deviceLimit == null || deviceLimit < 6 || deviceLimit > 1000) throw const BackendException('invalid', "Nombre d'appareils : entre 6 et 1000");
+    _deviceLimits[u['home_id'] as String] = deviceLimit;
+    u.addAll({
+      'status': 'approved',
+      'paid_until': months == null ? null : DateTime.now().add(Duration(days: 30 * months)).toIso8601String(),
+    });
+  }
+
   // ------------------------------------------------------------------ Ajout d'appareils
   @override
   Future<String> requestPairing(String homeId, {required String kind, String? name, String? roomId, String? lockData}) async {
     await _wait();
     final role = _member(homeId)?['role'];
     if (role != 'owner' && role != 'admin') throw const BackendException('denied', 'Réservé au propriétaire ou à un administrateur');
+    final limit = _limitOf(homeId);
+    if (_countDevices(homeId) >= limit) {
+      throw BackendException('limit', 'LIMITE_APPAREILS : $limit appareils au plus pour ce logement');
+    }
     if (kind == 'ttlock_lock' && (lockData == null || lockData.length < 16)) throw const BackendException('invalid', 'Clé de la serrure manquante');
     final id = newUuid();
     _pairings[id] = {'id': id, 'home_id': homeId, 'kind': kind, 'status': 'pending', 'error': null, 'device_id': null};

@@ -761,3 +761,75 @@ class RealtimeEvent {
 
   const RealtimeEvent(this.table, this.type, this.record);
 }
+
+/// Offre d'un logement : 5 appareils gratuits, davantage après paiement.
+class HomePlan {
+  final int deviceCount;
+  final int deviceLimit;
+  final DateTime? paidUntil; // null : offre gratuite, ou déblocage sans date de fin
+  final int waitingDevices; // appareils vus par la passerelle mais refusés faute de place
+  final bool pendingRequest;
+
+  const HomePlan({required this.deviceCount, required this.deviceLimit, this.paidUntil, this.waitingDevices = 0, this.pendingRequest = false});
+
+  static const freeLimit = 5;
+
+  bool get isFull => deviceCount >= deviceLimit;
+  bool get isPaid => deviceLimit > freeLimit;
+
+  factory HomePlan.fromJson(Map<String, dynamic> j) => HomePlan(
+        deviceCount: (j['device_count'] as num).toInt(),
+        deviceLimit: (j['device_limit'] as num).toInt(),
+        paidUntil: j['paid_until'] == null ? null : DateTime.parse(j['paid_until'] as String),
+        waitingDevices: (j['waiting_devices'] as num?)?.toInt() ?? 0,
+        pendingRequest: j['pending_request'] as bool? ?? false,
+      );
+}
+
+/// Demande de déblocage, vue par l'exploitant Solea (page « Paiements »).
+class UpgradeRequest {
+  final String id;
+  final String homeId;
+  final String homeName;
+  final String? ownerEmail;
+  final String? ownerName;
+  final String status; // pending, approved, rejected
+  final String? note;
+  final int deviceCount;
+  final int deviceLimit;
+  final DateTime? paidUntil;
+  final int waitingDevices;
+  final DateTime createdAt;
+
+  const UpgradeRequest({
+    required this.id,
+    required this.homeId,
+    required this.homeName,
+    this.ownerEmail,
+    this.ownerName,
+    required this.status,
+    this.note,
+    required this.deviceCount,
+    required this.deviceLimit,
+    this.paidUntil,
+    this.waitingDevices = 0,
+    required this.createdAt,
+  });
+
+  bool get isPending => status == 'pending';
+
+  factory UpgradeRequest.fromJson(Map<String, dynamic> j) => UpgradeRequest(
+        id: j['request_id'] as String,
+        homeId: j['home_id'] as String,
+        homeName: j['home_name'] as String? ?? '—',
+        ownerEmail: j['owner_email'] as String?,
+        ownerName: j['owner_name'] as String?,
+        status: j['status'] as String,
+        note: j['note'] as String?,
+        deviceCount: (j['device_count'] as num).toInt(),
+        deviceLimit: (j['device_limit'] as num).toInt(),
+        paidUntil: j['paid_until'] == null ? null : DateTime.parse(j['paid_until'] as String),
+        waitingDevices: (j['waiting_devices'] as num?)?.toInt() ?? 0,
+        createdAt: DateTime.parse(j['created_at'] as String),
+      );
+}

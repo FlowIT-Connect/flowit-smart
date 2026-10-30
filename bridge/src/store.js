@@ -43,6 +43,14 @@ export class SupabaseStore {
     return device.id;
   }
 
+  /** Appareils refusés faute de place, affichés dans l'application (« 2 en attente »). */
+  async setWaitingDevices(homeId, count) {
+    const { data: row, error } = await this.db.from('home_plans').select('home_id').eq('home_id', homeId).maybeSingle();
+    if (error) throw new Error(`Supabase : ${error.message}`);
+    if (row) check(await this.db.from('home_plans').update({ waiting_devices: count }).eq('home_id', homeId));
+    else if (count) check(await this.db.from('home_plans').insert({ home_id: homeId, device_limit: 5, waiting_devices: count }));
+  }
+
   async updateDevice(id, patch) {
     check(await this.db.from('devices').update(patch).eq('id', id));
   }

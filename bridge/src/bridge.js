@@ -6,6 +6,13 @@ import { CameraStreamer } from './cameras.js';
 import { log } from './log.js';
 import { validateValue } from './validate.js';
 
+export const DEVICE_LIMIT_MESSAGE = 'Limite d\'appareils atteinte : demandez le déblocage dans Solea';
+
+/** Refus de la base quand le logement a atteint sa limite d'appareils (migration solea_plans). */
+export function isDeviceLimit(e) {
+  return String(e?.message ?? '').includes('LIMITE_APPAREILS');
+}
+
 export class Bridge {
   /**
    * @param {{store:any, adapter:any, config:any, clock?:()=>Date}} deps
@@ -21,6 +28,8 @@ export class Bridge {
     /** deviceId -> { externalId, caps: Map<key, cap>, isSensitive, state, availability } */
     this.devices = new Map();
     this.byExternal = new Map();
+    /** Appareils refusés faute de place dans le logement (null : pas encore compté). */
+    this.waitingDevices = null;
     this.automations = [];
     this.firedTimeKeys = new Map();
     this.lastAutomationRun = new Map();
@@ -108,6 +117,7 @@ export class Bridge {
     const bindings = new Map((await this.store.listBindings(this.config.integrationId)).map((b) => [b.external_id, b.device_id]));
     const seen = new Set();
     const now = this.clock().toISOString();
+    let waiting = 0;
     for (const desc of this.adapter.devices()) {
       const snap = this.adapter.snapshot(desc.externalId);
       let deviceId = bindings.get(desc.externalId);
@@ -126,11 +136,18 @@ export class Bridge {
         await this.store.updateDevice(deviceId, common);
         await this.store.replaceCapabilities(deviceId, desc.capabilities);
       } else {
-        deviceId = await this.store.createDevice(
-          { home_id: this.homeId, integration_id: this.config.integrationId, name: desc.name, ...common },
-          desc.externalId,
-          desc.capabilities,
-        );
+        try {
+          deviceId = await this.store.createDevice(
+            { home_id: this.homeId, integration_id: this.config.integrationId, name: desc.name, ...common },
+            desc.externalId,
+            desc.capabilities,
+          );
+        } catch (e) {
+          if (!isDeviceLimit(e)) throw e;
+          // Logement à sa limite : l'appareil sera créé au premier inventaire après le déblocage.
+          waiting++;
+          continue;
+        }
         log.info('bridge.device_created', { device_id: deviceId, protocol: desc.protocol });
       }
       seen.add(desc.externalId);
@@ -161,7 +178,17 @@ export class Bridge {
       if (!seen.has(externalId)) await this.store.updateDevice(deviceId, { availability: 'unavailable' });
     }
     await this.store.setIntegrationStatus(this.config.integrationId, this.enabled ? 'connected' : 'disabled', null, now);
-    log.info('bridge.inventory_synced', { devices: seen.size });
+    if (waiting !== this.waitingDevices) {
+      if (waiting) log.warn('bridge.device_limit_reached', { waiting });
+      try {
+        await this.store.setWaitingDevices(this.homeId, waiting);
+        this.waitingDevices = waiting;
+      } catch (e) {
+        log.warn('bridge.waiting_devices_failed', { error: e.message }); // base pas encore à jour
+      }
+    }
+    log.info('bridge.inventory_synced', { devices: seen.size, ...(waiting ? { waiting } : {}) });
+    return { waiting };
   }
 
   async onDeviceState(externalId, snap) {
@@ -328,6 +355,8 @@ export class Bridge {
         const patch = { ...(req.name ? { name: req.name } : {}), ...(req.room_id ? { room_id: req.room_id } : {}) };
         if (Object.keys(patch).length) await this.store.updateDevice(deviceId, patch);
         status = 'done';
+      } else if (this.waitingDevices) {
+        error = DEVICE_LIMIT_MESSAGE;
       } else {
         error =
           req.kind === 'ttlock_lock'
@@ -370,7 +399,7 @@ export class Bridge {
         this.pairedDevices.add(id);
         return id;
       }
-      if (Date.now() >= deadline) return null;
+      if (this.waitingDevices || Date.now() >= deadline) return null;
       await new Promise((r) => setTimeout(r, this.config.pairingRetryMs ?? 10_000));
     }
     return null;
