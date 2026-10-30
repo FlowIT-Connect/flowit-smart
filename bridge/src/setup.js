@@ -90,25 +90,18 @@ async function main() {
   console.log('Les clés que vous tapez ou collez (clic droit) restent cachées et ne sont enregistrées que sur ce PC.');
 
   const v = { SUPABASE_URL: old.SUPABASE_URL || DEFAULT_SUPABASE_URL, TUYA_POLL_SECONDS: old.TUYA_POLL_SECONDS };
-  // « node src/setup.js ttlock » (Ajouter-TTLock.cmd) : garde les réglages Tuya et ne pose que les questions TTLock.
-  const ttlockOnly = process.argv.includes('ttlock') && old.INTEGRATION_ID && old.TUYA_ACCESS_ID;
-  if (ttlockOnly) {
-    for (const k of ['INTEGRATION_ID', 'SUPABASE_SERVICE_ROLE_KEY', 'TUYA_ACCESS_ID', 'TUYA_ACCESS_SECRET', 'TUYA_REGION']) v[k] = old[k];
-    console.log('Réglages Tuya et Supabase gardés tels quels.');
-  } else {
-    v.INTEGRATION_ID = await ask('1/5  Identifiant d\'intégration (application FlowIT Smart > Paramètres > Intégrations > Ajouter > Tuya) :', { current: old.INTEGRATION_ID });
-    v.SUPABASE_SERVICE_ROLE_KEY = await ask('2/5  Clé « service_role » (ou « secret ») de Supabase (supabase.com > projet > Project Settings > API Keys) :', { secret: true, current: old.SUPABASE_SERVICE_ROLE_KEY });
-    v.TUYA_ACCESS_ID = await ask('3/5  Tuya « Access ID / Client ID » (platform.tuya.com > Cloud > votre projet > Overview) :', { current: old.TUYA_ACCESS_ID });
-    v.TUYA_ACCESS_SECRET = await ask('4/5  Tuya « Access Secret / Client Secret » (même page) :', { secret: true, current: old.TUYA_ACCESS_SECRET });
-    const regions = Object.entries(TUYA_REGIONS);
-    const currentRegion = Math.max(1, regions.findIndex(([k]) => k === (old.TUYA_REGION || 'eu')) + 1);
-    console.log('\n5/5  Data center du projet Tuya :');
-    regions.forEach(([, r], i) => console.log(`     ${i + 1}. ${r.label}`));
-    const choice = Number.parseInt(await ask('Numéro :', { current: String(currentRegion) }), 10);
-    v.TUYA_REGION = regions[(choice >= 1 && choice <= regions.length ? choice : currentRegion) - 1][0];
-  }
+  v.INTEGRATION_ID = await ask('1/5  Identifiant d\'intégration (application FlowIT Smart > Paramètres > Intégrations > Ajouter > Tuya) :', { current: old.INTEGRATION_ID });
+  v.SUPABASE_SERVICE_ROLE_KEY = await ask('2/5  Clé « service_role » (ou « secret ») de Supabase (supabase.com > projet > Project Settings > API Keys) :', { secret: true, current: old.SUPABASE_SERVICE_ROLE_KEY });
+  v.TUYA_ACCESS_ID = await ask('3/5  Tuya « Access ID / Client ID » (platform.tuya.com > Cloud > votre projet > Overview) :', { current: old.TUYA_ACCESS_ID });
+  v.TUYA_ACCESS_SECRET = await ask('4/5  Tuya « Access Secret / Client Secret » (même page) :', { secret: true, current: old.TUYA_ACCESS_SECRET });
+  const regions = Object.entries(TUYA_REGIONS);
+  const currentRegion = Math.max(1, regions.findIndex(([k]) => k === (old.TUYA_REGION || 'eu')) + 1);
+  console.log('\n5/5  Data center du projet Tuya :');
+  regions.forEach(([, r], i) => console.log(`     ${i + 1}. ${r.label}`));
+  const choice = Number.parseInt(await ask('Numéro :', { current: String(currentRegion) }), 10);
+  v.TUYA_REGION = regions[(choice >= 1 && choice <= regions.length ? choice : currentRegion) - 1][0];
 
-  const wantsTTLock = ttlockOnly ? 'o' : await ask('Serrures / contrôles d\'accès TTLock : les ajouter ? (o = oui, n = non)', { current: old.TTLOCK_CLIENT_ID ? 'o' : 'n' });
+  const wantsTTLock = await ask('Serrures / contrôles d\'accès TTLock : les ajouter ? (o = oui, n = non)', { current: old.TTLOCK_CLIENT_ID ? 'o' : 'n' });
   if (/^o/i.test(wantsTTLock)) {
     v.TTLOCK_CLIENT_ID = await ask('TTLock 1/4  « Client ID » (open.ttlock.com > Application > votre application) :', { current: old.TTLOCK_CLIENT_ID });
     v.TTLOCK_CLIENT_SECRET = await ask('TTLock 2/4  « Client Secret » (même page) :', { secret: true, current: old.TTLOCK_CLIENT_SECRET });

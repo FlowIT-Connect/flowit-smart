@@ -257,3 +257,12 @@ test('assistant : section TTLock du .env relue par la configuration', async () =
   assert.equal(loadConfig(env).ttlock.username, 'u');
   assert.equal(renderEnv({ ...v, TTLOCK_CLIENT_ID: 'c', TTLOCK_PASSWORD_MD5: PASSWORD_MD5 }).includes('motdepasse'), false);
 });
+
+test('Ajouter-TTLock : lecture du formulaire du Bloc-notes', async () => {
+  const { readForm } = await import('../src/setup_ttlock.js');
+  const filled = readForm('﻿# aide\r\nCLIENT_ID= cid \r\nCLIENT_SECRET=s=1\r\nIDENTIFIANT_APP_TTLOCK=+213555000111\r\nMOT_DE_PASSE_APP_TTLOCK=pw\r\n');
+  assert.deepEqual(filled.missing, []);
+  assert.equal(filled.values.CLIENT_ID, 'cid');
+  assert.equal(filled.values.CLIENT_SECRET, 's=1');
+  assert.deepEqual(readForm('CLIENT_ID=cid\nCLIENT_SECRET=\n').missing, ['CLIENT_SECRET', 'IDENTIFIANT_APP_TTLOCK', 'MOT_DE_PASSE_APP_TTLOCK']);
+});
