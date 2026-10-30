@@ -259,6 +259,16 @@ class SupabaseBackend implements Backend {
         return rows.map(AccessCode.fromJson).toList();
       });
 
+  @override
+  Future<String> bleKey(String deviceId) =>
+      _guard(() async => await _client.rpc('get_ble_key', params: {'p_device_id': deviceId}) as String);
+
+  @override
+  Future<void> logBleAction(String deviceId, {required bool unlock, required bool ok, String? error}) => _guard(() => _client.rpc(
+        'log_ble_action',
+        params: {'p_device_id': deviceId, 'p_action': unlock ? 'unlock' : 'lock', 'p_ok': ok, 'p_error': error},
+      ));
+
   // ---------------------------------------------------------------- Commandes
   @override
   Future<DeviceCommand> sendCommand({

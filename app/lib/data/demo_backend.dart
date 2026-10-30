@@ -682,6 +682,27 @@ class DemoBackend implements Backend {
   }
 
   @override
+  Future<String> bleKey(String deviceId) async {
+    await _wait();
+    final d = _devices[deviceId];
+    final role = d == null ? null : _member(d['home_id'] as String)?['role'];
+    if (role != 'owner' && role != 'admin') throw const BackendException('denied', 'Réservé au propriétaire ou à un administrateur');
+    if (d!['security_validated_at'] == null) throw const BackendException('invalid', 'Commande bloquée : appareil sensible non validé');
+    _log(d['home_id'] as String, 'ble_key_read', deviceId: deviceId, result: 'ok');
+    return 'demo-lockdata';
+  }
+
+  @override
+  Future<void> logBleAction(String deviceId, {required bool unlock, required bool ok, String? error}) async {
+    final d = _devices[deviceId];
+    if (d == null) return;
+    _log(d['home_id'] as String, ok ? 'command' : 'command_failed',
+        deviceId: deviceId,
+        result: ok ? 'confirmed' : 'failed',
+        details: {'capability': 'lock_action', 'value': unlock ? 'unlock' : 'lock', 'channel': 'bluetooth', 'error': ?error});
+  }
+
+  @override
   Future<DeviceCommand?> getCommand(String commandId) async {
     final row = _commands[commandId];
     return row == null ? null : DeviceCommand.fromJson(row);

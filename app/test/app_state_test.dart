@@ -1,4 +1,5 @@
 
+import 'package:flowit_smart/core/ble_lock.dart';
 import 'package:flowit_smart/data/backend.dart';
 import 'package:flowit_smart/data/demo_backend.dart';
 import 'package:flowit_smart/models/models.dart';
@@ -11,8 +12,23 @@ class SilentBackend extends DemoBackend {
   SilentBackend() : super(latency: Duration.zero, confirmDelay: const Duration(hours: 1), liveSensors: false);
 }
 
-Future<AppState> signedIn(Backend backend, {Duration timeout = const Duration(seconds: 15)}) async {
-  final state = AppState(backend, commandTimeout: timeout);
+/// Bluetooth simulé : note les clés reçues, peut échouer.
+class FakeBle implements BleLock {
+  final calls = <(String, bool)>[];
+  BleLockException? failWith;
+
+  @override
+  bool get available => true;
+
+  @override
+  Future<void> control(String lockData, {required bool unlock}) async {
+    calls.add((lockData, unlock));
+    if (failWith != null) throw failWith!;
+  }
+}
+
+Future<AppState> signedIn(Backend backend, {Duration timeout = const Duration(seconds: 15), BleLock ble = const NoBleLock()}) async {
+  final state = AppState(backend, commandTimeout: timeout, ble: ble);
   await backend.signIn('test@flowit.dz', 'x');
   for (var i = 0; i < 50 && state.devices.isEmpty; i++) {
     await Future<void>.delayed(const Duration(milliseconds: 20));
@@ -105,6 +121,28 @@ void main() {
     expect(amina.receiver, 'amina@x.dz');
     await state.sendCommandAndWait(byName(state, 'Boîtier d\'accès'), 'ekey', {'action': 'freeze', 'key_id': amina.id});
     expect(SharedKey.fromState(byName(state, 'Boîtier d\'accès').state['ekeys']).firstWhere((k) => k.id == amina.id).isFrozen, isTrue);
+  });
+
+  test('Bluetooth : refusé tant que la serrure est bloquée, puis ouverture et fermeture journalisées', () async {
+    final ble = FakeBle();
+    final backend = DemoBackend(latency: Duration.zero, confirmDelay: const Duration(milliseconds: 50), liveSensors: false);
+    final state = await signedIn(backend, ble: ble);
+    final box = byName(state, 'Boîtier d\'accès');
+    expect(await state.bleControl(box, unlock: true), isFalse);
+    expect(ble.calls, isEmpty);
+
+    await state.setDeviceSecurity(box, true);
+    expect(await state.bleControl(byName(state, 'Boîtier d\'accès'), unlock: true), isTrue);
+    expect(await state.bleControl(byName(state, 'Boîtier d\'accès'), unlock: false), isTrue);
+    expect(ble.calls, [('demo-lockdata', true), ('demo-lockdata', false)]);
+
+    ble.failWith = const BleLockException('timeout', 'hors de portée');
+    expect(await state.bleControl(byName(state, 'Boîtier d\'accès'), unlock: true), isFalse);
+    expect(state.bleBusy, isNull);
+    await Future<void>.delayed(const Duration(milliseconds: 20));
+    final logs = await backend.listEvents(state.home!.id);
+    expect(logs.where((e) => e.eventType == 'ble_key_read'), hasLength(1), reason: 'clé lue une fois puis gardée en mémoire');
+    expect(logs.where((e) => e.details['channel'] == 'bluetooth').map((e) => e.eventType), containsAll(['command', 'command_failed']));
   });
 
   test('scène : exécution, résultat partiel journalisé (appareil hors ligne)', () async {

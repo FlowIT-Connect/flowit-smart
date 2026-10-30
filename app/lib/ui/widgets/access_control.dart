@@ -182,6 +182,8 @@ class _AccessControlPanelState extends State<AccessControlPanel> {
         ]));
       }
 
+      if (d.vendor == 'TTLock') children.add(_bleCard(context, state, d));
+
       final codes = _codes;
       children.add(_Card(children: [
         Row(children: [
@@ -301,6 +303,45 @@ IconData _methodIcon(String method) => switch (method) {
       'remote' => Icons.cloud_rounded,
       _ => Icons.sensor_door_rounded,
     };
+
+/// Ouverture / fermeture en Bluetooth devant la porte (app Android, sans passerelle TTLock).
+Widget _bleCard(BuildContext context, AppState state, Device d) {
+  final f = context.flow;
+  final theme = Theme.of(context);
+  final busy = state.bleBusy == d.id;
+  final idle = state.bleBusy == null;
+  return _Card(children: [
+    Row(children: [
+      TileIcon(Icons.bluetooth_rounded, color: f.brand),
+      const SizedBox(width: 14),
+      Expanded(child: Text(context.tr('access.ble.title'), style: theme.textTheme.titleMedium)),
+      if (busy) const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2.5)),
+    ]),
+    const SizedBox(height: 6),
+    Text(context.tr(state.ble.available ? 'access.ble.hint' : 'access.ble.androidOnly'),
+        style: theme.textTheme.bodySmall?.copyWith(color: f.inkSoft, height: 1.4)),
+    if (state.ble.available) ...[
+      const SizedBox(height: 12),
+      Row(children: [
+        Expanded(
+          child: FilledButton.icon(
+            onPressed: idle ? () => state.bleControl(d, unlock: true) : null,
+            icon: const Icon(Icons.lock_open_rounded),
+            label: Text(context.tr('access.ble.unlock')),
+          ),
+        ),
+        const SizedBox(width: 10),
+        Expanded(
+          child: OutlinedButton.icon(
+            onPressed: idle ? () => state.bleControl(d, unlock: false) : null,
+            icon: const Icon(Icons.lock_rounded),
+            label: Text(context.tr('access.ble.lock')),
+          ),
+        ),
+      ]),
+    ],
+  ]);
+}
 
 class _Card extends StatelessWidget {
   const _Card({required this.children, this.tint});

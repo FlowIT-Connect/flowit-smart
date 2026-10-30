@@ -159,6 +159,15 @@ describe('Passerelle avec serrures TTLock', () => {
     assert.equal(store.deviceByName('Porte garage').state.lock_state, 'locked');
   });
 
+  test('clé Bluetooth de la serrure transmise pour l\'app Android, jamais dans l\'état', () => {
+    const box = store.deviceByName('Boîtier entrée');
+    assert.equal(store.bleKeys.get(box.id).lock_data, 'lockdata-1001');
+    assert.equal(store.bleKeys.get(box.id).home_id, 'home-1');
+    assert.ok(!JSON.stringify(box.state).includes('lockdata'));
+    // Pas de clé du compte sur la porte du garage : rien n'est enregistré.
+    assert.equal(store.bleKeys.has(store.deviceByName('Porte garage').id), false);
+  });
+
   test('code refusé tant que la ou le propriétaire n\'a pas activé le boîtier', async () => {
     const box = store.deviceByName('Boîtier entrée');
     const c = await cmd(box, 'access_code', { type: 'one_time' });

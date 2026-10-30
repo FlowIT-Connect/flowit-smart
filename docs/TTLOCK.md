@@ -17,6 +17,7 @@ Téléphone (Solea) ⇄ Supabase ⇄ PC (FlowIT Bridge) ⇄ cloud TTLock ⇄ (pa
 | Historique des passages | Oui, mis à jour quand l'app TTLock se connecte à la serrure | Oui, en direct |
 | **Partager l'accès** avec une personne (clé électronique), pour toujours ou entre deux dates | **Oui** : elle ouvre avec l'app TTLock en Bluetooth | Oui |
 | **Désactiver / réactiver** un accès partagé, changer ses dates, le supprimer | **Oui** | Oui |
+| Ouvrir / fermer **devant la porte** (Bluetooth, app Android Solea) | **Oui** | Oui |
 | Ouvrir la porte à distance | Non | **Oui**, avec confirmation |
 | État ouvert / fermé | Non | Oui |
 
@@ -34,6 +35,20 @@ La passerelle Solea détecte toute seule si la serrure a une passerelle TTLock :
 - Un code créé reste valable dans la serrure même si vous bloquez à nouveau l'appareil
   dans Solea. Pour supprimer un code avant sa fin, passez par l'app TTLock
   (Codes > le code > Supprimer), près de la serrure.
+
+## Ouvrir devant la porte (Bluetooth, app Android)
+Sans passerelle TTLock, seul un téléphone tout proche peut ouvrir, en Bluetooth. La version
+web de Solea ne le peut pas : il faut l'**app Android Solea** (fichier `Solea.apk`, compilé
+par GitHub Actions, workflow « Construire l'app Android »).
+1. Fiche de la serrure > carte **Devant la porte (Bluetooth)** > **Ouvrir** ou **Fermer**.
+2. Le téléphone doit être à moins de 2 mètres, Bluetooth activé. Android demande une fois
+   l'autorisation « Appareils à proximité ».
+
+Sécurité : l'app reçoit la **clé Bluetooth** de la serrure (celle du compte administrateur
+TTLock de la passerelle). Elle n'est donnée qu'au propriétaire et aux administrateurs, une
+fois la serrure activée. Chaque lecture de la clé et chaque ouverture sont inscrites au
+journal. Elle reste en mémoire seulement jusqu'à la déconnexion, et n'est jamais écrite sur
+le téléphone. Ne nommez administrateurs que des personnes de confiance.
 
 ## 1. Vérifier le compte TTLock (une fois)
 1. Dans l'**app TTLock** du téléphone, le boîtier doit apparaître et vous devez en être

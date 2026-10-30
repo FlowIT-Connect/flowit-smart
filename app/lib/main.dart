@@ -5,6 +5,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import 'app.dart';
+import 'core/ble_lock.dart';
 import 'core/config.dart';
 import 'core/device_photos.dart';
 import 'core/l10n.dart';
@@ -40,5 +41,5 @@ Future<void> main() async {
   } catch (_) {}
   locale ??= L10n.resolve(WidgetsBinding.instance.platformDispatcher.locale);
 
-  runApp(FlowItApp(state: AppState(backend, initialLocale: locale, weatherService: OpenMeteoWeather())));
+  runApp(FlowItApp(state: AppState(backend, initialLocale: locale, weatherService: OpenMeteoWeather(), ble: const TTLockBle())));
 }

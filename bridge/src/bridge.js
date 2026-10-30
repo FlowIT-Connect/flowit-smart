@@ -127,10 +127,16 @@ export class Bridge {
       }
       seen.add(desc.externalId);
       const prev = this.devices.get(deviceId);
+      if (desc.bleKey !== undefined && desc.bleKey !== prev?.bleKey) {
+        // Jamais dans les journaux : la clé ouvre la serrure.
+        await this.store.saveBleKey(deviceId, this.homeId, desc.bleKey);
+        log.info('bridge.ble_key_synced', { device_id: deviceId, present: Boolean(desc.bleKey) });
+      }
       this.devices.set(deviceId, {
         externalId: desc.externalId,
         caps: new Map(desc.capabilities.map((c) => [c.capability_key, c])),
         isSensitive: desc.isSensitive || prev?.isSensitive || false,
+        bleKey: desc.bleKey,
         state: snap.state,
         availability: snap.availability,
       });

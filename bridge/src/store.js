@@ -155,6 +155,15 @@ export class SupabaseStore {
     check(await this.db.from('access_codes').insert(row));
   }
 
+  /** Clé Bluetooth d'une serrure (lue seulement par get_ble_key) ; null l'efface. */
+  async saveBleKey(deviceId, homeId, lockData) {
+    if (lockData) {
+      check(await this.db.from('device_ble_keys').upsert({ device_id: deviceId, home_id: homeId, lock_data: lockData, updated_at: new Date().toISOString() }));
+    } else {
+      check(await this.db.from('device_ble_keys').delete().eq('device_id', deviceId));
+    }
+  }
+
   async listAutomations(homeId) {
     return check(await this.db.from('automations').select('*').eq('home_id', homeId).eq('enabled', true).eq('run_locally', true));
   }
