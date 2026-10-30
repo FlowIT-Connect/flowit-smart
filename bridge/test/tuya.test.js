@@ -41,9 +41,9 @@ describe('API Tuya', () => {
   test('jeton expiré : renouvelé automatiquement', async () => {
     const cloud = new FakeTuyaCloud();
     const client = new TuyaClient({ accessId: ACCESS_ID, accessSecret: ACCESS_SECRET, baseUrl: 'https://openapi.tuyaeu.com', fetchImpl: cloud.fetch });
-    assert.equal((await client.listDevices()).length, 7);
+    assert.equal((await client.listDevices()).length, 9);
     cloud.token = 'tok-2'; // le cloud invalide l'ancien jeton
-    assert.equal((await client.listDevices()).length, 7);
+    assert.equal((await client.listDevices()).length, 9);
     assert.equal(cloud.calls.filter((c) => c === 'GET /v1.0/token').length, 2);
   });
 
@@ -102,6 +102,23 @@ describe('Correspondance Tuya → FlowIT', () => {
     assert.deepEqual(d.capabilities.map((c) => c.capability_key), ['battery']);
   });
 
+  test('rideau avec position : ouverture en % + boutons Ouvrir / Stop / Fermer', () => {
+    const d = descOf('curtain1');
+    assert.deepEqual(d.capabilities.map((c) => c.capability_key), ['cover_position', 'cover_control']);
+    assert.deepEqual(d.capabilities[1].metadata.options, ['open', 'stop', 'close']); // « continue » n'est pas proposé
+    const st = statusMap(demo('curtain1').status);
+    assert.equal(d.capMap.cover_position.read(st), 30);
+    assert.equal(d.capMap.cover_control.read(st), 'stop');
+    assert.deepEqual(d.capMap.cover_control.write('open'), [{ code: 'control', value: 'open' }]);
+  });
+
+  test('rideau sans position : boutons seuls, dans l\'ordre Ouvrir / Stop / Fermer', () => {
+    const d = descOf('curtain2');
+    assert.deepEqual(d.capabilities.map((c) => c.capability_key), ['cover_control']);
+    assert.deepEqual(d.capabilities[0].metadata.options, ['open', 'stop', 'close']);
+    assert.equal(d.capMap.cover_control.read(statusMap([{ code: 'control', value: 'continue' }])), null);
+  });
+
   test('appareil hors ligne : indisponible', () => {
     assert.deepEqual(tuyaSnapshot(descOf('off1'), new Map(), false), { state: {}, availability: 'unavailable' });
   });
@@ -135,7 +152,7 @@ describe('Passerelle avec Tuya Cloud (sans box)', () => {
     store.insertCommand({ home_id: 'home-1', device_id: device.id, capability_key, value, idempotency_key: Math.random().toString(), requested_by: 'u1' });
 
   test('inventaire : appareils importés, intégration connectée', () => {
-    assert.equal(store.devices.size, 6); // la télécommande IR sans fonction reconnue est ignorée
+    assert.equal(store.devices.size, 8); // la télécommande IR sans fonction reconnue est ignorée
     assert.equal(store.integrations.get('integ-1').status, 'connected');
     assert.equal(store.deviceByName('Prise garage').availability, 'unavailable');
     assert.equal(store.deviceByName('Serrure').is_sensitive, true);
@@ -155,6 +172,21 @@ describe('Passerelle avec Tuya Cloud (sans box)', () => {
     const c = await cmd(bulb, 'color', '#3F51B5');
     assert.ok(await until(() => c.status === 'confirmed'), `statut ${c.status}`);
     assert.equal(cloud.devices.get('bulb1').status.find((s) => s.code === 'work_mode').value, 'colour');
+  });
+
+  test('rideau : bouton Stop envoyé au moteur et confirmé', async () => {
+    const curtain = store.deviceByName('Rideau chambre');
+    assert.equal(curtain.state.cover_control, 'close');
+    const c = await cmd(curtain, 'cover_control', 'stop');
+    assert.ok(await until(() => c.status === 'confirmed'), `statut ${c.status}`);
+    assert.deepEqual(cloud.commands.at(-1), { id: 'curtain2', commands: [{ code: 'control', value: 'stop' }] });
+  });
+
+  test('rideau : action non proposée par le moteur refusée', async () => {
+    const c = await cmd(store.deviceByName('Rideau salon'), 'cover_control', 'continue');
+    assert.ok(await until(() => !['pending', 'sent'].includes(c.status)));
+    assert.equal(c.status, 'rejected');
+    assert.equal(cloud.commands.length, 0);
   });
 
   test('appareil hors ligne : échec immédiat, pas d\'appel au cloud', async () => {

@@ -60,7 +60,7 @@ DeviceKind deviceKind(Device d) {
   bool has(String k) => d.capability(k) != null;
   if (d.isCamera) return DeviceKind.camera;
   if (d.isSensitive || has('lock')) return DeviceKind.lock;
-  if (has('cover_position')) return DeviceKind.cover;
+  if (has('cover_position') || has('cover_control')) return DeviceKind.cover;
   if (has('target_temperature')) {
     final modes = d.capability('hvac_mode')?.options ?? const [];
     return modes.any(_acModes.contains) ? DeviceKind.airConditioner : DeviceKind.climate;
@@ -120,7 +120,7 @@ IconData capabilityIcon(String key) => switch (key) {
       'brightness' => Icons.brightness_6_rounded,
       'color_temp' => Icons.wb_incandescent_rounded,
       'color' => Icons.palette_rounded,
-      'cover_position' => Icons.blinds_rounded,
+      'cover_position' || 'cover_control' => Icons.blinds_rounded,
       'target_temperature' => Icons.thermostat_rounded,
       'hvac_mode' => Icons.mode_fan_off_rounded,
       'lock' => Icons.lock_rounded,

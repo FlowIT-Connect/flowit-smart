@@ -61,6 +61,25 @@ void main() {
     expect(find.text('Verrou'), findsNothing);
   });
 
+  testWidgets('rideau : boutons Ouvrir / Stop / Fermer', (tester) async {
+    final state = await pumpApp(tester);
+    await signIn(tester);
+    await tester.tap(find.text('Appareils').last);
+    await tester.pumpAndSettle();
+    await tester.enterText(find.byType(TextField).first, 'volet');
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Volet salon'));
+    await tester.pumpAndSettle();
+    expect(find.widgetWithText(OutlinedButton, 'Ouvrir'), findsOneWidget, reason: 'pas de doublon avec le curseur');
+    expect(find.widgetWithText(FilledButton, 'Stop'), findsOneWidget);
+    await tester.tap(find.widgetWithText(OutlinedButton, 'Fermer'));
+    await tester.pump(const Duration(milliseconds: 400));
+    final volet = state.devices.values.firstWhere((d) => d.name == 'Volet salon');
+    expect(volet.state['cover_control'], 'close');
+    expect(volet.state['cover_position'], 0);
+    await tester.pump(const Duration(seconds: 3));
+  });
+
   testWidgets('arabe : interface de droite à gauche sans débordement', (tester) async {
     await pumpApp(tester, locale: const Locale('ar'));
     await signIn(tester);

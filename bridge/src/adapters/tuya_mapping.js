@@ -12,6 +12,8 @@ const SENSITIVE_CATEGORIES = new Set(['ms', 'jtmspro', 'jtmsbh', 'mal', 'videolo
 const SWITCH_CODE = /^switch(?:_led)?(?:_(\d+))?$/;
 const KELVIN_MIN = 2700;
 const KELVIN_MAX = 6500;
+/** Ordre d'affichage des boutons d'un rideau (le code Tuya `control` en déclare un sous-ensemble). */
+const COVER_ACTIONS = ['open', 'stop', 'close'];
 
 const SENSORS = [
   // [codes possibles, clé FlowIT, unité]
@@ -157,6 +159,15 @@ export function tuyaCapabilities(category, codes) {
       key: 'cover_position', type: 'number', writable: true, metadata: { min: 0, max: 100, step: 1, unit: '%' },
       read: (st) => num(st.get(readCode)),
       write: (v) => [{ code: 'percent_control', value: Math.round(v) }],
+    });
+  }
+  // Rideaux / volets : boutons Ouvrir / Stop / Fermer (seuls pilotes des moteurs sans position).
+  const controlOptions = codes.get('control')?.values?.range?.filter((o) => COVER_ACTIONS.includes(o)) ?? [];
+  if (writable('control') && controlOptions.length) {
+    caps.push({
+      key: 'cover_control', type: 'enum', writable: true, metadata: { options: COVER_ACTIONS.filter((o) => controlOptions.includes(o)) },
+      read: (st) => (COVER_ACTIONS.includes(st.get('control')) ? st.get('control') : null),
+      write: (v) => [{ code: 'control', value: v }],
     });
   }
 
