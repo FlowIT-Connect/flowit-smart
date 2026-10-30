@@ -87,6 +87,14 @@ export class FakeTTLockCloud {
         if (path === '/v3/key/changePeriod') Object.assign(key, { startDate: Number(p.startDate), endDate: Number(p.endDate) });
         return { errcode: 0 };
       }
+      case '/v3/lock/initialize': {
+        if (!p.lockData) return { errcode: -3, errmsg: 'lockData is required' };
+        const lockId = 2000 + this.locks.length;
+        this.locks.push({ lockId, lockName: 'M201_new', lockAlias: p.lockAlias ?? 'M201_new', electricQuantity: 100, hasGateway: 0 });
+        const keyId = this.nextKeyId++;
+        this.keys.push({ keyId, lockId, username: USERNAME, keyName: 'Admin', keyStatus: '110401', startDate: 0, endDate: 0 });
+        return { lockId, keyId };
+      }
       case '/v3/lock/unlock':
         if (!lock?.hasGateway) return { errcode: -2012, errmsg: 'lock is not connected to any gateway' };
         this.openState.set(lock.lockId, 1);

@@ -21,6 +21,8 @@ Démarrage rapide sans matériel ni compte : `cd app && flutter run -d chrome`
 
 **Serrures et contrôles d'accès TTLock** (codes d'accès, historique, ouverture à distance avec passerelle G2/G3) : voir [docs/TTLOCK.md](docs/TTLOCK.md).
 
+**Ajouter un appareil depuis Solea** (serrure TTLock en Bluetooth, appareil Smart Life guidé) : voir [docs/AJOUTER_UN_APPAREIL.md](docs/AJOUTER_UN_APPAREIL.md).
+
 **Caméras IP, photos d'appareils, température extérieure** : voir [docs/CAMERAS_PHOTOS_METEO.md](docs/CAMERAS_PHOTOS_METEO.md).
 
 Lire ensuite : [Architecture](docs/ARCHITECTURE.md), [Installation](docs/INSTALLATION.md),

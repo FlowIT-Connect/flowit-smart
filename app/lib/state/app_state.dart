@@ -5,6 +5,7 @@ import 'dart:typed_data';
 import 'package:flutter/widgets.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import '../core/app_launcher.dart';
 import '../core/ble_lock.dart';
 import '../core/l10n.dart';
 import '../data/backend.dart';
@@ -36,7 +37,12 @@ class Notice {
 /// État global de l'application (session, maison courante, données, temps réel).
 class AppState extends ChangeNotifier {
   AppState(this.backend,
-      {Locale? initialLocale, this.commandTimeout = const Duration(seconds: 15), this.weatherService, this.ble = const NoBleLock()})
+      {Locale? initialLocale,
+      this.commandTimeout = const Duration(seconds: 15),
+      this.weatherService,
+      this.ble = const NoBleLock(),
+      this.launcher = const AppLauncher(),
+      this.pairingPoll = const Duration(seconds: 2)})
       : locale = initialLocale ?? const Locale('fr') {
     _authSub = backend.authChanges.listen(_onAuth);
     _recoverySub = backend.passwordRecovery.listen((_) {
@@ -52,6 +58,12 @@ class AppState extends ChangeNotifier {
   /// Bluetooth TTLock (app Android) ; indisponible sur le web.
   final BleLock ble;
   final _bleKeys = <String, String>{};
+
+  /// Ouverture de Smart Life pour coupler un appareil Tuya (app Android).
+  final AppLauncher launcher;
+
+  /// Fréquence de lecture de l'état d'un ajout d'appareil.
+  final Duration pairingPoll;
 
   /// Serrure en cours d'ouverture / fermeture Bluetooth (id de l'appareil).
   String? bleBusy;
@@ -485,6 +497,41 @@ class AppState extends ChangeNotifier {
       bleBusy = null;
       notifyListeners();
     }
+  }
+
+  // ---------------------------------------------------------------- Ajout d'appareils
+  /// Dépose une demande d'ajout pour la passerelle ; null (avec message) en cas de refus.
+  Future<String?> requestPairing({required String kind, String? name, String? roomId, String? lockData}) async {
+    final h = home;
+    if (h == null) return null;
+    try {
+      final id = await backend.requestPairing(h.id, kind: kind, name: name, roomId: roomId, lockData: lockData);
+      _setOnline(true);
+      return id;
+    } on BackendException catch (e) {
+      if (e.code == 'network') _setOnline(false);
+      notify(_errorText(e), error: true);
+      return null;
+    }
+  }
+
+  /// Attend la réponse de la passerelle. Renvoie la demande terminée, ou la dernière lue
+  /// (encore en attente) si [timeout] est dépassé ; null si elle n'a pas pu être lue.
+  Future<PairingRequest?> waitPairing(String requestId, {Duration timeout = const Duration(minutes: 4)}) async {
+    final end = DateTime.now().add(timeout);
+    PairingRequest? last;
+    while (true) {
+      try {
+        last = await backend.getPairing(requestId) ?? last;
+      } on BackendException {
+        // Réseau coupé un instant : on réessaie jusqu'au délai.
+      }
+      if (last != null && last.isFinished) break;
+      if (DateTime.now().isAfter(end)) return last;
+      await Future<void>.delayed(pairingPoll);
+    }
+    if (last.status == 'done') await refreshHome(silent: true);
+    return last;
   }
 
   /// Codes d'accès d'une serrure (vide si l'on n'est ni propriétaire ni administrateur).

@@ -5,7 +5,7 @@ name: Construire l'app Android
 
 on:
   push:
-    branches: [main, claude/project-thread-q16htl]
+    branches: [main, claude/project-thread-sdqxxm]
     paths: ["app/**", ".github/workflows/build-android.yml"]
   workflow_dispatch:
 

@@ -186,6 +186,30 @@ describe('Passerelle avec serrures TTLock', () => {
     }
   });
 
+  test('serrure installée depuis l\'app Android : enregistrée chez TTLock, nommée, rangée, clé effacée', async () => {
+    const req = { id: 'pair-1', home_id: 'home-1', kind: 'ttlock_lock', name: 'Portail', room_id: 'room-hall', lock_data: 'LOCKDATA-NEUVE', status: 'pending', created_at: new Date().toISOString() };
+    store.pairings.push(req);
+    assert.ok(await until(() => req.status === 'done'), `statut ${req.status} ${req.error}`);
+    const init = cloud.calls.find((c) => c.path === '/v3/lock/initialize');
+    assert.equal(init.params.lockData, 'LOCKDATA-NEUVE');
+    assert.equal(init.params.lockAlias, 'Portail');
+    const lock = store.devices.get(req.device_id);
+    assert.equal(lock.name, 'Portail');
+    assert.equal(lock.room_id, 'room-hall');
+    assert.equal(lock.is_sensitive, true);
+    assert.equal(req.lock_data, null);
+    assert.ok(store.bleKeys.has(req.device_id), 'clé Bluetooth prête pour ouvrir depuis l\'app');
+  });
+
+  test('serrure refusée par TTLock : échec expliqué, clé effacée', async () => {
+    cloud.failNext = -1003;
+    const req = { id: 'pair-2', home_id: 'home-1', kind: 'ttlock_lock', name: null, room_id: null, lock_data: 'LOCKDATA', status: 'pending', created_at: new Date().toISOString() };
+    store.pairings.push(req);
+    assert.ok(await until(() => req.status === 'failed'));
+    assert.match(req.error, /TTLock -1003/);
+    assert.equal(req.lock_data, null);
+  });
+
   test('code refusé tant que la ou le propriétaire n\'a pas activé le boîtier', async () => {
     const box = store.deviceByName('Boîtier entrée');
     const c = await cmd(box, 'access_code', { type: 'one_time' });

@@ -87,6 +87,11 @@ export class TuyaCloudAdapter extends EventEmitter {
     this.emit('inventory');
   }
 
+  /** Relecture immédiate (ajout d'un appareil depuis l'application). */
+  rescan() {
+    return this.#poll();
+  }
+
   async #poll() {
     if (this.polling) return;
     this.polling = true;

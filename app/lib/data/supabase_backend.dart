@@ -269,6 +269,23 @@ class SupabaseBackend implements Backend {
         params: {'p_device_id': deviceId, 'p_action': unlock ? 'unlock' : 'lock', 'p_ok': ok, 'p_error': error},
       ));
 
+  // ---------------------------------------------------------------- Ajout d'appareils
+  @override
+  Future<String> requestPairing(String homeId, {required String kind, String? name, String? roomId, String? lockData}) =>
+      _guard(() async => await _client.rpc('request_pairing', params: {
+            'p_home_id': homeId,
+            'p_kind': kind,
+            'p_name': name,
+            'p_room_id': roomId,
+            'p_lock_data': lockData,
+          }) as String);
+
+  @override
+  Future<PairingRequest?> getPairing(String requestId) => _guard(() async {
+        final row = await _client.from('pairing_requests').select('id, kind, status, error, device_id').eq('id', requestId).maybeSingle();
+        return row == null ? null : PairingRequest.fromJson(row);
+      });
+
   // ---------------------------------------------------------------- Commandes
   @override
   Future<DeviceCommand> sendCommand({

@@ -73,6 +73,12 @@ abstract class Backend {
   /// Résultat d'une ouverture / fermeture en Bluetooth, inscrit au journal.
   Future<void> logBleAction(String deviceId, {required bool unlock, required bool ok, String? error});
 
+  // --- Ajout d'appareils (propriétaire ou administrateur)
+  /// Dépose une demande d'ajout pour la passerelle : [kind] « ttlock_lock » (serrure installée
+  /// en Bluetooth, avec sa clé [lockData]) ou « scan » (appareil couplé dans Smart Life).
+  Future<String> requestPairing(String homeId, {required String kind, String? name, String? roomId, String? lockData});
+  Future<PairingRequest?> getPairing(String requestId);
+
   // --- Commandes (§5.4)
   Future<DeviceCommand> sendCommand({
     required String homeId,

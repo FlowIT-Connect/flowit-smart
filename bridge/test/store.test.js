@@ -71,3 +71,21 @@ test('image de caméra : dépôt dans le bucket privé camera-frames, écrasée 
   assert.equal(calls[0].path, '/storage/v1/object/camera-frames/h1/d1.jpg');
   assert.equal(calls[0].upsert, 'true');
 });
+
+test('ajout d\'appareils : demande réservée une seule fois, clé de serrure effacée à la fin', async () => {
+  const r = recorder({ 'PATCH /rest/v1/pairing_requests': [{ id: 'p1' }] });
+  const store = new SupabaseStore('http://db.local', 'service', { fetch: r.fetch });
+  await store.fetchPairings('h1');
+  assert.match(r.calls[0].query, /home_id=eq\.h1/);
+  assert.match(r.calls[0].query, /status=eq\.pending/);
+  assert.equal(await store.claimPairing('p1'), true);
+  assert.match(r.calls[1].query, /status=eq\.pending/);
+  assert.deepEqual(r.calls[1].body, { status: 'working' });
+  await store.completePairing('p1', 'done', null, 'd9');
+  assert.equal(r.calls[2].body.lock_data, null);
+  assert.equal(r.calls[2].body.device_id, 'd9');
+  await store.findNewDevice('i1', '2026-10-31T10:00:00.000Z', ['d9']);
+  assert.match(r.calls[3].query, /integration_id=eq\.i1/);
+  assert.match(r.calls[3].query, /created_at=gt\.2026-10-31T10:00:00\.000Z/);
+  assert.match(r.calls[3].query, /id=not\.in\.\(d9\)/);
+});

@@ -5,6 +5,7 @@ import '../../models/models.dart';
 import '../../state/app_state.dart';
 import '../widgets/common.dart';
 import '../widgets/device_controls.dart';
+import 'add_device_screen.dart';
 
 enum _Filter { all, available, unavailable, hidden }
 
@@ -33,7 +34,17 @@ class _DevicesScreenState extends State<DevicesScreen> {
       return '${d.name} ${d.vendor ?? ''} ${d.model ?? ''} $room ${d.protocol}'.toLowerCase().contains(q);
     }).toList();
 
-    return CustomScrollView(slivers: [
+    return Scaffold(
+      backgroundColor: Colors.transparent,
+      floatingActionButton: state.canManage
+          ? FloatingActionButton.extended(
+              heroTag: 'device-add',
+              onPressed: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => const AddDeviceScreen())),
+              icon: const Icon(Icons.add_rounded),
+              label: Text(context.tr('pair.add')),
+            )
+          : null,
+      body: CustomScrollView(slivers: [
       SliverToBoxAdapter(
         child: Padding(
           padding: const EdgeInsets.fromLTRB(16, 8, 16, 12),
@@ -76,7 +87,8 @@ class _DevicesScreenState extends State<DevicesScreen> {
         )
       else
         DeviceGrid(devices),
-      const SliverToBoxAdapter(child: SizedBox(height: 24)),
-    ]);
+      const SliverToBoxAdapter(child: SizedBox(height: 104)),
+    ]),
+    );
   }
 }

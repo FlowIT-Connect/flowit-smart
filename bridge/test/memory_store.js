@@ -18,6 +18,7 @@ export class MemoryStore {
     this.frameNotices = [];
     this.accessCodes = [];
     this.bleKeys = new Map();
+    this.pairings = [];
   }
 
   async getIntegration(id) { return this.integrations.get(id) ?? null; }
@@ -30,7 +31,7 @@ export class MemoryStore {
   async listBindings(integrationId) { return this.bindings.filter((b) => b.integration_id === integrationId); }
   async createDevice(row, externalId, caps) {
     const id = randomUUID();
-    this.devices.set(id, { id, is_sensitive: false, ...row });
+    this.devices.set(id, { id, is_sensitive: false, created_at: new Date().toISOString(), ...row });
     this.bindings.push({ device_id: id, integration_id: row.integration_id, external_id: externalId });
     await this.replaceCapabilities(id, caps);
     return id;
@@ -76,6 +77,25 @@ export class MemoryStore {
   async saveBleKey(deviceId, homeId, lockData) {
     if (lockData) this.bleKeys.set(deviceId, { home_id: homeId, lock_data: lockData });
     else this.bleKeys.delete(deviceId);
+  }
+  async fetchPairings(homeId) { return this.pairings.filter((p) => p.home_id === homeId && p.status === 'pending').map((p) => ({ ...p })); }
+  async claimPairing(id) {
+    const p = this.pairings.find((x) => x.id === id);
+    if (p?.status !== 'pending') return false;
+    p.status = 'working';
+    return true;
+  }
+  async completePairing(id, status, error, deviceId) {
+    Object.assign(this.pairings.find((x) => x.id === id), { status, error, device_id: deviceId ?? null, lock_data: null, completed_at: new Date().toISOString() });
+  }
+  async failStalePairings(homeId, olderThanIso, error) {
+    for (const p of this.pairings) {
+      if (p.home_id === homeId && (p.status === 'working' || (p.status === 'pending' && p.created_at < olderThanIso))) Object.assign(p, { status: 'failed', error, lock_data: null });
+    }
+  }
+  async findNewDevice(integrationId, sinceIso, excludeIds = []) {
+    const d = [...this.devices.values()].find((x) => x.integration_id === integrationId && x.created_at > sinceIso && !excludeIds.includes(x.id));
+    return d?.id ?? null;
   }
   async listAutomations(homeId) { return this.automations.filter((a) => a.home_id === homeId && a.enabled && a.run_locally !== false); }
   async listDeviceStates() { return Object.fromEntries([...this.devices.values()].map((d) => [d.id, d.state])); }

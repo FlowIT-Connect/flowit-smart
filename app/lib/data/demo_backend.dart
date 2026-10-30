@@ -51,6 +51,10 @@ class DemoBackend implements Backend {
   final _logs = <Map<String, dynamic>>[];
   final _photos = <String, Uint8List>{};
   final _accessCodes = <Map<String, dynamic>>[];
+  final _pairings = <String, Map<String, dynamic>>{};
+
+  /// Délai simulé de la passerelle pour un ajout d'appareil.
+  Duration pairingDelay = const Duration(seconds: 3);
 
   @override
   bool get isDemo => true;
@@ -700,6 +704,57 @@ class DemoBackend implements Backend {
         deviceId: deviceId,
         result: ok ? 'confirmed' : 'failed',
         details: {'capability': 'lock_action', 'value': unlock ? 'unlock' : 'lock', 'channel': 'bluetooth', 'error': ?error});
+  }
+
+  // ------------------------------------------------------------------ Ajout d'appareils
+  @override
+  Future<String> requestPairing(String homeId, {required String kind, String? name, String? roomId, String? lockData}) async {
+    await _wait();
+    final role = _member(homeId)?['role'];
+    if (role != 'owner' && role != 'admin') throw const BackendException('denied', 'Réservé au propriétaire ou à un administrateur');
+    if (kind == 'ttlock_lock' && (lockData == null || lockData.length < 16)) throw const BackendException('invalid', 'Clé de la serrure manquante');
+    final id = newUuid();
+    _pairings[id] = {'id': id, 'home_id': homeId, 'kind': kind, 'status': 'pending', 'error': null, 'device_id': null};
+    _log(homeId, 'config_changed', requestId: id, result: 'pairing_requested', details: {'kind': kind});
+    // La « passerelle » démo ajoute un appareil fictif après quelques secondes.
+    Timer(pairingDelay, () {
+      final lock = kind == 'ttlock_lock';
+      final deviceId = newUuid();
+      _devices[deviceId] = {
+        'id': deviceId,
+        'home_id': homeId,
+        'room_id': roomId,
+        'name': name ?? (lock ? 'Nouvelle serrure' : 'Prise connectée'),
+        'vendor': lock ? 'TTLock' : 'Tuya',
+        'model': lock ? 'Serrure TTLock' : 'Smart Plug',
+        'protocol': lock ? 'ble' : 'tuya',
+        'connection_source': 'cloud',
+        'availability': 'available',
+        'state': lock ? {'battery': 100, 'access_log': <dynamic>[]} : {'switch': false},
+        'last_seen_at': _now(),
+        'updated_at': _now(),
+        'is_pinned': false,
+        'is_hidden': false,
+        'is_sensitive': lock,
+      };
+      if (lock) {
+        _caps.addAll([
+          {'device_id': deviceId, 'capability_key': 'access_code', 'type': 'string', 'writable': true, 'metadata': {'kind': 'access_code', 'options': ['one_time', 'period', 'permanent']}},
+          {'device_id': deviceId, 'capability_key': 'battery', 'type': 'sensor', 'writable': false, 'metadata': {'unit': '%'}},
+        ]);
+      } else {
+        _caps.add({'device_id': deviceId, 'capability_key': 'switch', 'type': 'boolean', 'writable': true, 'metadata': {}});
+      }
+      _pairings[id]!.addAll({'status': 'done', 'device_id': deviceId});
+      _events.add(RealtimeEvent('devices', 'INSERT', Map<String, dynamic>.from(_devices[deviceId]!)));
+    });
+    return id;
+  }
+
+  @override
+  Future<PairingRequest?> getPairing(String requestId) async {
+    final row = _pairings[requestId];
+    return row == null ? null : PairingRequest.fromJson(row);
   }
 
   @override

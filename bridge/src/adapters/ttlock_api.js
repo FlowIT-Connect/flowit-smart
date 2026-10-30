@@ -136,6 +136,15 @@ export class TTLockClient {
     return byLock;
   }
 
+  /**
+   * Enregistre sur ce compte une serrure que l'app Android vient d'installer en Bluetooth
+   * (lockData renvoyé par la serrure). Ce compte en devient l'administrateur.
+   * @returns {Promise<{lockId:number, keyId:number}>}
+   */
+  initializeLock(lockData, alias) {
+    return this.request('POST', '/v3/lock/initialize', { lockData, lockAlias: alias || undefined });
+  }
+
   /** Derniers passages enregistrés (remontés par une passerelle ou l'app TTLock en Bluetooth). */
   async listRecords(lockId, pageSize = 20) {
     const r = await this.request('GET', '/v3/lockRecord/list', { lockId, pageNo: 1, pageSize, startDate: 0, endDate: 0 });

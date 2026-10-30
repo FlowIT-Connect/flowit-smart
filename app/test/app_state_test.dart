@@ -25,6 +25,17 @@ class FakeBle implements BleLock {
     calls.add((lockData, unlock));
     if (failWith != null) throw failWith!;
   }
+
+  final resets = <String>[];
+
+  @override
+  Stream<NewLock> scanNewLocks() => Stream.value(const NewLock(name: 'M201_ab12', mac: 'AA:BB', version: '{}', rssi: -60));
+
+  @override
+  Future<String> initLock(NewLock lock) async => 'lockdata-neuve-${lock.mac}';
+
+  @override
+  Future<void> resetLock(String lockData) async => resets.add(lockData);
 }
 
 Future<AppState> signedIn(Backend backend, {Duration timeout = const Duration(seconds: 15), BleLock ble = const NoBleLock()}) async {
@@ -157,5 +168,44 @@ void main() {
     expect(run.results, hasLength(4));
     final events = await state.backend.listEvents(state.home!.id);
     expect(events.any((e) => e.eventType == 'scene_finished'), isTrue);
+  });
+
+  test('ajout d\'un appareil Smart Life : la passerelle le crée, nommé et rangé', () async {
+    final backend = DemoBackend(latency: Duration.zero, liveSensors: false)..pairingDelay = const Duration(milliseconds: 100);
+    final state = await signedIn(backend);
+    final salon = state.rooms.firstWhere((r) => r.name == 'Salon');
+    final before = state.devices.length;
+    final id = await state.requestPairing(kind: 'scan', name: 'Prise bureau', roomId: salon.id);
+    expect(id, isNotNull);
+    final r = await state.waitPairing(id!, timeout: const Duration(seconds: 2));
+    expect(r?.status, 'done');
+    expect(state.devices.length, before + 1);
+    final added = state.devices[r!.deviceId]!;
+    expect(added.name, 'Prise bureau');
+    expect(added.roomId, salon.id);
+  });
+
+  test('ajout d\'une serrure : clé exigée, serrure sensible ajoutée', () async {
+    final backend = DemoBackend(latency: Duration.zero, liveSensors: false)..pairingDelay = const Duration(milliseconds: 100);
+    final state = await signedIn(backend);
+    expect(await state.requestPairing(kind: 'ttlock_lock'), isNull, reason: 'sans clé de serrure');
+    final ble = FakeBle();
+    final lockData = await ble.initLock(await ble.scanNewLocks().first);
+    final id = await state.requestPairing(kind: 'ttlock_lock', name: 'Portail', lockData: lockData);
+    final r = await state.waitPairing(id!, timeout: const Duration(seconds: 2));
+    expect(r?.status, 'done');
+    expect(state.devices[r!.deviceId]!.isSensitive, isTrue);
+  });
+
+  test('passerelle muette : l\'attente s\'arrête au délai, demande encore en cours', () async {
+    final backend = DemoBackend(latency: Duration.zero, liveSensors: false)..pairingDelay = const Duration(hours: 1);
+    final state = AppState(backend, pairingPoll: const Duration(milliseconds: 20));
+    await backend.signIn('test@flowit.dz', 'x');
+    for (var i = 0; i < 50 && state.home == null; i++) {
+      await Future<void>.delayed(const Duration(milliseconds: 20));
+    }
+    final id = await state.requestPairing(kind: 'scan');
+    final r = await state.waitPairing(id!, timeout: const Duration(milliseconds: 150));
+    expect(r?.status, 'pending');
   });
 }

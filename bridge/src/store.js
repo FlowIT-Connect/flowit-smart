@@ -164,6 +164,51 @@ export class SupabaseStore {
     }
   }
 
+  // ---------------------------------------------------------------- Ajout d'appareils
+  /** Demandes d'ajout déposées depuis l'application (voir 20261031000000_solea_pairing.sql). */
+  async fetchPairings(homeId) {
+    return check(
+      await this.db
+        .from('pairing_requests')
+        .select('id, kind, name, room_id, lock_data, created_at')
+        .eq('home_id', homeId)
+        .eq('status', 'pending')
+        .order('created_at')
+        .limit(5),
+    );
+  }
+
+  /** Passage atomique pending → working : une seule passerelle traite une demande. */
+  async claimPairing(id) {
+    const rows = check(await this.db.from('pairing_requests').update({ status: 'working' }).eq('id', id).eq('status', 'pending').select('id'));
+    return rows.length === 1;
+  }
+
+  /** Résultat de la demande ; la clé de la serrure est effacée dans tous les cas. */
+  async completePairing(id, status, error, deviceId) {
+    check(
+      await this.db
+        .from('pairing_requests')
+        .update({ status, error, device_id: deviceId ?? null, lock_data: null, completed_at: new Date().toISOString() })
+        .eq('id', id),
+    );
+  }
+
+  /** Demandes restées en cours lors d'un arrêt brutal, ou trop anciennes. */
+  async failStalePairings(homeId, olderThanIso, error) {
+    const patch = { status: 'failed', error, lock_data: null, completed_at: new Date().toISOString() };
+    check(await this.db.from('pairing_requests').update(patch).eq('home_id', homeId).eq('status', 'working'));
+    check(await this.db.from('pairing_requests').update(patch).eq('home_id', homeId).eq('status', 'pending').lt('created_at', olderThanIso));
+  }
+
+  /** Premier appareil de l'intégration créé après [sinceIso], hors [excludeIds]. */
+  async findNewDevice(integrationId, sinceIso, excludeIds = []) {
+    let q = this.db.from('devices').select('id').eq('integration_id', integrationId).gt('created_at', sinceIso);
+    if (excludeIds.length) q = q.not('id', 'in', `(${excludeIds.join(',')})`);
+    const rows = check(await q.order('created_at').limit(1));
+    return rows[0]?.id ?? null;
+  }
+
   async listAutomations(homeId) {
     return check(await this.db.from('automations').select('*').eq('home_id', homeId).eq('enabled', true).eq('run_locally', true));
   }
