@@ -67,6 +67,12 @@ abstract class Backend {
   /// Codes d'accès créés pour une serrure, du plus récent au plus ancien.
   Future<List<AccessCode>> listAccessCodes(String deviceId);
 
+  /// Clé Bluetooth d'une serrure activée (propriétaire ou administrateur), lecture journalisée.
+  Future<String> bleKey(String deviceId);
+
+  /// Résultat d'une ouverture / fermeture en Bluetooth, inscrit au journal.
+  Future<void> logBleAction(String deviceId, {required bool unlock, required bool ok, String? error});
+
   // --- Commandes (§5.4)
   Future<DeviceCommand> sendCommand({
     required String homeId,

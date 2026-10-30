@@ -1,0 +1,40 @@
+// Solea : réécrit pour Gradle 9 / AGP 9 (jcenter, lintOptions et compileSdkVersion n'existent plus).
+group = 'com.ttlock.ttlock_flutter'
+version = '1.0'
+
+// Le SDK Bluetooth TTLock est livré en .aar dans libs/ : l'application doit aussi le trouver.
+def ttlockLibs = file('libs')
+rootProject.allprojects {
+    repositories {
+        google()
+        mavenCentral()
+        flatDir { dirs ttlockLibs }
+    }
+}
+
+apply plugin: 'com.android.library'
+
+android {
+    namespace = 'com.ttlock.ttlock_flutter'
+    compileSdk = 36
+
+    defaultConfig {
+        minSdk = 21
+    }
+
+    lint {
+        disable 'InvalidPackage'
+    }
+
+    compileOptions {
+        sourceCompatibility = JavaVersion.VERSION_17
+        targetCompatibility = JavaVersion.VERSION_17
+    }
+}
+
+dependencies {
+    implementation(name: 'ttlock-release', ext: 'aar')
+    implementation 'androidx.core:core:1.13.1'
+    implementation 'com.google.code.gson:gson:2.10.1'
+    implementation 'com.squareup.okhttp3:okhttp:4.12.0'
+}

@@ -5,6 +5,7 @@ import 'dart:typed_data';
 import 'package:flutter/widgets.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import '../core/ble_lock.dart';
 import '../core/l10n.dart';
 import '../data/backend.dart';
 import '../data/weather.dart';
@@ -34,7 +35,8 @@ class Notice {
 
 /// État global de l'application (session, maison courante, données, temps réel).
 class AppState extends ChangeNotifier {
-  AppState(this.backend, {Locale? initialLocale, this.commandTimeout = const Duration(seconds: 15), this.weatherService})
+  AppState(this.backend,
+      {Locale? initialLocale, this.commandTimeout = const Duration(seconds: 15), this.weatherService, this.ble = const NoBleLock()})
       : locale = initialLocale ?? const Locale('fr') {
     _authSub = backend.authChanges.listen(_onAuth);
     _recoverySub = backend.passwordRecovery.listen((_) {
@@ -46,6 +48,13 @@ class AppState extends ChangeNotifier {
 
   final Backend backend;
   final Duration commandTimeout;
+
+  /// Bluetooth TTLock (app Android) ; indisponible sur le web.
+  final BleLock ble;
+  final _bleKeys = <String, String>{};
+
+  /// Serrure en cours d'ouverture / fermeture Bluetooth (id de l'appareil).
+  String? bleBusy;
 
   /// Météo extérieure (null : désactivée, par ex. dans les tests).
   final WeatherService? weatherService;
@@ -152,6 +161,7 @@ class AppState extends ChangeNotifier {
     if (isSignedIn == signedIn) return;
     signedIn = isSignedIn;
     if (!isSignedIn) {
+      _bleKeys.clear(); // la clé Bluetooth ne survit pas à la déconnexion
       _clearHome();
       homes = const [];
       home = null;
@@ -441,6 +451,7 @@ class AppState extends ChangeNotifier {
 
   /// Active ou bloque un appareil de sécurité (serrure) : propriétaire uniquement.
   Future<bool> setDeviceSecurity(Device d, bool enabled) async {
+    if (!enabled) _bleKeys.remove(d.id);
     final ok = await run(() => backend.setDeviceSecurity(d.id, enabled),
         success: tr(enabled ? 'access.enabledNotice' : 'access.disabledNotice'));
     if (ok) {
@@ -448,6 +459,32 @@ class AppState extends ChangeNotifier {
       notifyListeners();
     }
     return ok;
+  }
+
+  /// Ouvre ou ferme une serrure TTLock en Bluetooth, devant la porte (app Android).
+  Future<bool> bleControl(Device d, {required bool unlock}) async {
+    if (bleBusy != null) return false;
+    bleBusy = d.id;
+    notifyListeners();
+    try {
+      final key = _bleKeys[d.id] ??= await backend.bleKey(d.id);
+      try {
+        await ble.control(key, unlock: unlock);
+      } on BleLockException catch (e) {
+        unawaited(backend.logBleAction(d.id, unlock: unlock, ok: false, error: e.code).catchError((_) {}));
+        notify(tr('access.ble.error.${e.code}'), error: true);
+        return false;
+      }
+      unawaited(backend.logBleAction(d.id, unlock: unlock, ok: true).catchError((_) {}));
+      notify(tr(unlock ? 'access.ble.unlocked' : 'access.ble.locked', {'name': d.name}));
+      return true;
+    } on BackendException catch (e) {
+      notify(_errorText(e), error: true);
+      return false;
+    } finally {
+      bleBusy = null;
+      notifyListeners();
+    }
   }
 
   /// Codes d'accès d'une serrure (vide si l'on n'est ni propriétaire ni administrateur).

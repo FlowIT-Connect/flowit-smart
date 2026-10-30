@@ -148,8 +148,16 @@ export function addTTLock(adapter, client, { pollMs = 5 * 60_000, now = () => Da
     const wasReachable = reachable;
     reachable = true;
     const next = new Map(locks.map((l) => [`ttlock:${l.lockId}`, buildLockDevice(l)]));
+    try {
+      const lockData = await client.lockDataByLock();
+      for (const d of next.values()) d.bleKey = lockData.get(Number(d.lockId)) ?? null;
+    } catch (e) {
+      log.warn('ttlock.ble_keys_failed', { error: e.message });
+      for (const [id, d] of next) d.bleKey = descs.get(id)?.bleKey ?? null; // garde la dernière clé connue
+    }
     const changed =
-      next.size !== descs.size || [...next].some(([id, d]) => descs.get(id)?.remote !== d.remote || descs.get(id)?.name !== d.name);
+      next.size !== descs.size ||
+      [...next].some(([id, d]) => descs.get(id)?.remote !== d.remote || descs.get(id)?.name !== d.name || descs.get(id)?.bleKey !== d.bleKey);
     descs = next;
     for (const lock of locks) {
       const id = `ttlock:${lock.lockId}`;

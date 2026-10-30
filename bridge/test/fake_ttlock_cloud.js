@@ -65,6 +65,8 @@ export class FakeTTLockCloud {
       case '/v3/keyboardPwd/get':
         if (!lock) return { errcode: -1003, errmsg: 'lock not found' };
         return { keyboardPwd: String(10_000_000 + this.calls.length), keyboardPwdId: this.calls.length };
+      case '/v3/key/list':
+        return { list: this.keys.filter((k) => k.username === USERNAME).map((k) => ({ ...k, lockData: `lockdata-${k.lockId}` })), pages: 1 };
       case '/v3/lock/listKey':
         return { list: this.keys.filter((k) => String(k.lockId) === p.lockId && k.keyStatus !== '110408'), pages: 1 };
       case '/v3/key/send': {

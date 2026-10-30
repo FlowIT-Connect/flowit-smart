@@ -121,6 +121,21 @@ export class TTLockClient {
     return all;
   }
 
+  /**
+   * Clés Bluetooth (lockData) des serrures de ce compte, par lockId : l'app Android en a
+   * besoin pour ouvrir devant la porte sans passerelle TTLock.
+   * @returns {Promise<Map<number, string>>}
+   */
+  async lockDataByLock() {
+    const byLock = new Map();
+    for (let pageNo = 1; pageNo <= 20; pageNo++) {
+      const r = await this.request('GET', '/v3/key/list', { pageNo, pageSize: 100 });
+      for (const k of r.list ?? []) if (k.lockData && String(k.keyStatus) === '110401') byLock.set(Number(k.lockId), k.lockData);
+      if (!r.pages || pageNo >= r.pages) break;
+    }
+    return byLock;
+  }
+
   /** Derniers passages enregistrés (remontés par une passerelle ou l'app TTLock en Bluetooth). */
   async listRecords(lockId, pageSize = 20) {
     const r = await this.request('GET', '/v3/lockRecord/list', { lockId, pageNo: 1, pageSize, startDate: 0, endDate: 0 });
