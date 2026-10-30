@@ -72,6 +72,7 @@ class AppState extends ChangeNotifier {
   List<SceneRun> sceneRuns = const [];
   List<Invitation> myInvitations = const [];
   final Map<String, PendingCommand> pending = {};
+  final Map<String, Completer<PendingCommand?>> _waiters = {};
 
   WeatherPlace weatherPlace = WeatherPlace.algiers;
   WeatherReport? weather;
@@ -323,8 +324,9 @@ class AppState extends ChangeNotifier {
   Future<void> sendCommand(Device device, String cap, dynamic value) async {
     final key = pendingKey(device.id, cap);
     if (pending[key]?.isWaiting ?? false) return;
-    if (device.isSensitive) {
+    if (device.isBlocked) {
       notify(tr('device.sensitiveBlocked'), error: true);
+      _waiters.remove(key)?.complete(null);
       return;
     }
     pending[key] = PendingCommand(key, value, CommandStatus.pending);
@@ -347,6 +349,16 @@ class AppState extends ChangeNotifier {
       if (e.code == 'network') _setOnline(false);
       _finishCommand(key, CommandStatus.rejected, _errorText(e), device.name);
     }
+  }
+
+  /// Comme [sendCommand], puis attend le résultat définitif (null si la commande n'est pas partie).
+  Future<PendingCommand?> sendCommandAndWait(Device device, String cap, dynamic value) {
+    final key = pendingKey(device.id, cap);
+    if (pending[key]?.isWaiting ?? false) return Future.value(null);
+    final waiter = Completer<PendingCommand?>();
+    _waiters[key] = waiter;
+    sendCommand(device, cap, value);
+    return waiter.future;
   }
 
   /// Suivi de secours par interrogation (si le temps réel est coupé) et délai maximal.
@@ -398,6 +410,7 @@ class AppState extends ChangeNotifier {
     if (p == null) return;
     pending[key] = p.withStatus(status, error: error);
     notifyListeners();
+    _waiters.remove(key)?.complete(pending[key]);
     if (status != CommandStatus.confirmed) {
       notify(tr('command.failed', {'device': deviceName ?? '', 'error': error ?? ''}), error: true);
     }
@@ -424,6 +437,27 @@ class AppState extends ChangeNotifier {
       notifyListeners();
     }
     return ok;
+  }
+
+  /// Active ou bloque un appareil de sécurité (serrure) : propriétaire uniquement.
+  Future<bool> setDeviceSecurity(Device d, bool enabled) async {
+    final ok = await run(() => backend.setDeviceSecurity(d.id, enabled),
+        success: tr(enabled ? 'access.enabledNotice' : 'access.disabledNotice'));
+    if (ok) {
+      devices = Map.of(devices)..[d.id] = d.copyWith(securityValidatedAt: enabled ? DateTime.now() : null, clearSecurity: !enabled);
+      notifyListeners();
+    }
+    return ok;
+  }
+
+  /// Codes d'accès d'une serrure (vide si l'on n'est ni propriétaire ni administrateur).
+  Future<List<AccessCode>> accessCodes(String deviceId) async {
+    try {
+      return await backend.listAccessCodes(deviceId);
+    } on BackendException catch (e) {
+      notify(_errorText(e), error: true);
+      return const [];
+    }
   }
 
   Future<bool> executeScene(Scene s) => run(() async {

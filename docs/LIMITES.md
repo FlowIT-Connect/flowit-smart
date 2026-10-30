@@ -13,8 +13,12 @@
 - **Invitations** : pas d'e-mail envoyé, l'administrateur partage le code d'invitation.
 - **Notifications push, BLE, Matter direct, appairage depuis l'app** : non couverts ;
   l'appairage se fait dans Home Assistant / Zigbee2MQTT.
-- **Appareils sensibles** (serrures, alarmes) : affichés mais commandes bloquées tant
-  qu'une validation renforcée (code, biométrie) n'est pas développée.
+- **Appareils sensibles** (serrures, alarmes) : affichés mais commandes bloquées. Exception :
+  les serrures **TTLock**, que le propriétaire peut activer appareil par appareil (codes d'accès,
+  ouverture à distance avec passerelle G2/G3, voir [TTLOCK.md](TTLOCK.md)). Pas de seconde
+  confirmation biométrique ni de code PIN avant l'ouverture ; pas de suppression de code
+  depuis Solea ; jamais testé sur une vraie serrure (cloud TTLock injoignable depuis le
+  conteneur de développement).
 - **Mode Tuya Cloud (sans box)** : dépend d'Internet et du cloud Tuya ; l'état est relu toutes
   les 30 s (pas de notification instantanée sans le service de messages Tuya), la passerelle
   tourne sur un PC qui doit rester allumé, et l'essai gratuit « IoT Core » doit être prolongé

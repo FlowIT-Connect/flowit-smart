@@ -211,12 +211,21 @@ export class Bridge {
       const cap = dev.caps.get(cmd.capability_key);
       let result;
       if (!this.enabled) result = { status: 'rejected', error: 'Intégration désactivée' };
-      else if (dev.isSensitive) result = { status: 'rejected', error: 'Commande bloquée : appareil sensible non validé' };
-      else {
+      else if (dev.isSensitive && !(await this.sensitiveAllowed(cmd))) {
+        result = { status: 'rejected', error: 'Commande bloquée : appareil sensible non validé' };
+      } else {
         const invalid = validateValue(cap, cmd.value);
         result = invalid
           ? { status: 'rejected', error: invalid }
           : await this.adapter.execute(dev.externalId, cmd.capability_key, cmd.value, this.config.commandTimeoutMs);
+      }
+      if (result.accessCode) {
+        try {
+          await this.store.saveAccessCode({ ...result.accessCode, home_id: this.homeId, device_id: cmd.device_id, command_id: cmd.id, created_by: cmd.requested_by ?? null });
+        } catch (e) {
+          log.error('bridge.access_code_save_failed', { request_id: cmd.id, error: e.message });
+          result = { status: 'failed', error: 'Code créé mais non enregistré : réessayez' };
+        }
       }
       await this.store.completeCommand(cmd.id, result.status, result.error ?? null);
       log.info('bridge.command', {
@@ -235,6 +244,15 @@ export class Bridge {
       this.inflightDevices.delete(cmd.device_id);
       if (cmd.scene_run_id) this.inflightRuns.delete(cmd.scene_run_id);
     }
+  }
+
+  /**
+   * Appareil sensible (serrure) : demande manuelle d'un membre, appareil activé par le
+   * propriétaire. Revérifié ici : la validation a pu être retirée depuis la demande.
+   */
+  async sensitiveAllowed(cmd) {
+    if (!cmd.requested_by || cmd.scene_run_id || cmd.automation_id) return false;
+    return this.store.isSecurityValidated(cmd.device_id);
   }
 
   async sweepStale() {

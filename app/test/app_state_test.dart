@@ -78,6 +78,25 @@ void main() {
     expect(state.pendingFor(lock.id, 'lock'), isNull);
   });
 
+  test('contrôle d\'accès : bloqué, activé par le propriétaire, code créé', () async {
+    final state = await signedIn(DemoBackend(latency: Duration.zero, confirmDelay: const Duration(milliseconds: 100), liveSensors: false));
+    final box = byName(state, 'Boîtier d\'accès');
+    expect(box.isAccessControl, isTrue);
+    expect(box.isBlocked, isTrue);
+    expect(await state.sendCommandAndWait(box, 'access_code', {'type': 'one_time'}), isNull);
+
+    expect(await state.setDeviceSecurity(box, true), isTrue);
+    final enabled = byName(state, 'Boîtier d\'accès');
+    expect(enabled.isSecurityEnabled, isTrue);
+    final result = await state.sendCommandAndWait(enabled, 'access_code', {'type': 'one_time', 'name': 'Livreur'});
+    expect(result?.status, CommandStatus.confirmed);
+    final codes = await state.accessCodes(box.id);
+    expect(codes.single.commandId, result!.commandId);
+    expect(codes.single.name, 'Livreur');
+    expect(codes.single.code, matches(RegExp(r'^\d{8}$')));
+    expect(AccessRecord.fromState(enabled.state['access_log']).first.method, 'code');
+  });
+
   test('scène : exécution, résultat partiel journalisé (appareil hors ligne)', () async {
     final state = await signedIn(DemoBackend(latency: Duration.zero, confirmDelay: const Duration(milliseconds: 50), liveSensors: false));
     final scene = state.scenes.firstWhere((s) => s.name == 'Je pars');

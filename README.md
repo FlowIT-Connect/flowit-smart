@@ -19,6 +19,8 @@ Démarrage rapide sans matériel ni compte : `cd app && flutter run -d chrome`
 
 **Tester des appareils Tuya / Smart Life sans box** : suivre [docs/TUYA_SANS_BOX.md](docs/TUYA_SANS_BOX.md) (la passerelle tourne sur un PC et passe par le cloud Tuya).
 
+**Serrures et contrôles d'accès TTLock** (codes d'accès, historique, ouverture à distance avec passerelle G2/G3) : voir [docs/TTLOCK.md](docs/TTLOCK.md).
+
 **Caméras IP, photos d'appareils, température extérieure** : voir [docs/CAMERAS_PHOTOS_METEO.md](docs/CAMERAS_PHOTOS_METEO.md).
 
 Lire ensuite : [Architecture](docs/ARCHITECTURE.md), [Installation](docs/INSTALLATION.md),

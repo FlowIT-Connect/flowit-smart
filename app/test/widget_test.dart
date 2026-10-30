@@ -61,6 +61,33 @@ void main() {
     expect(find.text('Verrou'), findsNothing);
   });
 
+  testWidgets('boîtier TTLock : activation par le propriétaire puis code d\'accès', (tester) async {
+    await pumpApp(tester);
+    await signIn(tester);
+    await tester.tap(find.text('Appareils').last);
+    await tester.pumpAndSettle();
+    await tester.enterText(find.byType(TextField).first, 'boîtier');
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Boîtier d\'accès'));
+    await tester.pumpAndSettle();
+    expect(find.text('Fonctions de sécurité bloquées'), findsOneWidget);
+    expect(find.text('Créer un code'), findsNothing);
+    await tester.tap(find.widgetWithText(FilledButton, 'Activer le contrôle d\'accès'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.widgetWithText(FilledButton, 'Activer le contrôle d\'accès').last);
+    await tester.pumpAndSettle();
+    expect(find.text('Fonctions de sécurité bloquées'), findsNothing);
+    await tester.ensureVisible(find.text('Créer un code'));
+    await tester.tap(find.text('Créer un code'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.widgetWithText(FilledButton, 'Créer le code'));
+    await tester.pump(const Duration(milliseconds: 500));
+    await tester.pumpAndSettle();
+    expect(find.text('Code créé'), findsOneWidget);
+    await tester.tap(find.widgetWithText(FilledButton, 'Fermer'));
+    await tester.pump(const Duration(seconds: 3));
+  });
+
   testWidgets('rideau : boutons Ouvrir / Stop / Fermer', (tester) async {
     final state = await pumpApp(tester);
     await signIn(tester);

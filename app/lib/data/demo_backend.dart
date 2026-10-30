@@ -50,6 +50,7 @@ class DemoBackend implements Backend {
   final _integrations = <Map<String, dynamic>>[];
   final _logs = <Map<String, dynamic>>[];
   final _photos = <String, Uint8List>{};
+  final _accessCodes = <Map<String, dynamic>>[];
 
   @override
   bool get isDemo => true;
@@ -166,6 +167,22 @@ class DemoBackend implements Backend {
         vendor: '—', model: 'Serrure BLE', sensitive: true, state: {'lock': true},
         caps: [
           ['lock', 'boolean', true],
+        ]);
+    String ago(int minutes) => DateTime.now().toUtc().subtract(Duration(minutes: minutes)).toIso8601String();
+    device('Boîtier d\'accès', entree, 'ble', 'cloud',
+        vendor: 'TTLock', model: 'Contrôle d\'accès à code', sensitive: true,
+        state: {
+          'battery': 82,
+          'access_log': [
+            {'at': ago(35), 'method': 'code', 'ok': true, 'who': '••77'},
+            {'at': ago(180), 'method': 'app', 'ok': true, 'who': 'Karim'},
+            {'at': ago(1440), 'method': 'code', 'ok': false, 'who': '••12'},
+          ],
+        },
+        caps: [
+          ['access_code', 'string', true, {'kind': 'access_code', 'options': ['one_time', 'period', 'permanent']}],
+          ['battery', 'sensor', false, {'unit': '%'}],
+          ['access_log', 'sensor', false, {'kind': 'access_log'}],
         ]);
     device('Détecteur couloir', entree, 'zigbee', 'gateway',
         vendor: 'Sonoff', model: 'SNZB-03', availability: 'unknown', state: {},
@@ -530,7 +547,11 @@ class DemoBackend implements Backend {
     }
     final d = _devices[deviceId];
     if (d == null) throw const BackendException('invalid', 'Appareil introuvable');
-    if (d['is_sensitive'] == true) throw const BackendException('invalid', 'Commande bloquée : appareil sensible non validé');
+    if (d['is_sensitive'] == true) {
+      if (d['security_validated_at'] == null) throw const BackendException('invalid', 'Commande bloquée : appareil sensible non validé');
+      final role = _member(homeId)?['role'];
+      if (role != 'owner' && role != 'admin') throw const BackendException('denied', 'Réservé au propriétaire ou à un administrateur');
+    }
     final cap = _caps.where((c) => c['device_id'] == deviceId && c['capability_key'] == capabilityKey && c['writable'] == true);
     if (cap.isEmpty) throw const BackendException('invalid', 'Capacité non prise en charge par cet appareil');
 
@@ -568,7 +589,9 @@ class DemoBackend implements Backend {
         _log(row['home_id'] as String, 'command_failed', deviceId: d['id'] as String, requestId: row['id'] as String, result: 'timeout', details: {'error': row['error']});
       } else {
         row['status'] = 'confirmed';
-        final state = Map<String, dynamic>.from(d['state'] as Map)..[row['capability_key'] as String] = row['value'];
+        if (row['capability_key'] == 'access_code') _demoAccessCode(row);
+        final state = Map<String, dynamic>.from(d['state'] as Map);
+        if (row['capability_key'] != 'access_code') state[row['capability_key'] as String] = row['value'];
         if (row['capability_key'] == 'switch' && d['name'] == 'Prise café') state['power'] = row['value'] == true ? 1180.0 : 0.0;
         if (row['capability_key'] == 'cover_control' && row['value'] != 'stop') state['cover_position'] = row['value'] == 'open' ? 100 : 0;
         d['state'] = state;
@@ -582,6 +605,53 @@ class DemoBackend implements Backend {
       done.complete(row);
     });
     return done.future;
+  }
+
+  /// Code calculé comme le ferait le cloud TTLock (chiffres aléatoires, dates arrondies).
+  void _demoAccessCode(Map<String, dynamic> row) {
+    final v = Map<String, dynamic>.from(row['value'] as Map);
+    final now = DateTime.now().toUtc();
+    final kind = v['type'] as String;
+    final start = kind == 'period' ? DateTime.parse(v['start'] as String).toUtc() : now;
+    final end = switch (kind) {
+      'one_time' => now.add(const Duration(hours: 6)),
+      'period' => DateTime.parse(v['end'] as String).toUtc(),
+      _ => null,
+    };
+    _accessCodes.insert(0, {
+      'id': newUuid(),
+      'device_id': row['device_id'],
+      'command_id': row['id'],
+      'kind': kind,
+      'name': v['name'],
+      'code': List.generate(kind == 'permanent' ? 6 : 8, (_) => _rand.nextInt(10)).join(),
+      'starts_at': start.toIso8601String(),
+      'ends_at': end?.toIso8601String(),
+      'created_at': _now(),
+    });
+  }
+
+  @override
+  Future<void> setDeviceSecurity(String deviceId, bool enabled) async {
+    await _wait();
+    final d = _devices[deviceId];
+    if (d == null || _member(d['home_id'] as String)?['role'] != 'owner') {
+      throw const BackendException('denied', 'Réservé au propriétaire de la maison');
+    }
+    if (d['is_sensitive'] != true) throw const BackendException('invalid', 'Cet appareil n\'est pas un appareil de sécurité');
+    d['security_validated_at'] = enabled ? _now() : null;
+    d['updated_at'] = _now();
+    _events.add(RealtimeEvent('devices', 'UPDATE', Map<String, dynamic>.from(d)));
+    _log(d['home_id'] as String, 'config_changed', deviceId: deviceId, result: enabled ? 'security_enabled' : 'security_disabled');
+  }
+
+  @override
+  Future<List<AccessCode>> listAccessCodes(String deviceId) async {
+    await _wait();
+    final d = _devices[deviceId];
+    final role = d == null ? null : _member(d['home_id'] as String)?['role'];
+    if (role != 'owner' && role != 'admin') return const [];
+    return _accessCodes.where((c) => c['device_id'] == deviceId).map(AccessCode.fromJson).toList();
   }
 
   @override

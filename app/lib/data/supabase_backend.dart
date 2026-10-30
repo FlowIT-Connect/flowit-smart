@@ -249,6 +249,16 @@ class SupabaseBackend implements Backend {
         await _client.from('devices').update(patch).eq('id', deviceId);
       });
 
+  @override
+  Future<void> setDeviceSecurity(String deviceId, bool enabled) =>
+      _guard(() => _client.rpc('set_device_security', params: {'p_device_id': deviceId, 'p_enabled': enabled}));
+
+  @override
+  Future<List<AccessCode>> listAccessCodes(String deviceId) => _guard(() async {
+        final rows = await _client.from('access_codes').select().eq('device_id', deviceId).order('created_at', ascending: false).limit(50);
+        return rows.map(AccessCode.fromJson).toList();
+      });
+
   // ---------------------------------------------------------------- Commandes
   @override
   Future<DeviceCommand> sendCommand({

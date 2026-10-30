@@ -1,4 +1,5 @@
 import { parseCameras } from './adapters/direct_cameras.js';
+import { TTLOCK_DEFAULT_URL } from './adapters/ttlock_api.js';
 import { TUYA_REGIONS } from './adapters/tuya_api.js';
 
 // Configuration par variables d'environnement (fichier .env chargé par Docker Compose
@@ -25,6 +26,20 @@ export function loadConfig(env = process.env) {
   if (tuya && !TUYA_REGIONS[tuyaRegion]) {
     throw new Error(`TUYA_REGION inconnue : ${tuyaRegion} (${Object.keys(TUYA_REGIONS).join(' | ')})`);
   }
+  // Serrures TTLock (facultatif, avec n'importe quel ADAPTER) : actif dès que TTLOCK_CLIENT_ID est renseigné.
+  const ttlock = env.TTLOCK_CLIENT_ID?.trim()
+    ? {
+        clientId: env.TTLOCK_CLIENT_ID.trim(),
+        clientSecret: required(env, 'TTLOCK_CLIENT_SECRET').trim(),
+        username: required(env, 'TTLOCK_USERNAME').trim(),
+        passwordMd5: required(env, 'TTLOCK_PASSWORD_MD5').trim().toLowerCase(),
+        baseUrl: env.TTLOCK_API_URL?.trim() || TTLOCK_DEFAULT_URL,
+        pollMs: int(env, 'TTLOCK_POLL_SECONDS', 300) * 1000,
+      }
+    : null;
+  if (ttlock && !/^[0-9a-f]{32}$/.test(ttlock.passwordMd5)) {
+    throw new Error('TTLOCK_PASSWORD_MD5 doit être le MD5 du mot de passe TTLock (relancez « npm run configurer »)');
+  }
   return {
     supabaseUrl: required(env, 'SUPABASE_URL'),
     supabaseServiceKey: required(env, 'SUPABASE_SERVICE_ROLE_KEY'),
@@ -43,6 +58,7 @@ export function loadConfig(env = process.env) {
     tuyaImageUrl: tuya ? TUYA_REGIONS[tuyaRegion].images : null,
     // Caméras IP lues directement par la passerelle : "Nom=http://…/snapshot.jpg;Nom2=…"
     cameras: parseCameras(env.CAMERAS),
+    ttlock,
     cameraIntervalMs: int(env, 'CAMERA_INTERVAL_MS', 1000),
     tuyaPollMs: int(env, 'TUYA_POLL_SECONDS', 30) * 1000,
     commandTimeoutMs: int(env, 'COMMAND_TIMEOUT_MS', 10_000),
