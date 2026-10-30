@@ -7,6 +7,8 @@ import '../../core/theme.dart';
 import '../../models/models.dart';
 import '../../state/app_state.dart';
 
+export '../../core/glass.dart' show AmbientBackground, GlassPanel;
+
 /// Logo Solea : un soleil en dégradé, du jaune à l'orange.
 class SoleaLogo extends StatelessWidget {
   const SoleaLogo({super.key, this.size = 40});
@@ -64,42 +66,6 @@ class SunPainter extends CustomPainter {
 
   @override
   bool shouldRepaint(covariant SunPainter oldDelegate) => oldDelegate.gradient != gradient;
-}
-
-/// Fond d'ambiance : halos de lumière doux derrière le contenu.
-class AmbientBackground extends StatelessWidget {
-  const AmbientBackground({super.key, required this.child});
-
-  final Widget child;
-
-  @override
-  Widget build(BuildContext context) {
-    final f = context.flow;
-    return DecoratedBox(
-      decoration: BoxDecoration(color: f.background),
-      child: Stack(children: [
-        Positioned.fill(
-          child: IgnorePointer(
-            child: DecoratedBox(
-              decoration: BoxDecoration(
-                gradient: RadialGradient(center: const Alignment(-1.1, -1.25), radius: 1.1, colors: [f.glowA, f.glowA.withValues(alpha: 0)]),
-              ),
-            ),
-          ),
-        ),
-        Positioned.fill(
-          child: IgnorePointer(
-            child: DecoratedBox(
-              decoration: BoxDecoration(
-                gradient: RadialGradient(center: const Alignment(1.2, -1.1), radius: .9, colors: [f.glowB, f.glowB.withValues(alpha: 0)]),
-              ),
-            ),
-          ),
-        ),
-        Positioned.fill(child: child),
-      ]),
-    );
-  }
 }
 
 /// Pastille ronde colorée portant une icône.

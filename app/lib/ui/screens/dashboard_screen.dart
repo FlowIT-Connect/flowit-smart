@@ -136,7 +136,7 @@ class DashboardScreen extends StatelessWidget {
   }
 }
 
-/// Carte d'accueil sombre : appareils allumés, réseau, alertes, climat, puissance.
+/// Carte d'accueil en verre dépoli : appareils allumés, réseau, alertes, climat, puissance.
 class _HomeHero extends StatelessWidget {
   const _HomeHero({required this.devices, required this.onShowDevices});
 
@@ -160,15 +160,11 @@ class _HomeHero extends StatelessWidget {
     final hour = DateTime.now().hour;
     final greeting = context.tr(hour < 5 || hour >= 18 ? 'greeting.evening' : (hour < 12 ? 'greeting.morning' : 'greeting.afternoon'));
     final ratio = devices.isEmpty ? 0.0 : online / devices.length;
-    const white = Colors.white;
+    final ink = f.ink;
+    final inkSoft = f.inkSoft;
 
-    return Container(
-      clipBehavior: Clip.antiAlias,
-      decoration: BoxDecoration(
-        color: f.panel,
-        borderRadius: BorderRadius.circular(30),
-        boxShadow: [BoxShadow(color: f.shadow, blurRadius: 30, offset: const Offset(0, 14))],
-      ),
+    return GlassPanel(
+      radius: 30,
       child: Stack(children: [
         // Halo solaire dans l'angle.
         Positioned(
@@ -180,7 +176,7 @@ class _HomeHero extends StatelessWidget {
               height: 230,
               decoration: BoxDecoration(
                 shape: BoxShape.circle,
-                gradient: RadialGradient(colors: [f.brand.withValues(alpha: .38), f.brand.withValues(alpha: 0)]),
+                gradient: RadialGradient(colors: [f.brand.withValues(alpha: .22), f.brand.withValues(alpha: 0)]),
               ),
             ),
           ),
@@ -190,24 +186,28 @@ class _HomeHero extends StatelessWidget {
           child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
             Row(children: [
               Container(
-                width: 46,
-                height: 46,
-                decoration: BoxDecoration(gradient: f.brandGradient, shape: BoxShape.circle),
-                child: const Icon(Icons.wb_sunny_rounded, color: white, size: 24),
+                width: 52,
+                height: 52,
+                decoration: BoxDecoration(
+                  gradient: f.brandGradient,
+                  shape: BoxShape.circle,
+                  boxShadow: [BoxShadow(color: f.brand.withValues(alpha: .45), blurRadius: 22, spreadRadius: -2)],
+                ),
+                child: const Icon(Icons.wb_sunny_rounded, color: Colors.white, size: 26),
               ),
               const SizedBox(width: 14),
               Expanded(
                 child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                  Text(greeting, maxLines: 1, overflow: TextOverflow.ellipsis, style: theme.textTheme.labelLarge?.copyWith(color: white.withValues(alpha: .65))),
+                  Text(greeting, maxLines: 1, overflow: TextOverflow.ellipsis, style: theme.textTheme.labelLarge?.copyWith(color: inkSoft)),
                   Row(crossAxisAlignment: CrossAxisAlignment.baseline, textBaseline: TextBaseline.alphabetic, children: [
-                    Text('$active', style: theme.textTheme.displaySmall?.copyWith(color: white, fontWeight: FontWeight.w300, height: 1.1)),
+                    Text('$active', style: theme.textTheme.displaySmall?.copyWith(color: ink, fontWeight: FontWeight.w300, height: 1.1)),
                     const SizedBox(width: 8),
                     Flexible(
                       child: Text(
                         context.tr('dashboard.active').toLowerCase(),
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
-                        style: theme.textTheme.titleMedium?.copyWith(color: white, fontWeight: FontWeight.w600),
+                        style: theme.textTheme.titleMedium?.copyWith(color: ink, fontWeight: FontWeight.w600),
                       ),
                     ),
                   ]),
@@ -224,10 +224,10 @@ class _HomeHero extends StatelessWidget {
                       strokeWidth: 5,
                       strokeCap: StrokeCap.round,
                       color: f.brand,
-                      backgroundColor: white.withValues(alpha: .12),
+                      backgroundColor: f.glassBorder,
                     ),
                   ),
-                  Text('${(ratio * 100).round()}%', style: theme.textTheme.labelLarge?.copyWith(color: white, fontWeight: FontWeight.w800)),
+                  Text('${(ratio * 100).round()}%', style: theme.textTheme.labelLarge?.copyWith(color: ink, fontWeight: FontWeight.w800)),
                 ]),
               ),
             ]),
@@ -236,7 +236,7 @@ class _HomeHero extends StatelessWidget {
               context.tr('dashboard.onlineOf', {'n': online, 'total': devices.length}),
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
-              style: theme.textTheme.bodyMedium?.copyWith(color: white.withValues(alpha: .65)),
+              style: theme.textTheme.bodyMedium?.copyWith(color: inkSoft),
             ),
             const SizedBox(height: 14),
             Wrap(spacing: 8, runSpacing: 8, children: [
@@ -275,8 +275,8 @@ class _HeroPill extends StatelessWidget {
   Widget build(BuildContext context) {
     final f = context.flow;
     return Material(
-      color: strong ? f.brand : Colors.white.withValues(alpha: .1),
-      borderRadius: BorderRadius.circular(999),
+      color: strong ? f.brand : f.glass,
+      shape: StadiumBorder(side: BorderSide(color: strong ? Colors.transparent : f.glassBorder)),
       child: InkWell(
         borderRadius: BorderRadius.circular(999),
         onTap: onTap,
@@ -287,7 +287,7 @@ class _HeroPill extends StatelessWidget {
             const SizedBox(width: 6),
             Text(
               label,
-              style: Theme.of(context).textTheme.labelLarge?.copyWith(color: strong ? f.onBrand : Colors.white, fontWeight: FontWeight.w700),
+              style: Theme.of(context).textTheme.labelLarge?.copyWith(color: strong ? f.onBrand : f.ink, fontWeight: FontWeight.w700),
             ),
           ]),
         ),
@@ -311,10 +311,14 @@ class _SceneShortcut extends StatelessWidget {
     return SizedBox(
       width: 156,
       child: Material(
-        borderRadius: BorderRadius.circular(24),
+        color: Colors.transparent,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24), side: BorderSide(color: Colors.white.withValues(alpha: .35))),
         clipBehavior: Clip.antiAlias,
         child: Ink(
-          decoration: BoxDecoration(gradient: LinearGradient(begin: Alignment.topLeft, end: Alignment.bottomRight, colors: colors)),
+          // Verre teinté aux couleurs de la scène.
+          decoration: BoxDecoration(
+            gradient: LinearGradient(begin: Alignment.topLeft, end: Alignment.bottomRight, colors: [for (final c in colors) c.withValues(alpha: .72)]),
+          ),
           child: InkWell(
             onTap: running ? null : () => state.executeScene(s),
             child: Padding(
