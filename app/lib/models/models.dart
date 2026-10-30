@@ -769,8 +769,9 @@ class HomePlan {
   final DateTime? paidUntil; // null : offre gratuite, ou déblocage sans date de fin
   final int waitingDevices; // appareils vus par la passerelle mais refusés faute de place
   final bool pendingRequest;
+  final bool managed; // appareils posés et attribués par l'installateur Solea
 
-  const HomePlan({required this.deviceCount, required this.deviceLimit, this.paidUntil, this.waitingDevices = 0, this.pendingRequest = false});
+  const HomePlan({required this.deviceCount, required this.deviceLimit, this.paidUntil, this.waitingDevices = 0, this.pendingRequest = false, this.managed = false});
 
   static const freeLimit = 5;
 
@@ -783,6 +784,7 @@ class HomePlan {
         paidUntil: j['paid_until'] == null ? null : DateTime.parse(j['paid_until'] as String),
         waitingDevices: (j['waiting_devices'] as num?)?.toInt() ?? 0,
         pendingRequest: j['pending_request'] as bool? ?? false,
+        managed: j['managed'] as bool? ?? false,
       );
 }
 
@@ -831,5 +833,65 @@ class UpgradeRequest {
         paidUntil: j['paid_until'] == null ? null : DateTime.parse(j['paid_until'] as String),
         waitingDevices: (j['waiting_devices'] as num?)?.toInt() ?? 0,
         createdAt: DateTime.parse(j['created_at'] as String),
+      );
+}
+
+/// Appareil du compte installateur (passerelle de la plateforme), vu par l'exploitant.
+class PlatformDevice {
+  final String externalId;
+  final String name;
+  final String? vendor;
+  final String? model;
+  final String? imageUrl;
+  final String? homeId;
+  final String? homeName;
+  final bool installed; // créé dans le logement par la passerelle
+  final DateTime lastSeenAt;
+
+  const PlatformDevice({
+    required this.externalId,
+    required this.name,
+    this.vendor,
+    this.model,
+    this.imageUrl,
+    this.homeId,
+    this.homeName,
+    this.installed = false,
+    required this.lastSeenAt,
+  });
+
+  bool get isAssigned => homeId != null;
+
+  factory PlatformDevice.fromJson(Map<String, dynamic> j) => PlatformDevice(
+        externalId: j['external_id'] as String,
+        name: j['name'] as String,
+        vendor: j['vendor'] as String?,
+        model: j['model'] as String?,
+        imageUrl: j['image_url'] as String?,
+        homeId: j['home_id'] as String?,
+        homeName: j['home_name'] as String?,
+        installed: j['installed'] as bool? ?? false,
+        lastSeenAt: DateTime.parse(j['last_seen_at'] as String),
+      );
+}
+
+/// Logement trouvé par l'exploitant (nom ou e-mail du propriétaire).
+class HomeSummary {
+  final String id;
+  final String name;
+  final String? ownerEmail;
+  final int deviceCount;
+  final int deviceLimit;
+
+  const HomeSummary({required this.id, required this.name, this.ownerEmail, required this.deviceCount, required this.deviceLimit});
+
+  bool get isFull => deviceCount >= deviceLimit;
+
+  factory HomeSummary.fromJson(Map<String, dynamic> j) => HomeSummary(
+        id: j['home_id'] as String,
+        name: j['home_name'] as String,
+        ownerEmail: j['owner_email'] as String?,
+        deviceCount: (j['device_count'] as num).toInt(),
+        deviceLimit: (j['device_limit'] as num).toInt(),
       );
 }

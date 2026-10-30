@@ -10,6 +10,7 @@ import { TuyaClient } from './adapters/tuya_api.js';
 import { TuyaCloudAdapter } from './adapters/tuya_cloud.js';
 import { Bridge } from './bridge.js';
 import { loadConfig } from './config.js';
+import { PlatformSupervisor } from './platform.js';
 import { applyAddonOptions } from './addon_options.js';
 import { log, setLogLevel } from './log.js';
 import { simulatedFrame } from './png.js';
@@ -53,7 +54,9 @@ if (config.ttlock) {
   log.info('bridge.ttlock', { api: config.ttlock.baseUrl, poll_seconds: config.ttlock.pollMs / 1000 });
 }
 
-const bridge = new Bridge({ store: new SupabaseStore(config.supabaseUrl, config.supabaseServiceKey), adapter, config });
+const store = new SupabaseStore(config.supabaseUrl, config.supabaseServiceKey);
+const bridge = config.platform ? new PlatformSupervisor({ store, adapter, config }) : new Bridge({ store, adapter, config });
+if (config.platform) log.info('bridge.platform', { message: 'Passerelle unique : appareils attribués aux logements depuis Solea' });
 
 const shutdown = async (signal) => {
   log.info('bridge.stop', { signal });

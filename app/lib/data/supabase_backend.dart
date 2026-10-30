@@ -307,6 +307,22 @@ class SupabaseBackend implements Backend {
           }));
 
   @override
+  Future<List<PlatformDevice>> adminListPlatformDevices() => _guard(() async {
+        final rows = await _client.rpc('admin_list_platform_devices') as List;
+        return rows.map((r) => PlatformDevice.fromJson(Map<String, dynamic>.from(r as Map))).toList();
+      });
+
+  @override
+  Future<List<HomeSummary>> adminSearchHomes(String query) => _guard(() async {
+        final rows = await _client.rpc('admin_search_homes', params: {'p_query': query}) as List;
+        return rows.map((r) => HomeSummary.fromJson(Map<String, dynamic>.from(r as Map))).toList();
+      });
+
+  @override
+  Future<void> adminAssignDevice(String externalId, String? homeId) =>
+      _guard(() => _client.rpc('admin_assign_device', params: {'p_external_id': externalId, 'p_home_id': homeId}));
+
+  @override
   Future<String> requestPairing(String homeId, {required String kind, String? name, String? roomId, String? lockData}) =>
       _guard(() async => await _client.rpc('request_pairing', params: {
             'p_home_id': homeId,

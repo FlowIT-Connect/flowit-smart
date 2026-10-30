@@ -95,6 +95,13 @@ abstract class Backend {
   /// Paiement reçu ([approve]) : [deviceLimit] appareils pendant [months] mois (null = sans fin).
   Future<void> adminDecideUpgrade(String requestId, {required bool approve, int? deviceLimit, int? months});
 
+  /// Exploitant : appareils du compte installateur et leur logement.
+  Future<List<PlatformDevice>> adminListPlatformDevices();
+  Future<List<HomeSummary>> adminSearchHomes(String query);
+
+  /// Range l'appareil dans un logement ([homeId] null : le retire de son logement).
+  Future<void> adminAssignDevice(String externalId, String? homeId);
+
   // --- Commandes (§5.4)
   Future<DeviceCommand> sendCommand({
     required String homeId,

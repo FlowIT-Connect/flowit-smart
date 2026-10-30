@@ -7,6 +7,7 @@ import '../../models/models.dart';
 import '../../state/app_state.dart';
 import '../widgets/common.dart';
 import '../widgets/plan_card.dart';
+import 'admin_devices_screen.dart';
 import 'admin_payments_screen.dart';
 import 'onboarding_screen.dart';
 
@@ -167,6 +168,13 @@ class SettingsScreen extends StatelessWidget {
             subtitle: Text(context.tr('admin.paymentsHelp')),
             trailing: const ForwardChevron(),
             onTap: () => push(const AdminPaymentsScreen()),
+          ),
+          ListTile(
+            leading: TileIcon(Icons.add_home_rounded, color: f.orange),
+            title: Text(context.tr('adminDevices.title')),
+            subtitle: Text(context.tr('adminDevices.help')),
+            trailing: const ForwardChevron(),
+            onTap: () => push(const AdminDevicesScreen()),
           ),
         ]),
       SettingsGroup(title: context.tr('settings.session'), children: [

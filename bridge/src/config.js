@@ -22,6 +22,10 @@ export function loadConfig(env = process.env) {
     throw new Error(`ADAPTER inconnu : ${adapter} (home_assistant | tuya_cloud | simulator)`);
   }
   const tuya = adapter === 'tuya_cloud';
+  const platform = ['true', '1', 'oui'].includes((env.PLATFORM ?? '').trim().toLowerCase());
+  if (platform && adapter === 'home_assistant') {
+    throw new Error('PLATFORM=true fonctionne avec ADAPTER=tuya_cloud (ou simulator), pas avec Home Assistant');
+  }
   const tuyaRegion = tuya ? (env.TUYA_REGION || 'eu').trim() : null;
   if (tuya && !TUYA_REGIONS[tuyaRegion]) {
     throw new Error(`TUYA_REGION inconnue : ${tuyaRegion} (${Object.keys(TUYA_REGIONS).join(' | ')})`);
@@ -43,7 +47,10 @@ export function loadConfig(env = process.env) {
   return {
     supabaseUrl: required(env, 'SUPABASE_URL'),
     supabaseServiceKey: required(env, 'SUPABASE_SERVICE_ROLE_KEY'),
-    integrationId: required(env, 'INTEGRATION_ID'),
+    // Passerelle unique pour tous les logements (serveur de l'exploitant) : pas d'INTEGRATION_ID,
+    // les appareils du compte installateur sont attribués aux logements depuis Solea.
+    platform,
+    integrationId: platform ? null : required(env, 'INTEGRATION_ID'),
     adapter,
     // HA_WS_URL (adresse WebSocket complète) remplace HA_URL, par ex. dans le module complémentaire HA.
     haWsUrl: adapter === 'home_assistant' && env.HA_WS_URL ? env.HA_WS_URL : null,
@@ -63,7 +70,9 @@ export function loadConfig(env = process.env) {
     tuyaPollMs: int(env, 'TUYA_POLL_SECONDS', 30) * 1000,
     commandTimeoutMs: int(env, 'COMMAND_TIMEOUT_MS', 10_000),
     pendingMaxAgeMs: int(env, 'PENDING_MAX_AGE_MS', 30_000),
-    pollIntervalMs: int(env, 'POLL_INTERVAL_MS', 2_000),
+    // Plateforme : une passerelle par logement, le temps réel déclenche déjà les commandes.
+    pollIntervalMs: int(env, 'POLL_INTERVAL_MS', platform ? 10_000 : 2_000),
+    platformRefreshMs: int(env, 'PLATFORM_REFRESH_SECONDS', 20) * 1000,
     automationRefreshMs: int(env, 'AUTOMATION_REFRESH_MS', 30_000),
     // Ajout d'appareils depuis l'application : durée de recherche d'un appareil Smart Life.
     pairingScanMs: int(env, 'PAIRING_SCAN_SECONDS', 300) * 1000,
