@@ -25,6 +25,11 @@ export class FakeTTLockCloud {
         { recordType: 1, success: 1, username: 'baziz', lockDate: Date.parse('2026-10-30T07:40:00Z') },
       ]],
     ]);
+    this.keys = [
+      { keyId: 501, lockId: 1001, username: USERNAME, keyName: 'Admin', keyStatus: '110401', startDate: 0, endDate: 0 },
+      { keyId: 502, lockId: 1001, username: '+213555000111', keyName: 'Karim', keyStatus: '110401', startDate: 0, endDate: 0 },
+    ];
+    this.nextKeyId = 600;
     this.failNext = null; // errcode à renvoyer une fois
   }
 
@@ -60,6 +65,26 @@ export class FakeTTLockCloud {
       case '/v3/keyboardPwd/get':
         if (!lock) return { errcode: -1003, errmsg: 'lock not found' };
         return { keyboardPwd: String(10_000_000 + this.calls.length), keyboardPwdId: this.calls.length };
+      case '/v3/lock/listKey':
+        return { list: this.keys.filter((k) => String(k.lockId) === p.lockId && k.keyStatus !== '110408'), pages: 1 };
+      case '/v3/key/send': {
+        if (!lock) return { errcode: -1003, errmsg: 'lock not found' };
+        if (p.receiverUsername === 'inconnu@x.dz') return { errcode: 20002, errmsg: 'user not exist' };
+        const keyId = this.nextKeyId++;
+        this.keys.push({ keyId, lockId: lock.lockId, username: p.receiverUsername, keyName: p.keyName, keyStatus: '110401', startDate: Number(p.startDate), endDate: Number(p.endDate) });
+        return { keyId };
+      }
+      case '/v3/key/freeze':
+      case '/v3/key/unfreeze':
+      case '/v3/key/delete':
+      case '/v3/key/changePeriod': {
+        const key = this.keys.find((k) => String(k.keyId) === p.keyId);
+        if (!key) return { errcode: -1008, errmsg: 'eKey does not exist' };
+        if (path.endsWith('freeze')) key.keyStatus = path === '/v3/key/freeze' ? '110405' : '110401';
+        if (path === '/v3/key/delete') key.keyStatus = '110408';
+        if (path === '/v3/key/changePeriod') Object.assign(key, { startDate: Number(p.startDate), endDate: Number(p.endDate) });
+        return { errcode: 0 };
+      }
       case '/v3/lock/unlock':
         if (!lock?.hasGateway) return { errcode: -2012, errmsg: 'lock is not connected to any gateway' };
         this.openState.set(lock.lockId, 1);

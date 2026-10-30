@@ -95,6 +95,16 @@ void main() {
     expect(codes.single.name, 'Livreur');
     expect(codes.single.code, matches(RegExp(r'^\d{8}$')));
     expect(AccessRecord.fromState(enabled.state['access_log']).first.method, 'code');
+
+    final start = DateTime.now().add(const Duration(hours: 1)).toUtc().toIso8601String();
+    final end = DateTime.now().add(const Duration(days: 3)).toUtc().toIso8601String();
+    final shared = await state.sendCommandAndWait(enabled, 'ekey', {'action': 'send', 'receiver': 'amina@x.dz', 'name': 'Amina', 'start': start, 'end': end});
+    expect(shared?.status, CommandStatus.confirmed);
+    final amina = SharedKey.fromState(byName(state, 'Boîtier d\'accès').state['ekeys']).firstWhere((k) => k.name == 'Amina');
+    expect(amina.isScheduled, isTrue);
+    expect(amina.receiver, 'amina@x.dz');
+    await state.sendCommandAndWait(byName(state, 'Boîtier d\'accès'), 'ekey', {'action': 'freeze', 'key_id': amina.id});
+    expect(SharedKey.fromState(byName(state, 'Boîtier d\'accès').state['ekeys']).firstWhere((k) => k.id == amina.id).isFrozen, isTrue);
   });
 
   test('scène : exécution, résultat partiel journalisé (appareil hors ligne)', () async {

@@ -85,6 +85,23 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.text('Code créé'), findsOneWidget);
     await tester.tap(find.widgetWithText(FilledButton, 'Fermer'));
+    await tester.pumpAndSettle();
+
+    // Accès partagé : désactiver puis réactiver la clé de Karim
+    await tester.ensureVisible(find.text('Karim'));
+    final menu = find.descendant(of: find.widgetWithText(ListTile, 'Karim'), matching: find.byType(PopupMenuButton<String>));
+    await tester.tap(menu);
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Désactiver').last);
+    await tester.pump(const Duration(milliseconds: 500));
+    await tester.pumpAndSettle();
+    expect(find.textContaining('Désactivé'), findsOneWidget);
+    await tester.tap(menu);
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Réactiver').last);
+    await tester.pump(const Duration(milliseconds: 500));
+    await tester.pumpAndSettle();
+    expect(find.textContaining('Actif'), findsOneWidget);
     await tester.pump(const Duration(seconds: 3));
   });
 

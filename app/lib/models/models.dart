@@ -404,6 +404,40 @@ class AccessRecord {
         ];
 }
 
+/// Accès partagé : clé électronique TTLock d'une autre personne (état « ekeys » écrit par la passerelle).
+class SharedKey {
+  final int id;
+  final String? name;
+  final String receiver;
+  final String status; // active, frozen, pending, unknown
+  final DateTime? start;
+  final DateTime? end;
+
+  const SharedKey({required this.id, this.name, required this.receiver, required this.status, this.start, this.end});
+
+  bool get isFrozen => status == 'frozen';
+
+  /// Programmé entre deux dates (sinon permanent).
+  bool get isScheduled => start != null && end != null;
+
+  bool get isExpired => end != null && end!.isBefore(DateTime.now());
+
+  static List<SharedKey> fromState(dynamic v) => v is! List
+      ? const []
+      : [
+          for (final k in v.whereType<Map>())
+            if (k['id'] case final int id)
+              SharedKey(
+                id: id,
+                name: k['name'] as String?,
+                receiver: '${k['receiver'] ?? ''}',
+                status: '${k['status'] ?? 'unknown'}',
+                start: _date(k['start']),
+                end: _date(k['end']),
+              ),
+        ];
+}
+
 class DeviceCommand {
   final String id;
   final String homeId;

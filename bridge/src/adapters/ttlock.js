@@ -18,6 +18,24 @@ const ONE_TIME_MS = 6 * HOUR;
 /** Origine des passages (recordType TTLock) ; les autres restent « other ». */
 const RECORD_METHODS = { 1: 'app', 4: 'code', 7: 'card', 8: 'fingerprint', 10: 'key', 12: 'remote' };
 
+/** État d'une clé électronique (keyStatus TTLock). */
+const KEY_STATUS = { 110401: 'active', 110402: 'pending', 110405: 'frozen', 110408: 'deleted', 110410: 'reset' };
+
+/** Accès partagés (eKeys) tels que les montre l'application ; la clé du compte de la passerelle est exclue. */
+export function lockKeys(list, ownUsername) {
+  return list
+    .filter((k) => !ownUsername || k.username !== ownUsername)
+    .map((k) => ({
+      id: k.keyId,
+      name: k.keyName || null,
+      receiver: k.username,
+      status: KEY_STATUS[Number(k.keyStatus)] ?? 'unknown',
+      start: k.startDate ? new Date(k.startDate).toISOString() : null,
+      end: k.endDate ? new Date(k.endDate).toISOString() : null,
+    }))
+    .filter((k) => k.status !== 'deleted' && k.status !== 'reset');
+}
+
 /** Masque un code d'accès dans l'historique : seuls les deux derniers chiffres restent. */
 export const maskCode = (code) => (code ? `••${String(code).slice(-2)}` : null);
 
@@ -35,6 +53,7 @@ export function buildLockDevice(lock) {
   const remote = lock.hasGateway === 1;
   const capabilities = [
     { capability_key: 'access_code', type: 'string', writable: true, metadata: { kind: 'access_code', options: ['one_time', 'period', 'permanent'] } },
+    { capability_key: 'ekey', type: 'string', writable: true, metadata: { kind: 'ekey', options: ['send', 'freeze', 'unfreeze', 'change_period', 'delete'] } },
   ];
   if (remote) {
     capabilities.push(
@@ -98,6 +117,14 @@ export function addTTLock(adapter, client, { pollMs = 5 * 60_000, now = () => Da
     if (JSON.stringify(next) !== before) adapter.emit('device', externalId, snapshotOf(externalId));
   };
 
+  const refreshKeys = async (desc) => {
+    try {
+      setState(desc.externalId, { ekeys: lockKeys(await client.listKeys(desc.lockId), client.username) });
+    } catch (e) {
+      log.warn('ttlock.keys_failed', { lock: desc.lockId, error: e.message });
+    }
+  };
+
   const refreshRecords = async (desc) => {
     try {
       setState(desc.externalId, { access_log: lockRecords(await client.listRecords(desc.lockId)) });
@@ -136,6 +163,7 @@ export function addTTLock(adapter, client, { pollMs = 5 * 60_000, now = () => Da
         }
       }
       await refreshRecords(next.get(id));
+      await refreshKeys(next.get(id));
     }
     if (!locks.length) log.warn('ttlock.no_locks', { hint: 'Aucune serrure : vérifiez le compte de l\'app TTLock (identifiant et mot de passe)' });
     if (changed) {
@@ -161,6 +189,16 @@ export function addTTLock(adapter, client, { pollMs = 5 * 60_000, now = () => Da
             ends_at: window.endDate ? new Date(window.endDate).toISOString() : null,
           },
         };
+      }
+      if (key === 'ekey') {
+        const dates = (v) => (v.start && v.end ? { startDate: Date.parse(v.start), endDate: Date.parse(v.end) } : { startDate: 0, endDate: 0 });
+        if (value.action === 'send') await client.sendKey(desc.lockId, { receiver: value.receiver, name: value.name || value.receiver, ...dates(value) });
+        else if (value.action === 'freeze') await client.freezeKey(value.key_id);
+        else if (value.action === 'unfreeze') await client.unfreezeKey(value.key_id);
+        else if (value.action === 'delete') await client.deleteKey(value.key_id);
+        else if (value.action === 'change_period') await client.changeKeyPeriod(value.key_id, dates(value));
+        await refreshKeys(desc); // l'application voit tout de suite la nouvelle liste
+        return { status: 'confirmed' };
       }
       if (key === 'lock_action' && value === 'unlock') {
         if (!desc.remote) return { status: 'failed', error: 'Ouverture à distance impossible : ajoutez une passerelle TTLock (G2/G3)' };

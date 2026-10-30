@@ -4,7 +4,7 @@
 |---|---|---|
 | SQL (fonctions, RLS, scènes, journal) | `cd supabase/tests && sh run_tests.sh` (PostgreSQL 16+, variables PG*) | 58 / 58 |
 | Application Flutter | `cd app && flutter analyze && flutter test` | 0 alerte, 29 / 29 |
-| Passerelle | `cd bridge && npm ci && npm test` | 86 / 86 |
+| Passerelle | `cd bridge && npm ci && npm test` | 88 / 88 |
 
 ## Ce qui est couvert
 - SQL : création de maison, rôles et RLS, invitations, transfert de propriété, suppression de
@@ -21,8 +21,8 @@
 - Contrôle d'accès TTLock (30/10) : serrure bloquée par défaut, activation par le propriétaire
   seul et journalisée, commandes réservées au propriétaire / administrateurs et refusées aux
   scènes et automatisations, codes lisibles par les seuls gestionnaires ; client TTLock (OAuth
-  MD5, jeton renouvelé, erreurs expliquées) contre un cloud TTLock simulé, création de code et
-  ouverture à distance (avec / sans passerelle), écran du boîtier en mode démo.
+  MD5, jeton renouvelé, erreurs expliquées) contre un cloud TTLock simulé, création de code, accès partagés (partage programmé, désactivation, réactivation,
+  suppression) et ouverture à distance (avec / sans passerelle), écran du boîtier en mode démo.
 - Test visuel : application web en mode démo pilotée par Playwright (captures dans `screenshots/`).
 
 ## Pas encore testé

@@ -71,13 +71,13 @@ describe('Correspondance TTLock', () => {
     const d = buildLockDevice({ lockId: 1, lockAlias: 'Entrée', lockName: 'M201', hasGateway: 0 });
     assert.equal(d.isSensitive, true);
     assert.equal(d.connectionSource, 'cloud');
-    assert.deepEqual(d.capabilities.map((c) => c.capability_key), ['access_code', 'battery', 'access_log']);
+    assert.deepEqual(d.capabilities.map((c) => c.capability_key), ['access_code', 'ekey', 'battery', 'access_log']);
   });
 
   test('avec passerelle : ouverture à distance et état ouvert / fermé', () => {
     const d = buildLockDevice({ lockId: 2, lockName: 'S31', hasGateway: 1 });
     assert.equal(d.name, 'S31');
-    assert.deepEqual(d.capabilities.map((c) => c.capability_key), ['access_code', 'lock_action', 'lock_state', 'battery', 'access_log']);
+    assert.deepEqual(d.capabilities.map((c) => c.capability_key), ['access_code', 'ekey', 'lock_action', 'lock_state', 'battery', 'access_log']);
   });
 
   test('historique : origine du passage, code masqué', () => {
@@ -107,6 +107,13 @@ describe('Correspondance TTLock', () => {
     assert.equal(validateValue(cap, { type: 'one_time', code: '1234' }), 'Demande de code invalide');
     assert.equal(validateValue(cap, 'one_time'), 'Demande de code invalide');
     assert.equal(validateValue({ ...cap, metadata: {} }, { type: 'one_time' }), 'Type de capacité non pilotable');
+    const key = { capability_key: 'ekey', type: 'string', writable: true, metadata: { kind: 'ekey', options: ['send', 'freeze', 'unfreeze', 'change_period', 'delete'] } };
+    assert.equal(validateValue(key, { action: 'send', receiver: '+213555000111' }), null);
+    assert.equal(validateValue(key, { action: 'send', receiver: 'a b' }), 'Compte TTLock du destinataire attendu (téléphone ou e-mail)');
+    assert.equal(validateValue(key, { action: 'send', receiver: 'x@y.dz', start: '2099-01-01T00:00:00Z' }), 'Dates de début et de fin attendues');
+    assert.equal(validateValue(key, { action: 'freeze', key_id: 12 }), null);
+    assert.equal(validateValue(key, { action: 'freeze', key_id: '12' }), 'Clé électronique introuvable');
+    assert.equal(validateValue(key, { action: 'transfer', key_id: 12 }), 'Action non prise en charge');
   });
 
   test('configuration : TTLock facultatif, mot de passe attendu en MD5', () => {
@@ -195,6 +202,41 @@ describe('Passerelle avec serrures TTLock', () => {
     assert.ok(await until(() => b.status === 'confirmed'), `statut ${b.status} ${b.error}`);
     assert.equal(cloud.openState.get(1002), 1);
     assert.ok(await until(() => garage.state.lock_state === 'unlocked'));
+  });
+
+  test('accès partagés : liste sans la clé du compte, partage programmé, désactivation, réactivation, suppression', async () => {
+    const box = store.deviceByName('Boîtier entrée');
+    assert.deepEqual(box.state.ekeys.map((k) => k.name), ['Karim']);
+    box.security_validated_at = new Date().toISOString();
+    const start = new Date(Date.now() + 3600_000).toISOString();
+    const end = new Date(Date.now() + 7 * 86_400_000).toISOString();
+    const send = await cmd(box, 'ekey', { action: 'send', receiver: 'amina@x.dz', name: 'Amina', start, end });
+    assert.ok(await until(() => send.status === 'confirmed'), `statut ${send.status} ${send.error}`);
+    const amina = box.state.ekeys.find((k) => k.name === 'Amina');
+    assert.equal(amina.receiver, 'amina@x.dz');
+    assert.equal(amina.start, start);
+    assert.equal(amina.status, 'active');
+
+    const freeze = await cmd(box, 'ekey', { action: 'freeze', key_id: amina.id });
+    assert.ok(await until(() => freeze.status === 'confirmed'));
+    assert.equal(box.state.ekeys.find((k) => k.id === amina.id).status, 'frozen');
+    const unfreeze = await cmd(box, 'ekey', { action: 'unfreeze', key_id: amina.id });
+    assert.ok(await until(() => unfreeze.status === 'confirmed'));
+    assert.equal(box.state.ekeys.find((k) => k.id === amina.id).status, 'active');
+    const forever = await cmd(box, 'ekey', { action: 'change_period', key_id: amina.id });
+    assert.ok(await until(() => forever.status === 'confirmed'));
+    assert.equal(box.state.ekeys.find((k) => k.id === amina.id).end, null);
+    const del = await cmd(box, 'ekey', { action: 'delete', key_id: amina.id });
+    assert.ok(await until(() => del.status === 'confirmed'));
+    assert.equal(box.state.ekeys.some((k) => k.id === amina.id), false);
+  });
+
+  test('accès partagé : destinataire sans compte TTLock expliqué', async () => {
+    const box = store.deviceByName('Boîtier entrée');
+    box.security_validated_at = new Date().toISOString();
+    const c = await cmd(box, 'ekey', { action: 'send', receiver: 'inconnu@x.dz' });
+    assert.ok(await until(() => c.status === 'failed'));
+    assert.match(c.error, /installer l'app TTLock/);
   });
 
   test('erreur TTLock : commande en échec avec un message clair', async () => {

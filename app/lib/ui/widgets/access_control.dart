@@ -75,6 +75,38 @@ class _AccessControlPanelState extends State<AccessControlPanel> {
     if (created != null) await showDialog<void>(context: context, builder: (_) => _NewCodeDialog(created));
   }
 
+  /// Partager (key == null), désactiver, réactiver, reprogrammer ou supprimer un accès.
+  Future<void> _keyAction(SharedKey? key, [String action = 'send']) async {
+    final state = AppScope.of(context);
+    Map<String, dynamic>? value;
+    if (action == 'send' || action == 'change_period') {
+      value = await showModalBottomSheet<Map<String, dynamic>>(
+        context: context,
+        isScrollControlled: true,
+        showDragHandle: true,
+        builder: (_) => _KeyRequestSheet(existing: key),
+      );
+    } else if (action == 'delete') {
+      final ok = await showDialog<bool>(
+        context: context,
+        builder: (context) => AlertDialog(
+          title: Text(context.tr('access.keyDeleteTitle', {'name': key!.name ?? key.receiver})),
+          content: Text(context.tr('access.keyDeleteBody')),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(context, false), child: Text(context.tr('common.cancel'))),
+            FilledButton(onPressed: () => Navigator.pop(context, true), child: Text(context.tr('access.keyDelete'))),
+          ],
+        ),
+      );
+      if (ok == true) value = {'action': 'delete', 'key_id': key!.id};
+    } else {
+      value = {'action': action, 'key_id': key!.id};
+    }
+    if (value == null || !mounted) return;
+    final result = await state.sendCommandAndWait(widget.device, 'ekey', value);
+    if (result?.status == CommandStatus.confirmed && mounted) state.notify(context.tr('access.keyDone.$action'));
+  }
+
   Future<void> _unlock() async {
     final state = AppScope.of(context);
     final ok = await showDialog<bool>(
@@ -178,6 +210,34 @@ class _AccessControlPanelState extends State<AccessControlPanel> {
         else
           for (final c in codes.take(10)) _CodeRow(c, revealed: _revealed),
       ]));
+
+      if (d.capability('ekey') != null) {
+        final keyPending = state.pendingFor(d.id, 'ekey');
+        final busy = keyPending?.isWaiting ?? false;
+        final keys = SharedKey.fromState(d.state['ekeys']);
+        children.add(_Card(children: [
+          Row(children: [
+            TileIcon(Icons.group_rounded, color: f.blue),
+            const SizedBox(width: 14),
+            Expanded(child: Text(context.tr('access.keys'), style: theme.textTheme.titleMedium)),
+            if (keyPending != null) _status(context, keyPending),
+          ]),
+          const SizedBox(height: 6),
+          Text(context.tr('access.keysHint'), style: theme.textTheme.bodySmall?.copyWith(color: f.inkSoft, height: 1.4)),
+          const SizedBox(height: 12),
+          FilledButton.icon(
+            onPressed: enabled && !busy ? () => _keyAction(null) : null,
+            icon: const Icon(Icons.person_add_alt_1_rounded),
+            label: Text(context.tr('access.share')),
+          ),
+          if (keys.isEmpty)
+            Padding(
+              padding: const EdgeInsets.only(top: 10),
+              child: Text(context.tr('access.keysEmpty'), style: theme.textTheme.bodyMedium?.copyWith(color: f.inkSoft)),
+            ),
+          for (final k in keys) _KeyRow(k, enabled: enabled && !busy, onAction: (action) => _keyAction(k, action)),
+        ]));
+      }
     }
 
     final log = AccessRecord.fromState(d.state['access_log']);
@@ -214,6 +274,18 @@ class _AccessControlPanelState extends State<AccessControlPanel> {
       : Icon(p.status == CommandStatus.confirmed ? Icons.check_circle : Icons.error_outline,
           color: p.status == CommandStatus.confirmed ? context.flow.success : Theme.of(context).colorScheme.error);
 }
+
+/// Date puis heure (TTLock : à l'heure près), dans l'année qui vient.
+Future<DateTime?> _pickDateTime(BuildContext context, DateTime initial) async {
+  final now = DateTime.now();
+  final day = await showDatePicker(context: context, initialDate: initial, firstDate: DateTime(now.year, now.month, now.day), lastDate: now.add(const Duration(days: 365)));
+  if (day == null || !context.mounted) return null;
+  final time = await showTimePicker(context: context, initialTime: TimeOfDay(hour: initial.hour, minute: 0));
+  if (time == null) return null;
+  return DateTime(day.year, day.month, day.day, time.hour);
+}
+
+DateTime _nextHour(DateTime t) => DateTime(t.year, t.month, t.day, t.hour).add(const Duration(hours: 1));
 
 String _when(BuildContext context, DateTime t) {
   final loc = MaterialLocalizations.of(context);
@@ -328,8 +400,6 @@ class _CodeRequestSheetState extends State<_CodeRequestSheet> {
   late DateTime _start = _nextHour(DateTime.now());
   late DateTime _end = _start.add(const Duration(days: 1));
 
-  static DateTime _nextHour(DateTime t) => DateTime(t.year, t.month, t.day, t.hour).add(const Duration(hours: 1));
-
   @override
   void dispose() {
     _name.dispose();
@@ -337,13 +407,8 @@ class _CodeRequestSheetState extends State<_CodeRequestSheet> {
   }
 
   Future<void> _pick(bool start) async {
-    final initial = start ? _start : _end;
-    final now = DateTime.now();
-    final day = await showDatePicker(context: context, initialDate: initial, firstDate: DateTime(now.year, now.month, now.day), lastDate: now.add(const Duration(days: 365)));
-    if (day == null || !mounted) return;
-    final time = await showTimePicker(context: context, initialTime: TimeOfDay(hour: initial.hour, minute: 0));
-    if (time == null || !mounted) return;
-    final picked = DateTime(day.year, day.month, day.day, time.hour); // TTLock : à l'heure près
+    final picked = await _pickDateTime(context, start ? _start : _end);
+    if (picked == null || !mounted) return;
     setState(() {
       if (start) {
         _start = picked;
@@ -406,6 +471,151 @@ class _CodeRequestSheetState extends State<_CodeRequestSheet> {
                   })
               : null,
           child: Text(context.tr('access.create')),
+        ),
+      ]),
+    );
+  }
+}
+
+class _KeyRow extends StatelessWidget {
+  const _KeyRow(this.k, {required this.enabled, required this.onAction});
+
+  final SharedKey k;
+  final bool enabled;
+  final void Function(String action) onAction;
+
+  @override
+  Widget build(BuildContext context) {
+    final f = context.flow;
+    final status = k.isExpired ? 'expired' : k.status;
+    final period = k.isScheduled
+        ? context.tr('access.validPeriod', {'start': _when(context, k.start!), 'end': _when(context, k.end!)})
+        : context.tr('access.validPermanent');
+    final dim = k.isFrozen || k.isExpired;
+    return ListTile(
+      contentPadding: EdgeInsets.zero,
+      leading: Icon(k.isFrozen ? Icons.pause_circle_rounded : Icons.vpn_key_rounded, color: dim ? f.inkFaint : f.blue),
+      title: Text(k.name ?? k.receiver, style: TextStyle(color: dim ? f.inkFaint : f.ink)),
+      subtitle: Text([if (k.name != null && k.name != k.receiver) k.receiver, context.tr('access.keyStatus.$status'), period].join(' · ')),
+      trailing: PopupMenuButton<String>(
+        enabled: enabled,
+        tooltip: context.tr('access.keyActions'),
+        onSelected: onAction,
+        itemBuilder: (context) => [
+          PopupMenuItem(value: k.isFrozen ? 'unfreeze' : 'freeze', child: Text(context.tr(k.isFrozen ? 'access.keyUnfreeze' : 'access.keyFreeze'))),
+          PopupMenuItem(value: 'change_period', child: Text(context.tr('access.keySchedule'))),
+          PopupMenuItem(value: 'delete', child: Text(context.tr('access.keyDelete'))),
+        ],
+      ),
+    );
+  }
+}
+
+/// Partage d'un accès (destinataire, nom, dates) ou nouvelles dates d'un accès existant.
+class _KeyRequestSheet extends StatefulWidget {
+  const _KeyRequestSheet({this.existing});
+
+  final SharedKey? existing;
+
+  @override
+  State<_KeyRequestSheet> createState() => _KeyRequestSheetState();
+}
+
+class _KeyRequestSheetState extends State<_KeyRequestSheet> {
+  final _receiver = TextEditingController();
+  final _name = TextEditingController();
+  late bool _scheduled = widget.existing?.isScheduled ?? false;
+  late DateTime _start = widget.existing?.start ?? _nextHour(DateTime.now());
+  late DateTime _end = widget.existing?.end ?? _start.add(const Duration(days: 7));
+
+  @override
+  void dispose() {
+    _receiver.dispose();
+    _name.dispose();
+    super.dispose();
+  }
+
+  Future<void> _pick(bool start) async {
+    final picked = await _pickDateTime(context, start ? _start : _end);
+    if (picked == null || !mounted) return;
+    setState(() {
+      if (start) {
+        _start = picked;
+        if (!_end.isAfter(_start)) _end = _start.add(const Duration(hours: 1));
+      } else {
+        _end = picked;
+      }
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final existing = widget.existing;
+    final receiver = _receiver.text.trim();
+    final valid = (existing != null || RegExp(r'^\S{3,80}$').hasMatch(receiver)) && (!_scheduled || _end.isAfter(_start));
+    return Padding(
+      padding: EdgeInsets.fromLTRB(20, 0, 20, 20 + MediaQuery.viewInsetsOf(context).bottom),
+      child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+        Text(existing == null ? context.tr('access.share') : context.tr('access.keySchedule'), style: theme.textTheme.titleLarge),
+        const SizedBox(height: 8),
+        if (existing == null) ...[
+          Text(context.tr('access.shareHint'), style: theme.textTheme.bodySmall?.copyWith(color: context.flow.inkSoft, height: 1.4)),
+          const SizedBox(height: 12),
+          TextField(
+            controller: _receiver,
+            keyboardType: TextInputType.emailAddress,
+            onChanged: (_) => setState(() {}),
+            decoration: InputDecoration(labelText: context.tr('access.receiver'), hintText: context.tr('access.receiverHint')),
+          ),
+          const SizedBox(height: 8),
+          TextField(
+            controller: _name,
+            maxLength: 40,
+            decoration: InputDecoration(labelText: context.tr('access.codeName'), hintText: context.tr('access.keyNameHint')),
+          ),
+        ] else
+          Text(existing.name ?? existing.receiver, style: theme.textTheme.bodyMedium),
+        SwitchListTile(
+          contentPadding: EdgeInsets.zero,
+          title: Text(context.tr('access.scheduled')),
+          subtitle: Text(context.tr(_scheduled ? 'access.scheduledOn' : 'access.scheduledOff')),
+          value: _scheduled,
+          onChanged: (v) => setState(() => _scheduled = v),
+        ),
+        if (_scheduled) ...[
+          ListTile(
+            contentPadding: EdgeInsets.zero,
+            leading: const Icon(Icons.event_rounded),
+            title: Text(context.tr('access.from')),
+            trailing: Text(_when(context, _start)),
+            onTap: () => _pick(true),
+          ),
+          ListTile(
+            contentPadding: EdgeInsets.zero,
+            leading: const Icon(Icons.event_busy_rounded),
+            title: Text(context.tr('access.to')),
+            trailing: Text(_when(context, _end)),
+            onTap: () => _pick(false),
+          ),
+        ],
+        const SizedBox(height: 12),
+        FilledButton(
+          onPressed: valid
+              ? () => Navigator.pop(context, <String, dynamic>{
+                    if (existing == null) ...{
+                      'action': 'send',
+                      'receiver': receiver,
+                      if (_name.text.trim().isNotEmpty) 'name': _name.text.trim(),
+                    } else ...{
+                      'action': 'change_period',
+                      'key_id': existing.id,
+                    },
+                    if (_scheduled) 'start': _start.toUtc().toIso8601String(),
+                    if (_scheduled) 'end': _end.toUtc().toIso8601String(),
+                  })
+              : null,
+          child: Text(context.tr(existing == null ? 'access.shareConfirm' : 'common.save')),
         ),
       ]),
     );

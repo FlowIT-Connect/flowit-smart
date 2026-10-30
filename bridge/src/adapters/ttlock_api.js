@@ -23,6 +23,10 @@ const HINTS = {
   [-3002]: 'Passerelle TTLock hors ligne',
   [-3003]: 'Passerelle TTLock occupée : réessayez dans un instant',
   [-4043]: 'Fonction non prise en charge par cette serrure',
+  [-1003]: 'Serrure introuvable sur ce compte TTLock',
+  [-2019]: 'Ce compte TTLock possède déjà une clé pour cette serrure',
+  [-1008]: 'Clé électronique introuvable',
+  20002: 'Compte TTLock du destinataire introuvable : la personne doit d\'abord installer l\'app TTLock et créer son compte',
 };
 
 export class TTLockApiError extends Error {
@@ -136,6 +140,43 @@ export class TTLockClient {
       startDate,
       endDate,
     });
+  }
+
+  /** Clés électroniques (eKeys) partagées sur la serrure, avec leur état et leurs dates. */
+  async listKeys(lockId) {
+    const all = [];
+    for (let pageNo = 1; pageNo <= 10; pageNo++) {
+      const r = await this.request('GET', '/v3/lock/listKey', { lockId, pageNo, pageSize: 100 });
+      all.push(...(r.list ?? []));
+      if (!r.pages || pageNo >= r.pages) break;
+    }
+    return all;
+  }
+
+  /**
+   * Partage l'accès avec un compte de l'app TTLock (téléphone ou e-mail). Dates en ms,
+   * 0 et 0 pour un accès permanent. La personne ouvre en Bluetooth avec l'app TTLock.
+   * @returns {Promise<{keyId:number}>}
+   */
+  sendKey(lockId, { receiver, name, startDate, endDate }) {
+    return this.request('POST', '/v3/key/send', { lockId, receiverUsername: receiver, keyName: name, startDate, endDate, remoteEnable: 2 });
+  }
+
+  /** Désactive (gèle) une clé sans la supprimer. */
+  freezeKey(keyId) {
+    return this.request('POST', '/v3/key/freeze', { keyId });
+  }
+
+  unfreezeKey(keyId) {
+    return this.request('POST', '/v3/key/unfreeze', { keyId });
+  }
+
+  deleteKey(keyId) {
+    return this.request('POST', '/v3/key/delete', { keyId });
+  }
+
+  changeKeyPeriod(keyId, { startDate, endDate }) {
+    return this.request('POST', '/v3/key/changePeriod', { keyId, startDate, endDate });
   }
 
   /** Ouverture à distance : nécessite une passerelle TTLock (ou une serrure Wi-Fi). */

@@ -178,9 +178,13 @@ class DemoBackend implements Backend {
             {'at': ago(180), 'method': 'app', 'ok': true, 'who': 'Karim'},
             {'at': ago(1440), 'method': 'code', 'ok': false, 'who': '••12'},
           ],
+          'ekeys': [
+            {'id': 502, 'name': 'Karim', 'receiver': '+213555000111', 'status': 'active', 'start': null, 'end': null},
+          ],
         },
         caps: [
           ['access_code', 'string', true, {'kind': 'access_code', 'options': ['one_time', 'period', 'permanent']}],
+          ['ekey', 'string', true, {'kind': 'ekey', 'options': ['send', 'freeze', 'unfreeze', 'change_period', 'delete']}],
           ['battery', 'sensor', false, {'unit': '%'}],
           ['access_log', 'sensor', false, {'kind': 'access_log'}],
         ]);
@@ -591,7 +595,11 @@ class DemoBackend implements Backend {
         row['status'] = 'confirmed';
         if (row['capability_key'] == 'access_code') _demoAccessCode(row);
         final state = Map<String, dynamic>.from(d['state'] as Map);
-        if (row['capability_key'] != 'access_code') state[row['capability_key'] as String] = row['value'];
+        if (row['capability_key'] == 'ekey') {
+          state['ekeys'] = _demoKeys((state['ekeys'] as List?) ?? const [], Map<String, dynamic>.from(row['value'] as Map));
+        } else if (row['capability_key'] != 'access_code') {
+          state[row['capability_key'] as String] = row['value'];
+        }
         if (row['capability_key'] == 'switch' && d['name'] == 'Prise café') state['power'] = row['value'] == true ? 1180.0 : 0.0;
         if (row['capability_key'] == 'cover_control' && row['value'] != 'stop') state['cover_position'] = row['value'] == 'open' ? 100 : 0;
         d['state'] = state;
@@ -629,6 +637,25 @@ class DemoBackend implements Backend {
       'ends_at': end?.toIso8601String(),
       'created_at': _now(),
     });
+  }
+
+  /// Clés électroniques après une action, comme les renverrait le cloud TTLock.
+  List<Map<String, dynamic>> _demoKeys(List<dynamic> keys, Map<String, dynamic> v) {
+    final list = [for (final k in keys) Map<String, dynamic>.from(k as Map)];
+    Map<String, dynamic>? key() => list.where((k) => k['id'] == v['key_id']).firstOrNull;
+    switch (v['action']) {
+      case 'send':
+        list.add({'id': 600 + _rand.nextInt(10000), 'name': v['name'] ?? v['receiver'], 'receiver': v['receiver'], 'status': 'active', 'start': v['start'], 'end': v['end']});
+      case 'freeze':
+        key()?['status'] = 'frozen';
+      case 'unfreeze':
+        key()?['status'] = 'active';
+      case 'change_period':
+        key()?.addAll({'start': v['start'], 'end': v['end']});
+      case 'delete':
+        list.removeWhere((k) => k['id'] == v['key_id']);
+    }
+    return list;
   }
 
   @override

@@ -15,6 +15,8 @@ Téléphone (Solea) ⇄ Supabase ⇄ PC (FlowIT Bridge) ⇄ cloud TTLock ⇄ (pa
 | Voir le boîtier, sa batterie | Oui (mise à jour quand l'app TTLock se connecte en Bluetooth) | Oui |
 | **Créer un code d'accès** (unique, période, permanent) | **Oui** : le code est calculé par TTLock et la serrure le reconnaît hors ligne | Oui |
 | Historique des passages | Oui, mis à jour quand l'app TTLock se connecte à la serrure | Oui, en direct |
+| **Partager l'accès** avec une personne (clé électronique), pour toujours ou entre deux dates | **Oui** : elle ouvre avec l'app TTLock en Bluetooth | Oui |
+| **Désactiver / réactiver** un accès partagé, changer ses dates, le supprimer | **Oui** | Oui |
 | Ouvrir la porte à distance | Non | **Oui**, avec confirmation |
 | État ouvert / fermé | Non | Oui |
 
@@ -68,6 +70,15 @@ des serrures et la table des codes. Elle doit être appliquée sur Supabase avan
    selon le modèle). La porte doit s'ouvrir.
 5. Ouvrir l'app TTLock près du boîtier : l'historique se synchronise, puis apparaît dans
    Solea au plus tard 5 minutes après (« Derniers passages »).
+
+### Partager l'accès avec quelqu'un
+1. La personne installe l'**app TTLock** et crée son compte (téléphone ou e-mail).
+2. Dans Solea, fiche du boîtier > **Accès partagés** > **Partager l'accès** : tapez son compte
+   TTLock, un nom (ex. « Karim »), et activez **Programmer** pour limiter l'accès entre deux dates.
+3. La personne reçoit l'accès dans son app TTLock et ouvre en Bluetooth devant la porte.
+4. Le bouton **⋮** à côté de son nom permet de **Désactiver** (pause), **Réactiver**,
+   **Programmer les dates** ou **Supprimer l'accès**. La désactivation prend effet dès que son
+   app TTLock se connecte à Internet.
 
 À savoir sur les types de codes TTLock :
 - **Unique** : une seule fois, dans les **6 heures**.
