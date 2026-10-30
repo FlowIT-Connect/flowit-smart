@@ -59,6 +59,9 @@ TTLOCK_PASSWORD_MD5=${v.TTLOCK_PASSWORD_MD5}
 `;
 }
 
+/** En dessous de ce délai, une réponse vide ne vient pas d'un humain. */
+const GHOST_ENTER_MS = 150;
+
 async function main() {
   const old = existsSync(ENV_FILE) ? parseEnv(readFileSync(ENV_FILE, 'utf8')) : {};
   const out = new Writable({
@@ -67,12 +70,17 @@ async function main() {
       cb();
     },
   });
-  const rl = createInterface({ input: process.stdin, output: out, terminal: true });
+  // crlfDelay infini : sous Windows, le « \n » qui suit le « \r » d'Entrée ne doit jamais compter
+  // comme une seconde ligne (sinon un seul appui répond à deux questions).
+  const rl = createInterface({ input: process.stdin, output: out, terminal: true, crlfDelay: Infinity });
   const ask = async (question, { secret = false, current = '' } = {}) => {
     const hint = current ? (secret ? ' [Entrée = garder la valeur actuelle]' : ` [${current}]`) : '';
     process.stdout.write(`\n${question}${hint}\n> `);
     out.muted = secret;
-    const answer = (await rl.question('')).trim();
+    const shownAt = Date.now();
+    let answer = (await rl.question('')).trim();
+    // Une ligne vide arrivée aussitôt la question affichée est un reste de l'appui précédent.
+    while (!answer && Date.now() - shownAt < GHOST_ENTER_MS) answer = (await rl.question('')).trim();
     out.muted = false;
     if (secret) process.stdout.write(answer ? '(reçu, caché)\n' : '\n');
     return answer || current;
