@@ -6,6 +6,9 @@ import { CameraStreamer } from './cameras.js';
 import { log } from './log.js';
 import { validateValue } from './validate.js';
 
+/** Passerelle de la plateforme : les appareils sont posés et attribués par l'installateur. */
+export const INSTALLER_ONLY_MESSAGE = 'Les appareils de ce logement sont installés par votre installateur Solea';
+
 export const DEVICE_LIMIT_MESSAGE = 'Limite d\'appareils atteinte : demandez le déblocage dans Solea';
 
 /** Refus de la base quand le logement a atteint sa limite d'appareils (migration solea_plans). */
@@ -329,7 +332,7 @@ export class Bridge {
       }
       for (const req of list) {
         // Serrure : seule une passerelle reliée à TTLock peut l'enregistrer.
-        if (req.kind === 'ttlock_lock' && !this.adapter.pairLock) continue;
+        if (req.kind === 'ttlock_lock' && !this.adapter.pairLock && !this.config.installerOnly) continue;
         if (Date.parse(req.created_at) < Date.parse(this.#pairingCutoff())) {
           if (await this.store.claimPairing(req.id)) await this.store.completePairing(req.id, 'failed', 'Demande trop ancienne : recommencez', null);
           continue;
@@ -349,6 +352,7 @@ export class Bridge {
     let error = null;
     let deviceId = null;
     try {
+      if (this.config.installerOnly) throw new Error(INSTALLER_ONLY_MESSAGE);
       if (!this.enabled) throw new Error('Intégration désactivée');
       deviceId = req.kind === 'ttlock_lock' ? await this.#pairLock(req) : await this.#findPaired(req);
       if (deviceId) {

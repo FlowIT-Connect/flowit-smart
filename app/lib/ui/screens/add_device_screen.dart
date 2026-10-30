@@ -163,8 +163,17 @@ class _AddDeviceScreenState extends State<AddDeviceScreen> {
 
   List<Widget> _choice(BuildContext context) {
     final f = context.flow;
+    final plan = AppScope.of(context).plan;
+    if (plan?.managed ?? false) {
+      // Logement équipé par l'installateur : le résident n'ajoute rien lui-même.
+      return [
+        const PlanCard(),
+        const SizedBox(height: 8),
+        _Banner(icon: Icons.support_agent_rounded, color: f.brand, title: context.tr('pair.managed.title'), message: context.tr('pair.managed.help')),
+      ];
+    }
     // Logement à sa limite : rien à installer (une serrure initialisée resterait orpheline).
-    final full = AppScope.of(context).plan?.isFull ?? false;
+    final full = plan?.isFull ?? false;
     Widget option(_Kind kind, IconData icon, Color color, String title, String subtitle) => Card(
           child: ListTile(
             contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),

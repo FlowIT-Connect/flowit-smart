@@ -295,3 +295,15 @@ test('assistant de configuration : .env Tuya relu à l\'identique', async () => 
   assert.equal(c.tuyaAccessSecret, 's');
   assert.equal(c.integrationId, 'i');
 });
+
+test('assistant de configuration : « serveur » donne la passerelle unique de tous les logements', async () => {
+  const { parseEnv, renderEnv } = await import('../src/setup.js');
+  const v = { SUPABASE_URL: 'https://x.supabase.co', SUPABASE_SERVICE_ROLE_KEY: 'k', INTEGRATION_ID: 'serveur', PLATFORM: true, TUYA_ACCESS_ID: 'a', TUYA_ACCESS_SECRET: 's', TUYA_REGION: 'eu' };
+  const env = parseEnv(renderEnv(v));
+  assert.equal(env.INTEGRATION_ID, undefined);
+  const c = loadConfig(env);
+  assert.equal(c.platform, true);
+  assert.equal(c.integrationId, null);
+  assert.equal(c.pollIntervalMs, 10_000);
+  assert.throws(() => loadConfig({ ...env, ADAPTER: 'home_assistant', HA_URL: 'http://ha', HA_TOKEN: 't' }), /PLATFORM=true/);
+});

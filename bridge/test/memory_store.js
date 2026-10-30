@@ -130,6 +130,22 @@ export class MemoryStore {
   }
   watchCamera(deviceId) { for (const w of this.cameraWatchers) w(deviceId); }
 
+  // Plateforme : platform_devices en mémoire (external_id -> { home_id })
+  async syncPlatformDevices(devices) {
+    this.platformDevices ??= new Map();
+    for (const d of devices) this.platformDevices.set(d.external_id, { ...this.platformDevices.get(d.external_id), ...d });
+    return [...this.platformDevices.values()].filter((d) => d.home_id).map((d) => ({ external_id: d.external_id, home_id: d.home_id }));
+  }
+  async ensurePlatformIntegration(homeId) {
+    const found = [...this.integrations.values()].find((i) => i.home_id === homeId && i.external_reference === 'solea-platform');
+    if (found) return found.id;
+    const id = randomUUID();
+    this.integrations.set(id, { id, home_id: homeId, provider: 'tuya', status: 'connected', external_reference: 'solea-platform' });
+    if (!this.homes.has(homeId)) this.homes.set(homeId, { id: homeId, timezone: 'Africa/Algiers' });
+    return id;
+  }
+  assign(externalId, homeId) { this.platformDevices.get(externalId).home_id = homeId; }
+
   // Aides de test
   deviceByName(name) { return [...this.devices.values()].find((d) => d.name === name); }
   caps(deviceId) { return this.capabilities.filter((c) => c.device_id === deviceId); }

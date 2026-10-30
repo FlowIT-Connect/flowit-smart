@@ -15,7 +15,7 @@ import { DEFAULT_SUPABASE_URL } from './addon_options.js';
 import { md5, TTLockClient } from './adapters/ttlock_api.js';
 import { TUYA_REGIONS, TuyaClient } from './adapters/tuya_api.js';
 
-const ENV_FILE = fileURLToPath(new URL('../.env', import.meta.url));
+const ENV_FILE = process.env.FLOWIT_ENV_FILE || fileURLToPath(new URL('../.env', import.meta.url));
 
 /** Lit un fichier .env simple (CLE=valeur). */
 export function parseEnv(text) {
@@ -33,7 +33,7 @@ export function renderEnv(v) {
 # Ne partagez jamais ce fichier : il contient des clés secrètes.
 SUPABASE_URL=${v.SUPABASE_URL}
 SUPABASE_SERVICE_ROLE_KEY=${v.SUPABASE_SERVICE_ROLE_KEY}
-INTEGRATION_ID=${v.INTEGRATION_ID}
+${v.PLATFORM ? '# Passerelle unique de tous les logements : appareils attribués depuis Solea (Paramètres > Exploitant Solea > Appareils à attribuer).\nPLATFORM=true' : `INTEGRATION_ID=${v.INTEGRATION_ID}`}
 
 ADAPTER=tuya_cloud
 TUYA_ACCESS_ID=${v.TUYA_ACCESS_ID}
@@ -90,7 +90,12 @@ async function main() {
   console.log('Les clés que vous tapez ou collez (clic droit) restent cachées et ne sont enregistrées que sur ce PC.');
 
   const v = { SUPABASE_URL: old.SUPABASE_URL || DEFAULT_SUPABASE_URL, TUYA_POLL_SECONDS: old.TUYA_POLL_SECONDS };
-  v.INTEGRATION_ID = await ask('1/5  Identifiant d\'intégration (application FlowIT Smart > Paramètres > Intégrations > Ajouter > Tuya) :', { current: old.INTEGRATION_ID });
+  v.INTEGRATION_ID = await ask(
+    '1/5  Identifiant d\'intégration (application FlowIT Smart > Paramètres > Intégrations > Ajouter > Tuya),\n     ou « serveur » pour la passerelle unique de tous les logements :',
+    { current: old.PLATFORM === 'true' ? 'serveur' : old.INTEGRATION_ID },
+  );
+  v.PLATFORM = v.INTEGRATION_ID.toLowerCase() === 'serveur';
+  if (v.PLATFORM) v.INTEGRATION_ID = 'serveur';
   v.SUPABASE_SERVICE_ROLE_KEY = await ask('2/5  Clé « service_role » (ou « secret ») de Supabase (supabase.com > projet > Project Settings > API Keys) :', { secret: true, current: old.SUPABASE_SERVICE_ROLE_KEY });
   v.TUYA_ACCESS_ID = await ask('3/5  Tuya « Access ID / Client ID » (platform.tuya.com > Cloud > votre projet > Overview) :', { current: old.TUYA_ACCESS_ID });
   v.TUYA_ACCESS_SECRET = await ask('4/5  Tuya « Access Secret / Client Secret » (même page) :', { secret: true, current: old.TUYA_ACCESS_SECRET });

@@ -3,6 +3,9 @@
 
 import { createClient } from '@supabase/supabase-js';
 
+/** Marque les intégrations tenues par la passerelle de la plateforme. */
+export const PLATFORM_REF = 'solea-platform';
+
 function check({ data, error }) {
   if (error) throw new Error(`Supabase : ${error.message}`);
   return data;
@@ -41,6 +44,36 @@ export class SupabaseStore {
       check(await this.db.from('device_capabilities').insert(capabilities.map((c) => ({ ...c, device_id: device.id }))));
     }
     return device.id;
+  }
+
+  // ---------------------------------------------------------------- Plateforme (PLATFORM=true)
+  /** Inscrit l'inventaire du compte installateur ; renvoie les attributions [{ external_id, home_id }]. */
+  async syncPlatformDevices(devices) {
+    return check(await this.db.rpc('platform_sync_devices', { p_devices: devices }));
+  }
+
+  /**
+   * Intégration utilisée par la plateforme dans un logement. Celle qui porte déjà ces appareils
+   * (ancienne passerelle du logement) est reprise, sinon une intégration est créée.
+   */
+  async ensurePlatformIntegration(homeId, externalIds) {
+    const own = check(await this.db.from('integrations').select('id').eq('home_id', homeId).eq('external_reference', PLATFORM_REF).limit(1));
+    if (own[0]) return own[0].id;
+    let reuse = null;
+    if (externalIds.length) {
+      const bound = check(
+        await this.db.from('device_bindings').select('integration_id, integrations!inner(home_id)').in('external_id', externalIds).eq('integrations.home_id', homeId).limit(1),
+      );
+      reuse = bound[0]?.integration_id ?? null;
+    }
+    if (reuse) {
+      check(await this.db.from('integrations').update({ external_reference: PLATFORM_REF }).eq('id', reuse));
+      return reuse;
+    }
+    const created = check(
+      await this.db.from('integrations').insert({ home_id: homeId, provider: 'tuya', label: 'Solea', external_reference: PLATFORM_REF, status: 'connected' }).select('id').single(),
+    );
+    return created.id;
   }
 
   /** Appareils refusés faute de place, affichés dans l'application (« 2 en attente »). */

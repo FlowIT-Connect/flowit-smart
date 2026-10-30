@@ -1,0 +1,31 @@
+# Passerelle unique de Solea sur le serveur de l'exploitant (tous les logements).
+# Le fichier .env est écrit par « docker compose -f docker-compose.serveur.yml run --rm configurer ».
+#
+#   docker compose -f docker-compose.serveur.yml run --rm configurer   # une fois (questions)
+#   docker compose -f docker-compose.serveur.yml up -d --build bridge   # démarrer / mettre à jour
+#   docker compose -f docker-compose.serveur.yml logs -f bridge         # voir le journal
+#
+# Aucun port n'est ouvert : la passerelle ne fait que des connexions sortantes
+# (Supabase, cloud Tuya, cloud TTLock).
+
+services:
+  bridge:
+    build: .
+    restart: unless-stopped
+    env_file: .env
+    logging:
+      driver: json-file
+      options: { max-size: 10m, max-file: "3" }
+
+  configurer:
+    profiles: [outils]
+    build: .
+    stdin_open: true
+    tty: true
+    user: root
+    working_dir: /app
+    volumes:
+      - ./:/app/data
+    environment:
+      - FLOWIT_ENV_FILE=/app/data/.env
+    command: ["node", "src/setup.js"]

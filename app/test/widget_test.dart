@@ -224,4 +224,23 @@ void main() {
     expect(state.plan!.deviceLimit, 20);
     expect(state.plan!.isFull, isFalse);
   });
+
+  testWidgets('exploitant : appareil du compte installateur rangé dans un logement', (tester) async {
+    final state = await pumpApp(tester);
+    await signIn(tester);
+    await tester.tap(find.text('Paramètres').last);
+    await tester.pumpAndSettle();
+    await tester.scrollUntilVisible(find.text('Appareils à attribuer'), 200, scrollable: find.byType(Scrollable).last);
+    await tester.drag(find.byType(Scrollable).last, const Offset(0, -200));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Appareils à attribuer'));
+    await tester.pumpAndSettle();
+    expect(find.text('À attribuer (2)'), findsOneWidget);
+    await tester.tap(find.text('Attribuer').first);
+    await tester.pumpAndSettle();
+    await tester.tap(find.text(state.home!.name).last);
+    await tester.pumpAndSettle();
+    expect(find.text('À attribuer (1)'), findsOneWidget);
+    expect(find.text('Attribués (1)'), findsOneWidget);
+  });
 }

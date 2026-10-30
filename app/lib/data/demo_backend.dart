@@ -56,6 +56,10 @@ class DemoBackend implements Backend {
   /// Limite d'appareils par logement en démo (déblocage payé fictif) ; demandes de déblocage.
   final _deviceLimits = <String, int>{};
   final _upgrades = <String, Map<String, dynamic>>{};
+
+  /// Compte installateur fictif : appareils à attribuer (external_id -> home_id).
+  final _platform = <String, String?>{'tuya:demo-prise': null, 'tuya:demo-rideau': null};
+  static const _platformNames = {'tuya:demo-prise': 'Prise connectée', 'tuya:demo-rideau': 'Moteur de rideau'};
   static const demoDeviceLimit = 20;
 
   /// Délai simulé de la passerelle pour un ajout d'appareil.
@@ -781,6 +785,44 @@ class DemoBackend implements Backend {
       'status': 'approved',
       'paid_until': months == null ? null : DateTime.now().add(Duration(days: 30 * months)).toIso8601String(),
     });
+  }
+
+  @override
+  Future<List<PlatformDevice>> adminListPlatformDevices() async {
+    await _wait();
+    return [
+      for (final e in _platform.entries)
+        PlatformDevice(
+          externalId: e.key,
+          name: _platformNames[e.key]!,
+          vendor: 'Tuya',
+          homeId: e.value,
+          homeName: e.value == null ? null : _homes[e.value]?['name'] as String?,
+          installed: e.value != null,
+          lastSeenAt: DateTime.now(),
+        ),
+    ]..sort((a, b) => (a.isAssigned ? 1 : 0) - (b.isAssigned ? 1 : 0));
+  }
+
+  @override
+  Future<List<HomeSummary>> adminSearchHomes(String query) async {
+    await _wait();
+    final q = query.trim().toLowerCase();
+    return [
+      for (final h in _homes.values)
+        if ((h['name'] as String).toLowerCase().contains(q) || (_email ?? '').toLowerCase().contains(q))
+          HomeSummary(id: h['id'] as String, name: h['name'] as String, ownerEmail: _email, deviceCount: _countDevices(h['id'] as String), deviceLimit: _limitOf(h['id'] as String)),
+    ];
+  }
+
+  @override
+  Future<void> adminAssignDevice(String externalId, String? homeId) async {
+    await _wait();
+    if (!_platform.containsKey(externalId)) throw const BackendException('invalid', 'Appareil inconnu');
+    if (homeId != null && _countDevices(homeId) >= _limitOf(homeId)) {
+      throw BackendException('limit', 'LIMITE_APPAREILS : ${_limitOf(homeId)} appareils au plus pour ce logement');
+    }
+    _platform[externalId] = homeId;
   }
 
   // ------------------------------------------------------------------ Ajout d'appareils
