@@ -25,5 +25,7 @@ Démarrage rapide sans matériel ni compte : `cd app && flutter run -d chrome`
 
 **Caméras IP, photos d'appareils, température extérieure** : voir [docs/CAMERAS_PHOTOS_METEO.md](docs/CAMERAS_PHOTOS_METEO.md).
 
+**Publier sur Google Play et l'App Store** (automatique depuis GitHub avec fastlane) : voir [docs/PUBLIER_SUR_LES_STORES.md](docs/PUBLIER_SUR_LES_STORES.md).
+
 Lire ensuite : [Architecture](docs/ARCHITECTURE.md), [Installation](docs/INSTALLATION.md),
 [Tests](docs/TESTS.md), [Limites connues](docs/LIMITES.md), [Dépendances](docs/DEPENDANCES.md).
