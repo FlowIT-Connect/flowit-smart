@@ -158,3 +158,17 @@ test('intégration désactivée : commandes refusées', async () => {
   assert.ok(await until(() => c.status === 'rejected'));
   assert.match(c.error, /désactivée/);
 });
+
+test('limite d\'appareils : les appareils en trop attendent le déblocage puis arrivent seuls', async () => {
+  store.devices.clear();
+  store.bindings = [];
+  store.deviceLimit = 5;
+  assert.deepEqual(await bridge.syncInventory(), { waiting: 6 });
+  assert.equal(store.devices.size, 5);
+  assert.equal(store.waiting.get('home-1'), 6);
+  assert.equal(store.integrations.get('integ-1').status, 'connected');
+  store.deviceLimit = 20; // paiement confirmé
+  assert.deepEqual(await bridge.syncInventory(), { waiting: 0 });
+  assert.equal(store.devices.size, 11);
+  assert.equal(store.waiting.get('home-1'), 0);
+});

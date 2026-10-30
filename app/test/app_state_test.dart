@@ -208,4 +208,32 @@ void main() {
     final r = await state.waitPairing(id!, timeout: const Duration(milliseconds: 150));
     expect(r?.status, 'pending');
   });
+
+  test('limite d\'appareils : ajout refusé, demande de déblocage, puis débloqué par l\'exploitant', () async {
+    final backend = DemoBackend(latency: Duration.zero, liveSensors: false)..pairingDelay = const Duration(milliseconds: 100);
+    final state = await signedIn(backend);
+    final homeId = state.home!.id;
+    backend.setDeviceLimit(homeId, state.devices.length);
+    await state.refreshPlan();
+    expect(state.plan!.isFull, isTrue);
+    final notices = <Notice>[];
+    final sub = state.notices.listen(notices.add);
+    expect(await state.requestPairing(kind: 'scan'), isNull, reason: 'logement plein');
+    await Future<void>.delayed(Duration.zero);
+    expect(notices.last.message, contains('demandez le déblocage'));
+
+    expect(await state.requestUpgrade(note: 'Je veux 20 appareils'), isTrue);
+    expect(state.plan!.pendingRequest, isTrue);
+    await state.requestUpgrade(); // une seule demande en attente
+    final list = await backend.adminListUpgrades();
+    expect(list.where((u) => u.isPending), hasLength(1));
+
+    await backend.adminDecideUpgrade(list.first.id, approve: true, deviceLimit: 20, months: 1);
+    await state.refreshPlan();
+    expect(state.plan!.deviceLimit, 20);
+    expect(state.plan!.isFull, isFalse);
+    expect(state.plan!.pendingRequest, isFalse);
+    expect(await state.requestPairing(kind: 'scan'), isNotNull);
+    await sub.cancel();
+  });
 }

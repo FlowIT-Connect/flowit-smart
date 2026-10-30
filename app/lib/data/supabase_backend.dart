@@ -30,6 +30,9 @@ class SupabaseBackend implements Backend {
       if (msg.contains('rate') || e.statusCode == '429') {
         throw const BackendException('rate', 'Trop de tentatives. Réessayez plus tard.');
       }
+      if (msg.contains('not confirmed')) {
+        throw const BackendException('unconfirmed', 'Adresse e-mail pas encore confirmée.');
+      }
       if (msg.contains('password') && msg.contains('characters')) {
         throw BackendException('invalid', e.message);
       }
@@ -38,6 +41,7 @@ class SupabaseBackend implements Backend {
       if (e.code == '42501' || e.code == 'PGRST301') {
         throw const BackendException('denied', 'Accès refusé.');
       }
+      if (e.message.contains('LIMITE_APPAREILS')) throw BackendException('limit', e.message);
       if (e.code == 'P0001') throw BackendException('invalid', e.message);
       if (e.code == '23505') throw const BackendException('invalid', 'Cet élément existe déjà.');
       throw BackendException('unknown', e.message);
@@ -90,6 +94,9 @@ class SupabaseBackend implements Backend {
 
   @override
   Future<void> resetPassword(String email) => _guard(() => _auth.resetPasswordForEmail(email.trim()));
+
+  @override
+  Future<void> resendConfirmation(String email) => _guard(() => _auth.resend(type: OtpType.signup, email: email.trim()));
 
   @override
   Future<void> updatePassword(String newPassword) =>
@@ -270,6 +277,35 @@ class SupabaseBackend implements Backend {
       ));
 
   // ---------------------------------------------------------------- Ajout d'appareils
+  // ---------------------------------------------------------------- Offre du logement
+  @override
+  Future<HomePlan> getHomePlan(String homeId) => _guard(() async {
+        final rows = await _client.rpc('get_home_plan', params: {'p_home_id': homeId}) as List;
+        return HomePlan.fromJson(Map<String, dynamic>.from(rows.first as Map));
+      });
+
+  @override
+  Future<void> requestUpgrade(String homeId, {String? note}) =>
+      _guard(() => _client.rpc('request_upgrade', params: {'p_home_id': homeId, 'p_note': note}));
+
+  @override
+  Future<bool> isPlatformAdmin() => _guard(() async => await _client.rpc('is_platform_admin') as bool? ?? false);
+
+  @override
+  Future<List<UpgradeRequest>> adminListUpgrades() => _guard(() async {
+        final rows = await _client.rpc('admin_list_upgrades') as List;
+        return rows.map((r) => UpgradeRequest.fromJson(Map<String, dynamic>.from(r as Map))).toList();
+      });
+
+  @override
+  Future<void> adminDecideUpgrade(String requestId, {required bool approve, int? deviceLimit, int? months}) =>
+      _guard(() => _client.rpc('admin_decide_upgrade', params: {
+            'p_request_id': requestId,
+            'p_approve': approve,
+            'p_device_limit': deviceLimit,
+            'p_months': months,
+          }));
+
   @override
   Future<String> requestPairing(String homeId, {required String kind, String? name, String? roomId, String? lockData}) =>
       _guard(() async => await _client.rpc('request_pairing', params: {

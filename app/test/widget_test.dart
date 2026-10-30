@@ -1,6 +1,7 @@
 import 'package:flowit_smart/app.dart';
 import 'package:flowit_smart/data/demo_backend.dart';
 import 'package:flowit_smart/state/app_state.dart';
+import 'package:flowit_smart/ui/screens/add_device_screen.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -188,5 +189,39 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.textContaining('app Android Solea'), findsOneWidget);
     expect(find.text('Rechercher la serrure'), findsNothing);
+  });
+
+  testWidgets('logement plein : ajout bloqué, demande de déblocage, page Paiements de l\'exploitant', (tester) async {
+    final state = await pumpApp(tester);
+    await signIn(tester);
+    (state.backend as DemoBackend).setDeviceLimit(state.home!.id, state.devices.length);
+    await tester.tap(find.text('Appareils').last);
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Ajouter un appareil'));
+    await tester.pumpAndSettle();
+    expect(find.textContaining('Appareils : ${state.devices.length} / ${state.devices.length}'), findsOneWidget);
+    await tester.tap(find.text('Appareil Smart Life (Tuya)'));
+    await tester.pumpAndSettle();
+    expect(find.text('Ouvrir Smart Life'), findsNothing, reason: 'choix désactivé quand le logement est plein');
+    await tester.tap(find.text("Débloquer plus d'appareils"));
+    await tester.pumpAndSettle();
+    expect(find.textContaining('dès confirmation du paiement'), findsOneWidget);
+    Navigator.of(tester.element(find.byType(AddDeviceScreen))).pop();
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('Paramètres').last);
+    await tester.pumpAndSettle();
+    await tester.scrollUntilVisible(find.text('Paiements'), 200, scrollable: find.byType(Scrollable).last);
+    await tester.drag(find.byType(Scrollable).last, const Offset(0, -200));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Paiements'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Paiement reçu'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Confirmer le paiement'));
+    await tester.pumpAndSettle();
+    expect(find.text('Payé'), findsOneWidget);
+    expect(state.plan!.deviceLimit, 20);
+    expect(state.plan!.isFull, isFalse);
   });
 }

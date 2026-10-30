@@ -6,6 +6,8 @@ import '../../core/theme.dart';
 import '../../models/models.dart';
 import '../../state/app_state.dart';
 import '../widgets/common.dart';
+import '../widgets/plan_card.dart';
+import 'admin_payments_screen.dart';
 import 'onboarding_screen.dart';
 
 /// Paramètres : compte, langue, maison, membres, intégrations, journal.
@@ -107,6 +109,7 @@ class SettingsScreen extends StatelessWidget {
           },
         ),
       ]),
+      if (home != null && state.plan != null) const Padding(padding: EdgeInsets.fromLTRB(16, 16, 16, 0), child: PlanCard()),
       if (home != null)
         SettingsGroup(title: context.tr('settings.home'), children: [
           ListTile(
@@ -155,6 +158,16 @@ class SettingsScreen extends StatelessWidget {
                 if (await state.run(() => state.backend.deleteHome(home.id))) await state.loadHomes();
               },
             ),
+        ]),
+      if (state.isPlatformAdmin)
+        SettingsGroup(title: context.tr('admin.title'), children: [
+          ListTile(
+            leading: TileIcon(Icons.payments_rounded, color: f.brand),
+            title: Text(context.tr('admin.payments')),
+            subtitle: Text(context.tr('admin.paymentsHelp')),
+            trailing: const ForwardChevron(),
+            onTap: () => push(const AdminPaymentsScreen()),
+          ),
         ]),
       SettingsGroup(title: context.tr('settings.session'), children: [
         ListTile(leading: TileIcon(Icons.logout_rounded, color: f.inkSoft), title: Text(context.tr('auth.signOut')), onTap: state.signOut),

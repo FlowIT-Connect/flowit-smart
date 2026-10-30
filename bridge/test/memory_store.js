@@ -19,6 +19,8 @@ export class MemoryStore {
     this.accessCodes = [];
     this.bleKeys = new Map();
     this.pairings = [];
+    this.deviceLimit = null; // null = sans limite
+    this.waiting = new Map();
   }
 
   async getIntegration(id) { return this.integrations.get(id) ?? null; }
@@ -29,7 +31,12 @@ export class MemoryStore {
     Object.assign(i, { status, last_error: lastError }, lastSyncAt ? { last_sync_at: lastSyncAt } : {});
   }
   async listBindings(integrationId) { return this.bindings.filter((b) => b.integration_id === integrationId); }
+  async setWaitingDevices(homeId, count) { this.waiting.set(homeId, count); }
   async createDevice(row, externalId, caps) {
+    const limit = this.deviceLimit;
+    if (limit != null && [...this.devices.values()].filter((d) => d.home_id === row.home_id).length >= limit) {
+      throw new Error(`Supabase : LIMITE_APPAREILS : ${limit} appareils au plus pour ce logement`);
+    }
     const id = randomUUID();
     this.devices.set(id, { id, is_sensitive: false, created_at: new Date().toISOString(), ...row });
     this.bindings.push({ device_id: id, integration_id: row.integration_id, external_id: externalId });

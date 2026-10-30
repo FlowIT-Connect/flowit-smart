@@ -7,6 +7,7 @@ import '../../core/l10n.dart';
 import '../../core/theme.dart';
 import '../../state/app_state.dart';
 import '../widgets/common.dart';
+import '../widgets/plan_card.dart';
 
 enum _Kind { lock, tuya }
 
@@ -37,6 +38,12 @@ class _AddDeviceScreenState extends State<AddDeviceScreen> {
 
   /// Change à chaque nouvel essai : un résultat arrivé après « Annuler » est ignoré.
   int _attempt = 0;
+
+  @override
+  void initState() {
+    super.initState();
+    AppScope.read(context).refreshPlan(); // compteur à jour avant de choisir
+  }
 
   @override
   void dispose() {
@@ -156,6 +163,8 @@ class _AddDeviceScreenState extends State<AddDeviceScreen> {
 
   List<Widget> _choice(BuildContext context) {
     final f = context.flow;
+    // Logement à sa limite : rien à installer (une serrure initialisée resterait orpheline).
+    final full = AppScope.of(context).plan?.isFull ?? false;
     Widget option(_Kind kind, IconData icon, Color color, String title, String subtitle) => Card(
           child: ListTile(
             contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
@@ -163,10 +172,12 @@ class _AddDeviceScreenState extends State<AddDeviceScreen> {
             title: Text(context.tr(title)),
             subtitle: Text(context.tr(subtitle)),
             trailing: const ForwardChevron(),
+            enabled: !full,
             onTap: () => setState(() => _kind = kind),
           ),
         );
     return [
+      const PlanCard(),
       SectionHeader(context.tr('pair.choose')),
       option(_Kind.tuya, Icons.devices_other_rounded, f.brand, 'pair.tuya.title', 'pair.tuya.subtitle'),
       const SizedBox(height: 8),

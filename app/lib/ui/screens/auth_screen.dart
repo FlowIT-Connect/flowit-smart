@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../core/l10n.dart';
+import '../../data/backend.dart';
 import '../../core/theme.dart';
 import '../../state/app_state.dart';
 import '../widgets/common.dart';
@@ -26,6 +27,9 @@ class _AuthScreenState extends State<AuthScreen> {
   bool _obscure = true;
   String? _info;
 
+  /// Compte créé mais adresse pas encore confirmée : propose de renvoyer l'e-mail.
+  bool _canResend = false;
+
   @override
   void initState() {
     super.initState();
@@ -49,19 +53,42 @@ class _AuthScreenState extends State<AuthScreen> {
     setState(() {
       _busy = true;
       _info = null;
+      _canResend = false;
     });
     final b = state.backend;
-    final ok = await state.run(() => switch (_mode) {
+    var unconfirmed = false;
+    final ok = await state.run(() async {
+      try {
+        await switch (_mode) {
           _Mode.signIn => b.signIn(_email.text, _password.text),
           _Mode.signUp => b.signUp(_email.text, _password.text, _name.text),
           _Mode.reset => b.resetPassword(_email.text),
-        });
+        };
+      } on BackendException catch (e) {
+        unconfirmed = e.code == 'unconfirmed';
+        rethrow;
+      }
+    });
     if (!mounted) return;
     setState(() {
       _busy = false;
       if (ok && _mode == _Mode.reset) _info = context.tr('auth.resetSent');
-      if (ok && _mode == _Mode.signUp && b.currentUserId == null) _info = context.tr('auth.checkEmail');
+      if (ok && _mode == _Mode.signUp && b.currentUserId == null) {
+        _info = context.tr('auth.checkEmail');
+        _canResend = true;
+      }
+      if (unconfirmed) {
+        _info = context.tr('auth.confirmFirst');
+        _canResend = true;
+      }
     });
+  }
+
+  Future<void> _resend() async {
+    final state = AppScope.read(context);
+    setState(() => _busy = true);
+    await state.run(() => state.backend.resendConfirmation(_email.text), success: state.tr('auth.confirmResent'));
+    if (mounted) setState(() => _busy = false);
   }
 
   @override
@@ -151,6 +178,15 @@ class _AuthScreenState extends State<AuthScreen> {
             if (_info != null) ...[
               const SizedBox(height: 12),
               Text(_info!, style: TextStyle(color: f.brandInk, fontWeight: FontWeight.w600)),
+              if (_canResend)
+                Align(
+                  alignment: AlignmentDirectional.centerStart,
+                  child: TextButton.icon(
+                    onPressed: _busy ? null : _resend,
+                    icon: const Icon(Icons.forward_to_inbox_rounded),
+                    label: Text(context.tr('auth.resendConfirmation')),
+                  ),
+                ),
             ],
             const SizedBox(height: 22),
             FilledButton(

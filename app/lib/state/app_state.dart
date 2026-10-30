@@ -92,6 +92,12 @@ class AppState extends ChangeNotifier {
   List<Automation> automations = const [];
   List<SceneRun> sceneRuns = const [];
   List<Invitation> myInvitations = const [];
+
+  /// Offre du logement (null : base pas encore à jour, ou pas de logement).
+  HomePlan? plan;
+
+  /// Exploitant Solea : voit la page « Paiements ».
+  bool isPlatformAdmin = false;
   final Map<String, PendingCommand> pending = {};
   final Map<String, Completer<PendingCommand?>> _waiters = {};
 
@@ -157,6 +163,8 @@ class AppState extends ChangeNotifier {
         'denied' => tr('error.denied'),
         'auth' => tr('error.auth'),
         'rate' => tr('error.rate'),
+        'unconfirmed' => tr('error.unconfirmed'),
+        'limit' => tr('plan.limitReached', {'limit': plan?.deviceLimit ?? HomePlan.freeLimit}),
         _ => e.message,
       };
 
@@ -177,11 +185,22 @@ class AppState extends ChangeNotifier {
       _clearHome();
       homes = const [];
       home = null;
+      isPlatformAdmin = false;
       notifyListeners();
       return;
     }
     notifyListeners();
+    unawaited(_loadPlatformAdmin());
     await loadHomes();
+  }
+
+  Future<void> _loadPlatformAdmin() async {
+    try {
+      isPlatformAdmin = await backend.isPlatformAdmin();
+    } on BackendException {
+      isPlatformAdmin = false; // base pas encore à jour
+    }
+    notifyListeners();
   }
 
   Future<void> signOut() async {
@@ -246,6 +265,7 @@ class AppState extends ChangeNotifier {
     scenes = const [];
     automations = const [];
     sceneRuns = const [];
+    plan = null;
     pending.clear();
     _photoCache.clear();
     weather = null;
@@ -275,6 +295,7 @@ class AppState extends ChangeNotifier {
       scenes = results[2] as List<Scene>;
       automations = results[3] as List<Automation>;
       sceneRuns = results[4] as List<SceneRun>;
+      await refreshPlan(notify: false);
       loadError = null;
       _setOnline(true);
     } on BackendException catch (e) {
@@ -497,6 +518,28 @@ class AppState extends ChangeNotifier {
       bleBusy = null;
       notifyListeners();
     }
+  }
+
+  // ---------------------------------------------------------------- Offre du logement
+  Future<void> refreshPlan({bool notify = true}) async {
+    final h = home;
+    if (h == null) return;
+    try {
+      final p = await backend.getHomePlan(h.id);
+      if (home?.id == h.id) plan = p;
+    } on BackendException {
+      // Base pas encore à jour : pas de compteur, rien n'est bloqué côté application.
+    }
+    if (notify) notifyListeners();
+  }
+
+  /// Demande de déblocage envoyée à l'exploitant ; true si elle est partie.
+  Future<bool> requestUpgrade({String? note}) async {
+    final h = home;
+    if (h == null) return false;
+    final ok = await run(() => backend.requestUpgrade(h.id, note: note), success: tr('plan.requestSent'));
+    if (ok) await refreshPlan();
+    return ok;
   }
 
   // ---------------------------------------------------------------- Ajout d'appareils

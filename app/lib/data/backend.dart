@@ -5,7 +5,7 @@ import '../models/models.dart';
 
 /// Erreur métier présentée à l'utilisateur (message non révélateur, §5.1).
 class BackendException implements Exception {
-  final String code; // auth, denied, network, invalid, unknown
+  final String code; // auth, unconfirmed, denied, network, invalid, limit, unknown
   final String message;
 
   const BackendException(this.code, this.message);
@@ -28,6 +28,9 @@ abstract class Backend {
   Future<void> signIn(String email, String password);
   Future<void> signUp(String email, String password, String displayName);
   Future<void> resetPassword(String email);
+
+  /// Renvoie l'e-mail de confirmation d'inscription.
+  Future<void> resendConfirmation(String email);
   Future<void> updatePassword(String newPassword);
 
   /// Émet quand l'utilisateur revient d'un lien de réinitialisation de mot de passe.
@@ -78,6 +81,19 @@ abstract class Backend {
   /// en Bluetooth, avec sa clé [lockData]) ou « scan » (appareil couplé dans Smart Life).
   Future<String> requestPairing(String homeId, {required String kind, String? name, String? roomId, String? lockData});
   Future<PairingRequest?> getPairing(String requestId);
+
+  // --- Offre du logement : 5 appareils gratuits, déblocage après paiement
+  Future<HomePlan> getHomePlan(String homeId);
+
+  /// Demande de déblocage (propriétaire ou administrateur) ; une seule en attente par logement.
+  Future<void> requestUpgrade(String homeId, {String? note});
+
+  /// Exploitant Solea : accès à la page « Paiements ».
+  Future<bool> isPlatformAdmin();
+  Future<List<UpgradeRequest>> adminListUpgrades();
+
+  /// Paiement reçu ([approve]) : [deviceLimit] appareils pendant [months] mois (null = sans fin).
+  Future<void> adminDecideUpgrade(String requestId, {required bool approve, int? deviceLimit, int? months});
 
   // --- Commandes (§5.4)
   Future<DeviceCommand> sendCommand({
