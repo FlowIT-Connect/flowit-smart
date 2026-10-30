@@ -100,14 +100,7 @@ class _ShellState extends State<Shell> {
             ? Row(children: [
                 Padding(
                   padding: const EdgeInsetsDirectional.fromSTEB(12, 0, 0, 16),
-                  child: Container(
-                    decoration: BoxDecoration(
-                      color: f.surface,
-                      borderRadius: BorderRadius.circular(28),
-                      border: Border.all(color: f.cardBorder),
-                      boxShadow: [BoxShadow(color: f.shadow, blurRadius: 24, offset: const Offset(0, 8))],
-                    ),
-                    clipBehavior: Clip.antiAlias,
+                  child: GlassPanel(
                     child: NavigationRail(
                       selectedIndex: _index,
                       onDestinationSelected: go,
@@ -125,11 +118,12 @@ class _ShellState extends State<Shell> {
             : body,
         bottomNavigationBar: wide
             ? null
-            : DecoratedBox(
-                decoration: BoxDecoration(
-                  border: Border(top: BorderSide(color: f.line.withValues(alpha: .6))),
-                ),
-                child: NavigationBar(
+            // Barre du bas flottante en verre dépoli.
+            : SafeArea(
+                minimum: const EdgeInsets.fromLTRB(12, 0, 12, 12),
+                child: GlassPanel(
+                  radius: 32,
+                  child: NavigationBar(
                   selectedIndex: _index,
                   onDestinationSelected: go,
                   labelBehavior: NavigationDestinationLabelBehavior.onlyShowSelected,
@@ -143,6 +137,7 @@ class _ShellState extends State<Shell> {
                         tooltip: context.tr(_labels[i]),
                       ),
                   ],
+                  ),
                 ),
               ),
       ),
