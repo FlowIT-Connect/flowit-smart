@@ -239,6 +239,12 @@ export function addTTLock(adapter, client, { pollMs = 5 * 60_000, now = () => Da
     base.stop();
   };
   adapter.devices = () => [...base.devices(), ...descs.values()];
+  /** Serrure installée en Bluetooth par l'application : enregistrée puis ajoutée à l'inventaire. */
+  adapter.pairLock = async (lockData, alias) => {
+    const r = await client.initializeLock(lockData, alias);
+    await refresh();
+    return `ttlock:${r.lockId}`;
+  };
   adapter.snapshot = (externalId) => (descs.has(externalId) ? snapshotOf(externalId) : base.snapshot(externalId));
   adapter.execute = async (externalId, key, value, ...rest) => {
     const desc = descs.get(externalId);

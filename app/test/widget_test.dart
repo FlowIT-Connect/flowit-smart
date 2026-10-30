@@ -147,4 +147,46 @@ void main() {
     }
     expect(tester.takeException(), isNull);
   });
+
+  testWidgets('ajout d\'un appareil Smart Life depuis l\'onglet Appareils', (tester) async {
+    await pumpApp(tester);
+    await signIn(tester);
+    await tester.tap(find.text('Appareils').last);
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Ajouter un appareil'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Appareil Smart Life (Tuya)'));
+    await tester.pumpAndSettle();
+    await tester.enterText(find.byType(TextField).first, 'Prise bureau');
+    // Les tests tournent comme sur Android : bouton d'ouverture de Smart Life.
+    final added = find.text('Ouvrir Smart Life');
+    await tester.drag(find.byType(ListView).last, const Offset(0, -500));
+    await tester.pumpAndSettle();
+    await tester.tap(added);
+    await tester.pump(const Duration(milliseconds: 100));
+    expect(find.textContaining('Recherche du nouvel appareil'), findsOneWidget);
+    for (var i = 0; i < 12 && find.text('Prise bureau est prêt').evaluate().isEmpty; i++) {
+      await tester.pump(const Duration(milliseconds: 500));
+    }
+    expect(find.text('Prise bureau est prêt'), findsOneWidget);
+    await tester.ensureVisible(find.text('Terminer'));
+    await tester.tap(find.text('Terminer'));
+    await tester.pumpAndSettle();
+    await tester.enterText(find.byType(TextField).first, 'bureau');
+    await tester.pumpAndSettle();
+    expect(find.text('Prise bureau'), findsOneWidget);
+  });
+
+  testWidgets('serrure : sur le web, renvoi vers l\'app Android', (tester) async {
+    await pumpApp(tester);
+    await signIn(tester);
+    await tester.tap(find.text('Appareils').last);
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Ajouter un appareil'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Serrure TTLock'));
+    await tester.pumpAndSettle();
+    expect(find.textContaining('app Android Solea'), findsOneWidget);
+    expect(find.text('Rechercher la serrure'), findsNothing);
+  });
 }

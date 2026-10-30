@@ -65,6 +65,9 @@ export function loadConfig(env = process.env) {
     pendingMaxAgeMs: int(env, 'PENDING_MAX_AGE_MS', 30_000),
     pollIntervalMs: int(env, 'POLL_INTERVAL_MS', 2_000),
     automationRefreshMs: int(env, 'AUTOMATION_REFRESH_MS', 30_000),
+    // Ajout d'appareils depuis l'application : durée de recherche d'un appareil Smart Life.
+    pairingScanMs: int(env, 'PAIRING_SCAN_SECONDS', 300) * 1000,
+    pairingRetryMs: int(env, 'PAIRING_RETRY_SECONDS', 10) * 1000,
     logLevel: env.LOG_LEVEL ?? 'info',
   };
 }

@@ -30,6 +30,11 @@ export class Bridge {
     this.timers = [];
     this.queueBusy = false;
     this.queueAgain = false;
+    this.pairingBusy = false;
+    this.pairingsAvailable = true;
+    /** Appareils déjà attribués à une demande d'ajout (deux demandes ne prennent pas le même). */
+    this.pairedDevices = new Set();
+    this.stopped = false;
   }
 
   async start() {
@@ -62,6 +67,8 @@ export class Bridge {
     const every = (ms, fn) => this.timers.push(setInterval(() => fn().catch((e) => log.error('bridge.timer_failed', { error: e.message })), ms));
     every(this.config.pollIntervalMs, () => this.processQueue());
     every(this.config.pollIntervalMs * 5, () => this.sweepStale());
+    await this.store.failStalePairings?.(this.homeId, this.#pairingCutoff(), 'Passerelle redémarrée pendant l\'ajout : recommencez').catch(() => {});
+    every(this.config.pollIntervalMs, () => this.processPairings());
     if (this.config.runAutomations !== false) {
       await this.refreshAutomations();
       every(this.config.automationRefreshMs, () => this.refreshAutomations());
@@ -81,6 +88,7 @@ export class Bridge {
   }
 
   async stop() {
+    this.stopped = true;
     for (const t of this.timers) clearInterval(t);
     this.unsubscribe?.();
     await this.cameras?.stop();
@@ -272,6 +280,100 @@ export class Bridge {
     const limit = new Date(this.clock().getTime() - this.config.pendingMaxAgeMs).toISOString();
     const n = await this.store.expireCommands(this.homeId, [...this.devices.keys()], limit, 'Aucune passerelle disponible pour exécuter la commande à temps');
     if (n) log.warn('bridge.commands_expired', { count: n });
+  }
+
+  // ------------------------------------------------------------------ Ajout d'appareils depuis l'application
+  #pairingCutoff() {
+    return new Date(this.clock().getTime() - (this.config.pairingMaxAgeMs ?? 15 * 60_000)).toISOString();
+  }
+
+  async processPairings() {
+    if (this.pairingBusy || !this.pairingsAvailable || !this.store.fetchPairings) return;
+    this.pairingBusy = true;
+    try {
+      let list;
+      try {
+        list = await this.store.fetchPairings(this.homeId);
+      } catch (e) {
+        // Base pas encore mise à jour (migration solea_pairing) : le reste continue.
+        this.pairingsAvailable = false;
+        log.warn('bridge.pairing_unavailable', { error: e.message });
+        return;
+      }
+      for (const req of list) {
+        // Serrure : seule une passerelle reliée à TTLock peut l'enregistrer.
+        if (req.kind === 'ttlock_lock' && !this.adapter.pairLock) continue;
+        if (Date.parse(req.created_at) < Date.parse(this.#pairingCutoff())) {
+          if (await this.store.claimPairing(req.id)) await this.store.completePairing(req.id, 'failed', 'Demande trop ancienne : recommencez', null);
+          continue;
+        }
+        if (!(await this.store.claimPairing(req.id))) continue;
+        const p = this.runPairing(req).finally(() => this.running.delete(p));
+        this.running.add(p);
+      }
+    } finally {
+      this.pairingBusy = false;
+    }
+  }
+
+  async runPairing(req) {
+    const started = Date.now();
+    let status = 'failed';
+    let error = null;
+    let deviceId = null;
+    try {
+      if (!this.enabled) throw new Error('Intégration désactivée');
+      deviceId = req.kind === 'ttlock_lock' ? await this.#pairLock(req) : await this.#findPaired(req);
+      if (deviceId) {
+        const patch = { ...(req.name ? { name: req.name } : {}), ...(req.room_id ? { room_id: req.room_id } : {}) };
+        if (Object.keys(patch).length) await this.store.updateDevice(deviceId, patch);
+        status = 'done';
+      } else {
+        error =
+          req.kind === 'ttlock_lock'
+            ? 'Serrure enregistrée chez TTLock mais pas encore visible : patientez une minute'
+            : 'Aucun nouvel appareil trouvé : vérifiez qu\'il apparaît dans Smart Life, puis recommencez';
+      }
+    } catch (e) {
+      error = e.message;
+    }
+    try {
+      await this.store.completePairing(req.id, status, error, deviceId);
+    } catch (e) {
+      log.error('bridge.pairing_save_failed', { request_id: req.id, error: e.message });
+    }
+    // Jamais la clé de la serrure dans les journaux.
+    log.info('bridge.pairing', { request_id: req.id, kind: req.kind, status, device_id: deviceId, ms: Date.now() - started, ...(error ? { error } : {}) });
+  }
+
+  /** Serrure installée en Bluetooth par l'application : enregistrée sur le compte TTLock. */
+  async #pairLock(req) {
+    const externalId = await this.adapter.pairLock(req.lock_data, req.name);
+    await this.syncInventory();
+    const deviceId = this.byExternal.get(externalId) ?? null;
+    if (deviceId) this.pairedDevices.add(deviceId);
+    return deviceId;
+  }
+
+  /** Appareil couplé dans Smart Life : relit l'inventaire jusqu'à voir un nouvel appareil. */
+  async #findPaired(req) {
+    const deadline = Date.now() + (this.config.pairingScanMs ?? 5 * 60_000);
+    while (!this.stopped) {
+      try {
+        await this.adapter.rescan?.();
+        await this.syncInventory();
+      } catch (e) {
+        log.warn('bridge.pairing_scan_failed', { request_id: req.id, error: e.message });
+      }
+      const id = await this.store.findNewDevice(this.config.integrationId, req.created_at, [...this.pairedDevices]);
+      if (id) {
+        this.pairedDevices.add(id);
+        return id;
+      }
+      if (Date.now() >= deadline) return null;
+      await new Promise((r) => setTimeout(r, this.config.pairingRetryMs ?? 10_000));
+    }
+    return null;
   }
 
   // ------------------------------------------------------------------ Automatisations (exécution locale, §5.9)

@@ -214,6 +214,37 @@ describe('Passerelle avec Tuya Cloud (sans box)', () => {
     assert.ok(await until(() => store.deviceByName('Prise cuisine')));
   });
 
+  const pairing = (extra = {}) => {
+    const req = { id: `pair-${store.pairings.length}`, home_id: 'home-1', kind: 'scan', name: null, room_id: null, lock_data: null, status: 'pending', created_at: new Date().toISOString(), ...extra };
+    store.pairings.push(req);
+    return req;
+  };
+
+  test('ajout depuis l\'application : nouvel appareil Smart Life repéré, nommé et rangé', async () => {
+    const req = pairing({ name: 'Prise salon', room_id: 'room-salon' });
+    cloud.devices.set('plug3', { ...structuredClone(demo('plug1')), id: 'plug3', name: 'Smart Plug' });
+    assert.ok(await until(() => req.status === 'done'), `statut ${req.status}`);
+    const dev = store.devices.get(req.device_id);
+    assert.equal(dev.name, 'Prise salon');
+    assert.equal(dev.room_id, 'room-salon');
+  });
+
+  test('ajout depuis l\'application : rien de nouveau, échec clair après le délai', async () => {
+    bridge.config.pairingScanMs = 150;
+    bridge.config.pairingRetryMs = 30;
+    const req = pairing();
+    assert.ok(await until(() => req.status === 'failed'), `statut ${req.status}`);
+    assert.match(req.error, /Aucun nouvel appareil/);
+    assert.equal(req.device_id, null);
+  });
+
+  test('ajout depuis l\'application : un appareil déjà là n\'est pas repris', async () => {
+    bridge.config.pairingScanMs = 150;
+    bridge.config.pairingRetryMs = 30;
+    const req = pairing({ created_at: new Date(Date.now() + 1000).toISOString() });
+    assert.ok(await until(() => req.status === 'failed'));
+  });
+
   test('cloud injoignable puis rétabli : statut de l\'intégration suivi', async () => {
     const realFetch = cloud.fetch;
     adapter.client.fetchImpl = async () => { throw new Error('réseau coupé'); };
@@ -221,6 +252,27 @@ describe('Passerelle avec Tuya Cloud (sans box)', () => {
     adapter.client.fetchImpl = realFetch;
     assert.ok(await until(() => store.integrations.get('integ-1').status === 'connected'));
   });
+});
+
+test('ajout depuis l\'application : relecture immédiate sans attendre l\'interrogation', async () => {
+  const cloud = new FakeTuyaCloud();
+  const store = new MemoryStore();
+  const client = new TuyaClient({ accessId: ACCESS_ID, accessSecret: ACCESS_SECRET, baseUrl: 'https://openapi.tuyaeu.com', fetchImpl: cloud.fetch });
+  const bridge = new Bridge({
+    store,
+    adapter: new TuyaCloudAdapter({ client, pollMs: 60_000, confirmPollMs: 20 }), // interrogation normale : 1 min
+    config: { integrationId: 'integ-1', commandTimeoutMs: 400, pendingMaxAgeMs: 30_000, pollIntervalMs: 30, automationRefreshMs: 60_000, runAutomations: false, pairingRetryMs: 50 },
+  });
+  await bridge.start();
+  try {
+    const req = { id: 'pair-x', home_id: 'home-1', kind: 'scan', name: null, room_id: null, status: 'pending', created_at: new Date().toISOString() };
+    store.pairings.push(req);
+    cloud.devices.set('plug4', { ...structuredClone(demo('plug1')), id: 'plug4', name: 'Prise bureau' });
+    assert.ok(await until(() => req.status === 'done', 1500), `statut ${req.status}`);
+    assert.equal(store.devices.get(req.device_id).name, 'Prise bureau');
+  } finally {
+    await bridge.stop();
+  }
 });
 
 test('configuration Tuya Cloud', () => {

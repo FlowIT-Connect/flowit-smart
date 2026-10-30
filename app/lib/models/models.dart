@@ -348,6 +348,27 @@ class Device {
 }
 
 /// Code au clavier d'une serrure, créé par la passerelle (propriétaire et administrateurs).
+/// Demande d'ajout d'un appareil, traitée par la passerelle (table pairing_requests).
+class PairingRequest {
+  final String id;
+  final String kind; // ttlock_lock, scan
+  final String status; // pending, working, done, failed
+  final String? error;
+  final String? deviceId;
+
+  const PairingRequest({required this.id, required this.kind, required this.status, this.error, this.deviceId});
+
+  bool get isFinished => status == 'done' || status == 'failed';
+
+  factory PairingRequest.fromJson(Map<String, dynamic> j) => PairingRequest(
+        id: j['id'] as String,
+        kind: j['kind'] as String,
+        status: j['status'] as String,
+        error: j['error'] as String?,
+        deviceId: j['device_id'] as String?,
+      );
+}
+
 class AccessCode {
   final String id;
   final String deviceId;
