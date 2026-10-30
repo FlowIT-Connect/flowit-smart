@@ -1,12 +1,15 @@
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import 'glass.dart';
+
 /// Identité visuelle Solea (aucune ressource Smart Life, §5.11).
 ///
-/// Direction : « lumière du soleil ». Fonds blancs et crème très aérés, un
-/// orange soleil comme unique accent, le noir pour les actions principales,
-/// des cartes douces très arrondies et de grands chiffres fins. Les appareils
-/// allumés prennent une teinte chaude, les appareils éteints restent neutres.
+/// Direction : « lumière du soleil » en verre dépoli (glassmorphism). Un fond
+/// de lumières chaudes floutées, des cartes translucides bordées d'un filet
+/// clair, un orange soleil comme unique accent et de grands chiffres fins.
+/// Les appareils allumés prennent une teinte de verre ambré, les appareils
+/// éteints restent en verre neutre.
 class AppTheme {
   static const seed = Color(0xFFF28C1B);
   static const fontFamily = 'Manrope';
@@ -53,10 +56,12 @@ class AppTheme {
       fontFamily: fontFamily,
       fontFamilyFallback: fontFallback,
       textTheme: text,
-      scaffoldBackgroundColor: c.background,
+      // Transparent : chaque page est posée sur le fond de verre (GlassPageTransitions).
+      scaffoldBackgroundColor: Colors.transparent,
       canvasColor: c.background,
       extensions: [c],
       visualDensity: VisualDensity.standard,
+      pageTransitionsTheme: const GlassPageTransitions(),
       appBarTheme: AppBarTheme(
         backgroundColor: Colors.transparent,
         surfaceTintColor: Colors.transparent,
@@ -68,10 +73,10 @@ class AppTheme {
       ),
       cardTheme: CardThemeData(
         elevation: 0,
-        color: c.surface,
+        color: c.glass,
         surfaceTintColor: Colors.transparent,
         shadowColor: c.shadow,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24), side: BorderSide(color: c.cardBorder)),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24), side: BorderSide(color: c.glassBorder)),
         margin: EdgeInsets.zero,
       ),
       dividerTheme: DividerThemeData(color: c.line, thickness: 1, space: 1),
@@ -169,7 +174,7 @@ class AppTheme {
       navigationBarTheme: NavigationBarThemeData(
         height: 80,
         elevation: 0,
-        backgroundColor: c.navBar,
+        backgroundColor: Colors.transparent,
         surfaceTintColor: Colors.transparent,
         indicatorColor: c.brand,
         indicatorShape: pill,
@@ -177,7 +182,7 @@ class AppTheme {
           (s) => text.labelSmall?.copyWith(fontWeight: FontWeight.w700, color: s.contains(WidgetState.selected) ? c.ink : c.inkSoft),
         ),
         iconTheme: WidgetStateProperty.resolveWith(
-          (s) => IconThemeData(size: 24, color: s.contains(WidgetState.selected) ? c.onBrand : c.inkFaint),
+          (s) => IconThemeData(size: 24, color: s.contains(WidgetState.selected) ? c.onBrand : c.inkSoft),
         ),
       ),
       navigationRailTheme: NavigationRailThemeData(
@@ -310,6 +315,11 @@ class FlowColors extends ThemeExtension<FlowColors> {
     required this.dangerSoft,
     required this.dangerInk,
     required this.shadow,
+    required this.glass,
+    required this.glassStrong,
+    required this.glassBorder,
+    required this.backdrop,
+    required this.blobs,
   });
 
   final Color background, surface, surfaceAlt, sheet, field, chip, line, cardBorder;
@@ -320,15 +330,23 @@ class FlowColors extends ThemeExtension<FlowColors> {
   final Color amber, orange, blue, violet, cyan, pink;
   final Color success, warning, danger, dangerSoft, dangerInk, shadow;
 
+  /// Verre dépoli : remplissage des cartes, version plus couvrante (barres,
+  /// panneaux) et filet clair qui dessine le bord du verre.
+  final Color glass, glassStrong, glassBorder;
+
+  /// Fond de scène et taches de lumière floutées peintes derrière le verre.
+  final Color backdrop;
+  final List<Color> blobs;
+
   static const light = FlowColors(
     background: Color(0xFFFBF8F4),
     surface: Color(0xFFFFFFFF),
     surfaceAlt: Color(0xFFF7F3EE),
-    sheet: Color(0xFFFFFFFF),
-    field: Color(0xFFFFFFFF),
-    chip: Color(0xFFF2ECE4),
+    sheet: Color(0xFFFFFBF6),
+    field: Color(0xB3FFFFFF),
+    chip: Color(0x99F2E8DC),
     line: Color(0xFFE9E2D8),
-    cardBorder: Color(0xFFF0EAE2),
+    cardBorder: Color(0xB3FFFFFF),
     ink: Color(0xFF1F1C19),
     inkSoft: Color(0xFF71695F),
     inkFaint: Color(0xFFA9A094),
@@ -338,11 +356,11 @@ class FlowColors extends ThemeExtension<FlowColors> {
     brandSoft: Color(0xFFFDEBD4),
     brandInk: Color(0xFF8F4706),
     onBrand: Color(0xFFFFFFFF),
-    tileOff: Color(0xFFF6F2ED),
-    tileOn: Color(0xFFFDEFDC),
+    tileOff: Color(0x80FFFFFF),
+    tileOn: Color(0xB3FFD7A6),
     tileOnInk: Color(0xFF1F1C19),
     tileOnInkSoft: Color(0xFF7A6248),
-    navBar: Color(0xF7FFFFFF),
+    navBar: Color(0x8CFFFFFF),
     glowA: Color(0x26FFC23D),
     glowB: Color(0x14F28C1B),
     amber: Color(0xFFF5A524),
@@ -357,6 +375,11 @@ class FlowColors extends ThemeExtension<FlowColors> {
     dangerSoft: Color(0xFFFDE6E3),
     dangerInk: Color(0xFF8E1C22),
     shadow: Color(0x141F1C19),
+    glass: Color(0x80FFFFFF),
+    glassStrong: Color(0xA6FFFFFF),
+    glassBorder: Color(0xB3FFFFFF),
+    backdrop: Color(0xFFF5E6D6),
+    blobs: [Color(0xFFFFC163), Color(0xFFB9C99A), Color(0xFFF59A5B), Color(0xFFC9B7E8), Color(0xFFF4B39C)],
   );
 
   static const dark = FlowColors(
@@ -364,10 +387,10 @@ class FlowColors extends ThemeExtension<FlowColors> {
     surface: Color(0xFF1C1915),
     surfaceAlt: Color(0xFF23201B),
     sheet: Color(0xFF1A1713),
-    field: Color(0xFF1C1915),
-    chip: Color(0xFF2A2620),
+    field: Color(0x26FFFFFF),
+    chip: Color(0x26FFFFFF),
     line: Color(0xFF353029),
-    cardBorder: Color(0x12FFFFFF),
+    cardBorder: Color(0x33FFFFFF),
     ink: Color(0xFFF7F2EA),
     inkSoft: Color(0xFFB5AB9E),
     inkFaint: Color(0xFF7B7166),
@@ -377,11 +400,11 @@ class FlowColors extends ThemeExtension<FlowColors> {
     brandSoft: Color(0xFF3B2813),
     brandInk: Color(0xFFFFC98A),
     onBrand: Color(0xFF231200),
-    tileOff: Color(0xFF1C1915),
-    tileOn: Color(0xFF37281A),
+    tileOff: Color(0x1FFFFFFF),
+    tileOn: Color(0x66E07A22),
     tileOnInk: Color(0xFFFFF5E8),
     tileOnInkSoft: Color(0xFFE2C29C),
-    navBar: Color(0xF71C1915),
+    navBar: Color(0x40FFFFFF),
     glowA: Color(0x1FFFB13D),
     glowB: Color(0x14F28C1B),
     amber: Color(0xFFFFB547),
@@ -396,6 +419,11 @@ class FlowColors extends ThemeExtension<FlowColors> {
     dangerSoft: Color(0xFF3A1518),
     dangerInk: Color(0xFFFFB4B6),
     shadow: Color(0x66000000),
+    glass: Color(0x1FFFFFFF),
+    glassStrong: Color(0x33FFFFFF),
+    glassBorder: Color(0x33FFFFFF),
+    backdrop: Color(0xFF1B140F),
+    blobs: [Color(0xFFA9561D), Color(0xFF45522F), Color(0xFFC46A26), Color(0xFF41315C), Color(0xFF7A3B2A)],
   );
 
   /// Dégradé soleil Solea (logo, écran de connexion), du jaune à l'orange.
@@ -408,6 +436,13 @@ class FlowColors extends ThemeExtension<FlowColors> {
 
   /// Carte « résumé » sombre de l'accueil, façon pilule énergie.
   Color get panel => ink == FlowColors.light.ink ? const Color(0xFF1F1C19) : const Color(0xFF26221D);
+
+  /// Dégradé du verre : plus clair en haut à gauche, comme un reflet.
+  LinearGradient get glassGradient => LinearGradient(
+        begin: Alignment.topLeft,
+        end: Alignment.bottomRight,
+        colors: [glassStrong, glass],
+      );
 
   @override
   FlowColors copyWith() => this;
