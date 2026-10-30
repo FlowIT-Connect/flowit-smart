@@ -127,16 +127,23 @@ export class Bridge {
       }
       seen.add(desc.externalId);
       const prev = this.devices.get(deviceId);
+      let bleKey = desc.bleKey;
       if (desc.bleKey !== undefined && desc.bleKey !== prev?.bleKey) {
         // Jamais dans les journaux : la clé ouvre la serrure.
-        await this.store.saveBleKey(deviceId, this.homeId, desc.bleKey);
-        log.info('bridge.ble_key_synced', { device_id: deviceId, present: Boolean(desc.bleKey) });
+        try {
+          await this.store.saveBleKey(deviceId, this.homeId, desc.bleKey);
+          log.info('bridge.ble_key_synced', { device_id: deviceId, present: Boolean(desc.bleKey) });
+        } catch (e) {
+          // Base pas encore à jour, par exemple : le reste de l'inventaire continue.
+          log.warn('bridge.ble_key_failed', { device_id: deviceId, error: e.message });
+          bleKey = prev?.bleKey; // nouvel essai au prochain inventaire
+        }
       }
       this.devices.set(deviceId, {
         externalId: desc.externalId,
         caps: new Map(desc.capabilities.map((c) => [c.capability_key, c])),
         isSensitive: desc.isSensitive || prev?.isSensitive || false,
-        bleKey: desc.bleKey,
+        bleKey,
         state: snap.state,
         availability: snap.availability,
       });

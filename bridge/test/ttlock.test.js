@@ -168,6 +168,24 @@ describe('Passerelle avec serrures TTLock', () => {
     assert.equal(store.bleKeys.has(store.deviceByName('Porte garage').id), false);
   });
 
+  test('base sans table des clés Bluetooth : l\'inventaire continue', async () => {
+    const failing = new MemoryStore();
+    failing.saveBleKey = async () => {
+      throw new Error('relation "device_ble_keys" does not exist');
+    };
+    const other = new Bridge({
+      store: failing,
+      adapter: addTTLock(new EmptyAdapter(), client(new FakeTTLockCloud()), { pollMs: 60_000 }),
+      config: { integrationId: 'integ-1', commandTimeoutMs: 500, pendingMaxAgeMs: 30_000, pollIntervalMs: 30, automationRefreshMs: 60_000, runAutomations: false },
+    });
+    await other.start();
+    try {
+      assert.equal(failing.deviceByName('Porte garage').vendor, 'TTLock');
+    } finally {
+      await other.stop();
+    }
+  });
+
   test('code refusé tant que la ou le propriétaire n\'a pas activé le boîtier', async () => {
     const box = store.deviceByName('Boîtier entrée');
     const c = await cmd(box, 'access_code', { type: 'one_time' });
