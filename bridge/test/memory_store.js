@@ -16,6 +16,7 @@ export class MemoryStore {
     this.cameraWatchers = [];
     this.frames = new Map(); // chemin -> { bytes, contentType }
     this.frameNotices = [];
+    this.accessCodes = [];
   }
 
   async getIntegration(id) { return this.integrations.get(id) ?? null; }
@@ -69,6 +70,8 @@ export class MemoryStore {
     this.listeners.push(cb);
     return () => {};
   }
+  async isSecurityValidated(deviceId) { return Boolean(this.devices.get(deviceId)?.security_validated_at); }
+  async saveAccessCode(row) { this.accessCodes.push(row); }
   async listAutomations(homeId) { return this.automations.filter((a) => a.home_id === homeId && a.enabled && a.run_locally !== false); }
   async listDeviceStates() { return Object.fromEntries([...this.devices.values()].map((d) => [d.id, d.state])); }
   async insertCommand(row) {

@@ -61,6 +61,12 @@ abstract class Backend {
   Future<List<Device>> listDevices(String homeId);
   Future<void> updateDevice(String deviceId, {String? name, String? roomId, bool clearRoom = false, bool? isPinned, bool? isHidden});
 
+  /// Active (ou bloque) un appareil de sécurité : propriétaire uniquement, journalisé.
+  Future<void> setDeviceSecurity(String deviceId, bool enabled);
+
+  /// Codes d'accès créés pour une serrure, du plus récent au plus ancien.
+  Future<List<AccessCode>> listAccessCodes(String deviceId);
+
   // --- Commandes (§5.4)
   Future<DeviceCommand> sendCommand({
     required String homeId,

@@ -6,6 +6,7 @@ import '../../core/theme.dart';
 import '../../models/models.dart';
 import '../../state/app_state.dart';
 import '../screens/device_detail.dart';
+import 'access_control.dart';
 import 'camera_view.dart';
 import 'common.dart';
 import 'device_visual.dart';
@@ -174,7 +175,8 @@ class DeviceTile extends StatelessWidget {
   String _summary(BuildContext context, Device d) {
     if (d.availability == Availability.unavailable) return context.tr('availability.unavailable');
     if (d.isUnsupported) return context.tr('device.unsupportedShort');
-    if (d.isSensitive) return context.tr('device.sensitiveShort');
+    if (d.isBlocked) return context.tr('device.sensitiveShort');
+    if (d.isAccessControl) return context.tr('access.short');
     if (d.availability == Availability.unknown && d.state.isEmpty) return context.tr('availability.unknown');
     if (d.isCamera) return context.tr('camera.tapToView');
     for (final key in ['switch', 'cover_position', 'target_temperature', 'temperature', 'contact', 'motion', 'power']) {
@@ -221,7 +223,9 @@ class DeviceControlPanel extends StatelessWidget {
     final d = device;
     final children = <Widget>[];
 
-    if (d.isSensitive) {
+    if (d.isAccessControl) {
+      children.add(AccessControlPanel(d, key: ValueKey('access-${d.id}')));
+    } else if (d.isSensitive) {
       children.add(_Notice(icon: Icons.shield_rounded, text: context.tr('device.sensitiveBlocked')));
     } else if (d.availability == Availability.unavailable && d.controls.isNotEmpty) {
       children.add(_Notice(icon: Icons.link_off_rounded, text: context.tr('device.offlineControls')));

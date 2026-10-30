@@ -197,6 +197,9 @@ class Capability {
 
   /// Flux d'images d'une caméra (lu par la passerelle, jamais une mesure à afficher).
   bool get isCamera => metadata['kind'] == 'camera';
+
+  /// Affiché par le panneau de contrôle d'accès, pas comme une mesure.
+  bool get isAccessDetail => metadata['kind'] == 'access_log' || metadata['kind'] == 'lock_state';
 }
 
 class Device {
@@ -223,6 +226,9 @@ class Device {
   /// Photo prise par l'utilisateur (chemin dans le bucket privé device-photos).
   final String? photoPath;
 
+  /// Activation par le propriétaire d'un appareil de sécurité (serrure) ; null = bloqué.
+  final DateTime? securityValidatedAt;
+
   const Device({
     required this.id,
     required this.homeId,
@@ -242,6 +248,7 @@ class Device {
     this.capabilities = const [],
     this.imageUrl,
     this.photoPath,
+    this.securityValidatedAt,
   });
 
   factory Device.fromJson(Map<String, dynamic> j, {List<Capability>? capabilities}) => Device(
@@ -262,6 +269,7 @@ class Device {
         isSensitive: (j['is_sensitive'] as bool?) ?? false,
         imageUrl: j['image_url'] as String?,
         photoPath: j['photo_path'] as String?,
+        securityValidatedAt: _date(j['security_validated_at']),
         capabilities: capabilities ??
             ((j['device_capabilities'] as List?) ?? const [])
                 .map((c) => Capability.fromJson(Map<String, dynamic>.from(c as Map)))
@@ -283,6 +291,8 @@ class Device {
     List<Capability>? capabilities,
     String? photoPath,
     bool clearPhoto = false,
+    DateTime? securityValidatedAt,
+    bool clearSecurity = false,
   }) =>
       Device(
         id: id,
@@ -303,6 +313,7 @@ class Device {
         capabilities: capabilities ?? this.capabilities,
         imageUrl: imageUrl,
         photoPath: clearPhoto ? null : (photoPath ?? this.photoPath),
+        securityValidatedAt: clearSecurity ? null : (securityValidatedAt ?? this.securityValidatedAt),
       );
 
   Capability? capability(String key) {
@@ -314,7 +325,7 @@ class Device {
 
   bool get isOnline => availability == Availability.available;
   List<Capability> get controls => capabilities.where((c) => c.isControl).toList();
-  List<Capability> get readings => capabilities.where((c) => !c.isControl && !c.isCamera).toList();
+  List<Capability> get readings => capabilities.where((c) => !c.isControl && !c.isCamera && !c.isAccessDetail).toList();
 
   /// Caméra IP : image en direct dans la fiche.
   bool get isCamera => capabilities.any((c) => c.isCamera);
@@ -323,8 +334,108 @@ class Device {
   Capability? get primarySwitch => capability('switch');
   bool? get isOn => state['switch'] is bool ? state['switch'] as bool : null;
 
+  /// Serrure ou contrôle d'accès (TTLock) : codes d'accès, historique, ouverture.
+  bool get isAccessControl => capability('access_code') != null;
+
+  /// Appareil de sécurité activé par le propriétaire : commandes manuelles permises.
+  bool get isSecurityEnabled => isSensitive && securityValidatedAt != null;
+
+  /// Commandes refusées par le serveur (appareil de sécurité non activé).
+  bool get isBlocked => isSensitive && securityValidatedAt == null;
+
   /// L'appareil n'expose aucune commande prise en charge.
   bool get isUnsupported => controls.isEmpty && readings.isEmpty && !isCamera;
+}
+
+/// Code au clavier d'une serrure, créé par la passerelle (propriétaire et administrateurs).
+class AccessCode {
+  final String id;
+  final String deviceId;
+  final String? commandId;
+  final String kind; // one_time, period, permanent
+  final String? name;
+  final String code;
+  final DateTime startsAt;
+  final DateTime? endsAt;
+  final DateTime? createdAt;
+
+  const AccessCode({
+    required this.id,
+    required this.deviceId,
+    this.commandId,
+    required this.kind,
+    this.name,
+    required this.code,
+    required this.startsAt,
+    this.endsAt,
+    this.createdAt,
+  });
+
+  factory AccessCode.fromJson(Map<String, dynamic> j) => AccessCode(
+        id: j['id'] as String,
+        deviceId: j['device_id'] as String,
+        commandId: j['command_id'] as String?,
+        kind: j['kind'] as String,
+        name: j['name'] as String?,
+        code: j['code'] as String,
+        startsAt: _date(j['starts_at']) ?? DateTime.now(),
+        endsAt: _date(j['ends_at']),
+        createdAt: _date(j['created_at']),
+      );
+
+  /// Code encore utilisable (un code unique peut déjà avoir servi : la serrure seule le sait).
+  bool get isActive => endsAt == null || endsAt!.isAfter(DateTime.now());
+}
+
+/// Passage enregistré par une serrure (état « access_log » écrit par la passerelle).
+class AccessRecord {
+  final DateTime at;
+  final String method; // app, code, card, fingerprint, key, remote, other
+  final bool ok;
+  final String? who;
+
+  const AccessRecord({required this.at, required this.method, required this.ok, this.who});
+
+  static List<AccessRecord> fromState(dynamic v) => v is! List
+      ? const []
+      : [
+          for (final r in v.whereType<Map>())
+            if (_date(r['at']) case final at?) AccessRecord(at: at, method: '${r['method'] ?? 'other'}', ok: r['ok'] != false, who: r['who'] as String?),
+        ];
+}
+
+/// Accès partagé : clé électronique TTLock d'une autre personne (état « ekeys » écrit par la passerelle).
+class SharedKey {
+  final int id;
+  final String? name;
+  final String receiver;
+  final String status; // active, frozen, pending, unknown
+  final DateTime? start;
+  final DateTime? end;
+
+  const SharedKey({required this.id, this.name, required this.receiver, required this.status, this.start, this.end});
+
+  bool get isFrozen => status == 'frozen';
+
+  /// Programmé entre deux dates (sinon permanent).
+  bool get isScheduled => start != null && end != null;
+
+  bool get isExpired => end != null && end!.isBefore(DateTime.now());
+
+  static List<SharedKey> fromState(dynamic v) => v is! List
+      ? const []
+      : [
+          for (final k in v.whereType<Map>())
+            if (k['id'] case final int id)
+              SharedKey(
+                id: id,
+                name: k['name'] as String?,
+                receiver: '${k['receiver'] ?? ''}',
+                status: '${k['status'] ?? 'unknown'}',
+                start: _date(k['start']),
+                end: _date(k['end']),
+              ),
+        ];
 }
 
 class DeviceCommand {

@@ -65,7 +65,7 @@ export class SupabaseStore {
     return check(
       await this.db
         .from('device_commands')
-        .select('id, home_id, device_id, capability_key, value, scene_run_id, not_before, created_at')
+        .select('id, home_id, device_id, capability_key, value, requested_by, scene_run_id, automation_id, not_before, created_at')
         .eq('home_id', homeId)
         .eq('status', 'pending')
         .lte('not_before', nowIso)
@@ -142,6 +142,17 @@ export class SupabaseStore {
       .upload(path, bytes, { upsert: true, contentType, cacheControl: '0' });
     if (error) throw new Error(`Supabase Storage : ${error.message}`);
     return path;
+  }
+
+  /** Validation dédiée d'un appareil sensible (posée par le propriétaire dans l'application). */
+  async isSecurityValidated(deviceId) {
+    const row = check(await this.db.from('devices').select('security_validated_at').eq('id', deviceId).maybeSingle());
+    return Boolean(row?.security_validated_at);
+  }
+
+  /** Code d'accès créé par la passerelle (lisible par le propriétaire et les administrateurs). */
+  async saveAccessCode(row) {
+    check(await this.db.from('access_codes').insert(row));
   }
 
   async listAutomations(homeId) {

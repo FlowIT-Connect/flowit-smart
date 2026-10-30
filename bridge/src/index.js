@@ -4,6 +4,8 @@
 import { addDirectCameras } from './adapters/direct_cameras.js';
 import { FakeHomeAssistant } from './adapters/fake_home_assistant.js';
 import { HomeAssistantAdapter } from './adapters/home_assistant.js';
+import { addTTLock } from './adapters/ttlock.js';
+import { TTLockClient } from './adapters/ttlock_api.js';
 import { TuyaClient } from './adapters/tuya_api.js';
 import { TuyaCloudAdapter } from './adapters/tuya_cloud.js';
 import { Bridge } from './bridge.js';
@@ -44,6 +46,11 @@ if (config.adapter === 'simulator') {
 if (config.cameras.length) {
   addDirectCameras(adapter, config.cameras);
   log.info('bridge.direct_cameras', { count: config.cameras.length });
+}
+
+if (config.ttlock) {
+  addTTLock(adapter, new TTLockClient(config.ttlock), { pollMs: config.ttlock.pollMs });
+  log.info('bridge.ttlock', { api: config.ttlock.baseUrl, poll_seconds: config.ttlock.pollMs / 1000 });
 }
 
 const bridge = new Bridge({ store: new SupabaseStore(config.supabaseUrl, config.supabaseServiceKey), adapter, config });
