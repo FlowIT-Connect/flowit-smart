@@ -12,7 +12,8 @@ const securityHeaders = [
 ];
 
 const config: NextConfig = {
-  output: "standalone",
+  // Netlify a son propre adaptateur Next.js ; « standalone » sert à l'image Docker.
+  output: process.env.NETLIFY ? undefined : "standalone",
   poweredByHeader: false,
   images: { formats: ["image/avif", "image/webp"] },
   async headers() {

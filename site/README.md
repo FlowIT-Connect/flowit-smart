@@ -14,7 +14,7 @@ Séparé de l'application Flutter (`app/`), qui reste sur app.solea-dz.com.
 | Style | Tailwind CSS 4, polices Manrope et IBM Plex Sans Arabic (incluses, licence OFL) |
 | Langues | next-intl : `fr` `en` `ar` (RTL) `es` `de` `it`, une URL par langue (`/fr/...`) |
 | Base de données | Projet Supabase **dédié au site** (pas celui de l'app) |
-| Hébergement prévu | Docker sur le serveur ADEX, derrière le proxy HTTPS, domaine solea-dz.com |
+| Hébergement | Netlify (projet « flowit-smart », domaine solea-dz.com), ou Docker sur le serveur ADEX |
 
 ## Démarrer en local
 
@@ -68,7 +68,7 @@ lit `supabase/` à la racine et ne doit jamais les appliquer au projet de l'app.
 
 ```sh
 npm run typecheck
-npm test                                  # langues, détection pays, devises (10 tests)
+npm test                                  # langues, détection pays, devises (11 tests)
 npm run build && sh scripts/serve-standalone.sh &
 node tests/e2e.mjs                        # navigateur : 60 pages, RTL, bandeau, préférences, formulaires, SEO (13 tests)
 sh supabase/tests/run_tests.sh            # SQL sur PostgreSQL 16 (17 tests)
@@ -76,7 +76,16 @@ sh supabase/tests/run_tests.sh            # SQL sur PostgreSQL 16 (17 tests)
 
 Les mêmes tests tournent sur GitHub à chaque PR (`.github/workflows/site-ci.yml`).
 
-## Mise en ligne sur le serveur ADEX
+## Mise en ligne sur Netlify (solution actuelle)
+
+Le fichier `netlify.toml` à la racine du dépôt indique à Netlify de construire le dossier `site/`.
+Une seule fois, dans le projet Netlify « flowit-smart » : *Project configuration → Build & deploy →
+Link repository*, choisir `FlowIT-Connect/flowit-smart`, branche `main`. Variables d'environnement
+(*Environment variables*) : `SITE_URL`, `SUPABASE_URL`, `SUPABASE_PUBLISHABLE_KEY` (valeurs de
+`.env.example`, toutes publiques). Ensuite chaque fusion sur `main` met le site à jour.
+Le pays du visiteur est lu dans l'en-tête de géolocalisation de Netlify.
+
+## Autre possibilité : serveur ADEX (Docker)
 
 ```sh
 git clone https://github.com/FlowIT-Connect/flowit-smart.git
