@@ -1,6 +1,7 @@
 # Compile l'app Android (APK) de Solea : ouverture des serrures TTLock en Bluetooth.
-# Le fichier Solea.apk se télécharge dans l'onglet Actions du dépôt (connecté à GitHub),
-# en bas de la page de l'exécution, rubrique « Artifacts ».
+# Sur main, l'APK est publié en lien direct, toujours à la même adresse :
+#   https://github.com/FlowIT-Connect/flowit-smart/releases/download/android-latest/Solea.apk
+# Il reste aussi dans l'onglet Actions, rubrique « Artifacts ».
 name: Construire l'app Android
 
 on:
@@ -10,7 +11,7 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: read
+  contents: write # publication de l'APK (release android-latest)
 
 concurrency:
   group: android-${{ github.ref }}
@@ -41,3 +42,16 @@ jobs:
           name: Solea-android
           path: app/build/app/outputs/flutter-apk/app-release.apk
           retention-days: 30
+      - name: Publier l'APK en lien direct
+        if: github.ref == 'refs/heads/main'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          cp build/app/outputs/flutter-apk/app-release.apk Solea.apk
+          notes="Dernière version Android de Solea : $(date -u '+%d/%m/%Y %H:%M') UTC, commit ${GITHUB_SHA::7}. Ouvrez Solea.apk sur le téléphone pour l'installer."
+          if ! gh release view android-latest >/dev/null 2>&1; then
+            gh release create android-latest --title "Solea Android (dernière version)" --notes "$notes" --target "$GITHUB_SHA"
+          fi
+          gh release upload android-latest Solea.apk --clobber
+          gh release edit android-latest --notes "$notes"
