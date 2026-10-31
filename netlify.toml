@@ -7,3 +7,8 @@
 
 [build.environment]
   NODE_VERSION = "22"
+
+# Adaptateur Next.js de Netlify (pages serveur, proxy des langues, formulaires).
+# Sans lui, Netlify publie le dossier .next comme de simples fichiers et répond « Page not found ».
+[[plugins]]
+  package = "@netlify/plugin-nextjs"
