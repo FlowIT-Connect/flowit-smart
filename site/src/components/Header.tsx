@@ -37,14 +37,14 @@ export function Header() {
           <Wordmark dark={overDark} size={28} />
         </Link>
 
-        <nav className="hidden items-center gap-1 lg:flex" aria-label="Main">
+        <nav className="hidden items-center gap-1 xl:flex" aria-label="Main">
           {mainNav.map((item) => {
             const active = pathname.startsWith(item.href);
             return (
               <Link
                 key={item.key}
                 href={item.href}
-                className={`rounded-full px-3.5 py-2 text-sm font-semibold transition ${
+                className={`whitespace-nowrap rounded-full px-3 py-2 text-sm font-semibold transition ${
                   overDark ? "text-white/80 hover:bg-white/10 hover:text-white" : active ? "bg-ink/[.06] text-ink" : "text-ink-soft hover:bg-ink/5 hover:text-ink"
                 }`}
               >
@@ -56,16 +56,16 @@ export function Header() {
 
         <div className="flex items-center gap-1">
           <Preferences dark={overDark} />
-          <Link href="/shop" className={`hidden items-center gap-2 rounded-full px-3 py-2 text-sm font-semibold sm:inline-flex ${overDark ? "text-white/85 hover:bg-white/10" : "text-ink hover:bg-ink/5"}`}>
+          <Link href="/shop" className={`hidden items-center gap-2 whitespace-nowrap rounded-full px-3 py-2 text-sm font-semibold sm:inline-flex ${overDark ? "text-white/85 hover:bg-white/10" : "text-ink hover:bg-ink/5"}`}>
             <ShoppingBag className="size-4" aria-hidden />
             {t("shop")}
           </Link>
-          <Link href="/contact" className={`btn hidden !py-2.5 text-sm md:inline-flex ${overDark ? "btn-sun" : "btn-primary"}`}>
+          <Link href="/contact" className={`btn hidden whitespace-nowrap !py-2.5 text-sm md:inline-flex ${overDark ? "btn-sun" : "btn-primary"}`}>
             {t("quote")}
           </Link>
           <button
             type="button"
-            className={`rounded-full p-2.5 lg:hidden ${overDark ? "text-white hover:bg-white/10" : "hover:bg-ink/5"}`}
+            className={`rounded-full p-2.5 xl:hidden ${overDark ? "text-white hover:bg-white/10" : "hover:bg-ink/5"}`}
             onClick={() => setOpen((v) => !v)}
             aria-expanded={open}
             aria-controls="mobile-menu"
@@ -77,7 +77,7 @@ export function Header() {
       </div>
 
       {open && (
-        <div id="mobile-menu" className="glass container-x mt-2 max-h-[calc(100dvh-6rem)] overflow-auto rounded-[2rem] p-4 shadow-2xl lg:hidden !bg-white/95">
+        <div id="mobile-menu" className="glass container-x mt-2 max-h-[calc(100dvh-6rem)] overflow-auto rounded-[2rem] p-4 shadow-2xl xl:hidden !bg-white/95">
           <nav className="flex flex-col" aria-label="Mobile">
             {[...mainNav, { key: "shop", href: "/shop" } as const, { key: "contact", href: "/contact" } as const].map((item) => (
               <Link key={item.key} href={item.href} className="rounded-2xl px-4 py-3.5 text-lg font-bold hover:bg-ink/5">
