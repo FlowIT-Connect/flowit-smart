@@ -61,7 +61,7 @@ export function Preferences({ dark = false }: { dark?: boolean }) {
         type="button"
         onClick={() => setOpen(true)}
         aria-label={t("button")}
-        className={`inline-flex items-center gap-2 rounded-full px-3 py-2 text-sm font-semibold transition ${dark ? "text-white/85 hover:bg-white/10" : "text-ink hover:bg-ink/5"}`}
+        className={`inline-flex items-center gap-2 whitespace-nowrap rounded-full px-3 py-2 text-sm font-semibold transition ${dark ? "text-white/85 hover:bg-white/10" : "text-ink hover:bg-ink/5"}`}
       >
         <Globe className="size-4" aria-hidden />
         <span className="uppercase">{locale}</span>
