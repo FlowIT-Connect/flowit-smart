@@ -1,5 +1,5 @@
 # Compile la version web (PWA) de l'app et la publie sur GitHub Pages
-# à chaque push sur main : https://flowit-connect.github.io/flowit-smart/
+# à chaque push sur main : https://app.solea-dz.com/ (domaine personnalisé GitHub Pages)
 name: Publier l'app web
 
 on:
@@ -32,7 +32,7 @@ jobs:
           cache: true
       - run: flutter pub get
       - run: flutter test
-      - run: flutter build web --release --base-href /flowit-smart/
+      - run: flutter build web --release --base-href /
       - run: cp build/web/index.html build/web/404.html
       - uses: actions/upload-pages-artifact@v3
         with:
