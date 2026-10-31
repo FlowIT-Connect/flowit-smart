@@ -1,0 +1,635 @@
+{
+  "meta": {
+    "siteName": "Solea",
+    "title": "Solea: Ihr Zuhause, Ihre Welt, ein intelligentes Ökosystem",
+    "description": "Solea vereint Beleuchtung, Sicherheit, IP-Kameras, Video-Türsprechanlagen, Zutrittskontrolle, Komfort und Energie in einer offenen Smart-Home-Plattform – für Villen, Wohnungen, Wohnanlagen und Gewerbegebäude.",
+    "discover": {
+      "title": "Solea entdecken",
+      "description": "Was Solea ist, wie das Ökosystem funktioniert und wie es mit Ihren Anforderungen wächst."
+    },
+    "devices": {
+      "title": "Kompatible Geräte",
+      "description": "Beleuchtung, IP-Kameras, Video-Türsprechanlagen, Zutrittskontrolle, Zigbee-Sensoren, Klima, Energie, Rollläden und Gateways: die Gerätefamilien, die Solea integriert."
+    },
+    "gateway": {
+      "title": "Solea Gateway",
+      "description": "Das kommende Smart-Home-Gateway von Solea: Zigbee, WLAN, lokale Automationen, MQTT. Bald weltweit erhältlich."
+    },
+    "solutions": {
+      "title": "Lösungen",
+      "description": "Solea für Villen, Wohnungen, Wohnanlagen und Gewerbegebäude."
+    },
+    "automations": {
+      "title": "Automationen",
+      "description": "Willkommen, Verlassen, Sicherheit, Temperatur, Besuch: Szenarien, die für Sie arbeiten."
+    },
+    "partners": {
+      "title": "Partner und Installateure",
+      "description": "Händler, Installateure, Elektriker, Integratoren, Bauträger: Bieten Sie Solea Ihren Kunden an."
+    },
+    "contact": {
+      "title": "Kontakt und Angebot",
+      "description": "Erzählen Sie uns von Ihrem Projekt: Villa, Wohnung, Wohnanlage, Gewerbegebäude, Kameras, Video-Türsprechanlage."
+    },
+    "shop": {
+      "title": "Shop",
+      "description": "Der Solea-Shop für kompatible Geräte."
+    },
+    "privacy": {
+      "title": "Datenschutz der Formulare",
+      "description": "Wie Solea die über die Formulare der Website gesendeten Daten verarbeitet."
+    }
+  },
+  "nav": {
+    "home": "Startseite",
+    "discover": "Solea entdecken",
+    "devices": "Geräte",
+    "solutions": "Lösungen",
+    "automations": "Automationen",
+    "gateway": "Gateway",
+    "partners": "Partner",
+    "contact": "Kontakt",
+    "shop": "Shop",
+    "quote": "Angebot anfordern",
+    "menu": "Menü",
+    "close": "Schließen",
+    "skip": "Zum Inhalt springen"
+  },
+  "prefs": {
+    "button": "Sprache, Land und Währung",
+    "title": "Ihre Einstellungen",
+    "language": "Sprache",
+    "country": "Land",
+    "currency": "Währung",
+    "otherCountry": "Anderes Land",
+    "save": "Speichern",
+    "note": "In eine andere Währung umgerechnete Preise sind Richtwerte. Der Endpreis wird bei der Bestellung festgelegt."
+  },
+  "geo": {
+    "suggest": "Sie scheinen in {country} zu sein. Website auf {language} mit Preisen in {currency} anzeigen?",
+    "suggestNoCountry": "Website auf {language} mit Preisen in {currency} anzeigen?",
+    "accept": "Ja, danke",
+    "change": "Auswählen",
+    "dismiss": "Schließen"
+  },
+  "common": {
+    "learnMore": "Mehr erfahren",
+    "requestStudy": "Planung anfragen",
+    "comingSoon": "Demnächst",
+    "conceptNote": "Konzeptdarstellung, unverbindlich.",
+    "seeAll": "Alle anzeigen",
+    "step": "Schritt {n}"
+  },
+  "hero": {
+    "eyebrow": "Smart Home & Smart Building",
+    "title": "Ihr Zuhause. Ihre Welt. Ein intelligentes Ökosystem.",
+    "text": "Solea vereint Beleuchtung, Sicherheit, Kameras, Türsprechanlage, Zutritt, Komfort und Energie in einer einzigen App – unabhängig von der Marke Ihrer Geräte.",
+    "ctaDiscover": "Solea entdecken",
+    "ctaShop": "Shop ansehen",
+    "statProtocols": "vereinte Technologien",
+    "statFamilies": "Gerätefamilien",
+    "statApp": "App für alles",
+    "sceneLabel": "Illustration eines von Solea gesteuerten Hauses"
+  },
+  "home": {
+    "featuresEyebrow": "Funktionen",
+    "featuresTitle": "Ihr ganzes Gebäude in einer Oberfläche.",
+    "featuresText": "Solea bündelt Ihre Geräte, lässt sie zusammenarbeiten und gibt Ihnen die Kontrolle – zu Hause wie unterwegs.",
+    "techEyebrow": "Technologien",
+    "techTitle": "Eine offene Plattform, unabhängig von Herstellern.",
+    "techText": "Solea spricht die Standards des Marktes. Für jedes Gerät geben wir genau an, was unterstützt wird.",
+    "categoriesEyebrow": "Geräte",
+    "categoriesTitle": "Neun Gerätefamilien, ein Ökosystem.",
+    "categoriesCta": "Alle kompatiblen Geräte ansehen",
+    "gatewayEyebrow": "Demnächst",
+    "gatewayTitle": "Solea Gateway, das lokale Herz Ihrer Installation.",
+    "gatewayText": "Ein für Solea entwickeltes Gateway: Zigbee, WLAN-Geräte, lokal ausgeführte Automationen und Verbindung zur Plattform.",
+    "gatewayCta": "Zum Marktstart informieren",
+    "automationsEyebrow": "Automationen",
+    "automationsTitle": "Ihr Zuhause denkt mit, Sie genießen.",
+    "automationsCta": "Szenarien entdecken",
+    "solutionsEyebrow": "Lösungen",
+    "solutionsTitle": "Eine Antwort für jeden Gebäudetyp.",
+    "shopEyebrow": "Shop",
+    "shopTitle": "Kompatible Geräte kommen bald in den Shop.",
+    "shopText": "Unser Katalog wird gerade vorbereitet. Jedes Produkt wird mit seinen Protokollen, der geprüften Solea-Kompatibilität und eventuellen Einschränkungen vorgestellt. Für ein Projekt schon jetzt fordern Sie ein Angebot an.",
+    "shopCta": "Zum Shop",
+    "benefitsEyebrow": "Warum Solea",
+    "benefitsTitle": "Gebaut für Beständigkeit, entwickelt für Wachstum.",
+    "partnerTitle": "Installateur, Händler, Bauträger?",
+    "partnerText": "Bieten Sie Solea Ihren Kunden an: ein Multi-Technologie-Katalog, technische Begleitung und ein künftiges Partnerprogramm.",
+    "partnerCta": "Partner werden"
+  },
+  "features": {
+    "control": {
+      "title": "Zentrale Steuerung",
+      "text": "Licht, Rollläden, Klimaanlage, Steckdosen, Kameras und Schlösser in einer App."
+    },
+    "automation": {
+      "title": "Intelligente Automationen",
+      "text": "Szenarien, ausgelöst durch Uhrzeit, Anwesenheit, einen Sensor oder eine Taste."
+    },
+    "security": {
+      "title": "Sicherheit und Video",
+      "text": "IP-Kameras, Melder und Warnungen an einem Ort, mit Live-Video bei kompatiblen Modellen."
+    },
+    "access": {
+      "title": "Türsprechanlage und Zutritt",
+      "text": "Sehen, wer klingelt, antworten und aus der Ferne öffnen – je nach Rechten jedes Nutzers."
+    },
+    "energy": {
+      "title": "Energie im Griff",
+      "text": "Steckdosen und Messmodule, um den Verbrauch zu verfolgen und zu senken."
+    },
+    "local": {
+      "title": "Lokales Gateway",
+      "text": "Eine Architektur, die mit einem Gateway vor Ort arbeiten kann, nah an den Geräten."
+    }
+  },
+  "tech": {
+    "zigbee": {
+      "name": "Zigbee",
+      "text": "Stromsparende Funksensoren und -module im Mesh-Netzwerk."
+    },
+    "wifi": {
+      "name": "WLAN",
+      "text": "Steckdosen, Schalter, Kameras und Geräte im Heimnetz."
+    },
+    "ethernet": {
+      "name": "Ethernet",
+      "text": "Kabelgebundene Kameras, Rekorder und Außenstationen für maximale Zuverlässigkeit."
+    },
+    "onvif": {
+      "name": "ONVIF",
+      "text": "Der Standard für IP-Kameras: Erkennung, Videostream und je nach Modell PTZ-Steuerung."
+    },
+    "rtsp": {
+      "name": "RTSP",
+      "text": "Videostreams kompatibler Kameras und Rekorder."
+    },
+    "sip": {
+      "name": "SIP / RTP",
+      "text": "Audio- und Videoanrufe kompatibler IP-Türsprechanlagen."
+    },
+    "webrtc": {
+      "name": "WebRTC",
+      "text": "Flüssiges, verschlüsseltes Live-Video in der App."
+    },
+    "mqtt": {
+      "name": "MQTT",
+      "text": "Schlankes Protokoll für den Austausch zwischen Gateway, Geräten und Plattform."
+    }
+  },
+  "categories": {
+    "lighting": {
+      "name": "Intelligente Beleuchtung",
+      "text": "Stimmungen schaffen, planen und jede Lichtquelle steuern.",
+      "items": [
+        "Smarte Lampen",
+        "Smarte Schalter",
+        "Dimmer",
+        "LED-Streifen",
+        "LED-Controller",
+        "Lichtsteuermodule",
+        "Helligkeitssensoren"
+      ]
+    },
+    "security": {
+      "name": "Sicherheit und Überwachung",
+      "text": "Kameras, Melder und Sirenen in einem Dashboard.",
+      "items": [
+        "WLAN-IP-Kameras",
+        "Ethernet-IP-Kameras",
+        "Innenkameras",
+        "Außenkameras",
+        "PTZ-Kameras",
+        "Kameras mit Bewegungserkennung",
+        "NVR-Videorekorder",
+        "Bewegungsmelder",
+        "Öffnungsmelder",
+        "Sirenen",
+        "Rauchmelder",
+        "Wassermelder"
+      ],
+      "note": "Die verfügbaren Funktionen hängen vom jeweiligen Modell ab (ONVIF, RTSP, HTTP/HTTPS, API oder über ein Gateway). Wir geben für jede Kamera an, was tatsächlich unterstützt wird."
+    },
+    "intercom": {
+      "name": "IP-Video-Türsprechanlagen",
+      "text": "Besucher sehen, antworten und öffnen – vom Smartphone aus.",
+      "items": [
+        "IP-Video-Türsprechanlagen",
+        "Außenstationen",
+        "Innenmonitore",
+        "Vernetzte Video-Gegensprechanlagen",
+        "Video-Türklingeln",
+        "Fernöffnung",
+        "Besucherverwaltung",
+        "Audio- und Videoanrufe",
+        "Tor- und Türöffnung"
+      ],
+      "note": "Je nach Gerät: SIP und RTP für Anrufe, ONVIF und RTSP für Video, WebRTC für die Anzeige in der App."
+    },
+    "access": {
+      "name": "Zutrittskontrolle",
+      "text": "Steuern Sie, wer wann eintritt, mit vollständigem Zutrittsprotokoll.",
+      "items": [
+        "Smarte Schlösser",
+        "RFID-Leser",
+        "Codetastaturen",
+        "Türsteuerungen",
+        "Torsteuerung",
+        "Automatische Schranken",
+        "Garagentore",
+        "Austrittstaster",
+        "Kompatible biometrische Leser"
+      ]
+    },
+    "sensors": {
+      "name": "Zigbee-Sensoren",
+      "text": "Die Augen und Ohren Ihrer Installation, kabellos und autark.",
+      "items": [
+        "Bewegung",
+        "Tür- und Fensteröffnung",
+        "Temperatur",
+        "Luftfeuchtigkeit",
+        "Helligkeit",
+        "Wasserleck",
+        "Anwesenheit",
+        "Vibration",
+        "Rauch",
+        "Luftqualität"
+      ]
+    },
+    "climate": {
+      "name": "Komfort und Klima",
+      "text": "Die richtige Temperatur zur richtigen Zeit, ohne Verschwendung.",
+      "items": [
+        "Smarte Thermostate",
+        "Kompatible Klimageräte",
+        "Infrarot-Controller",
+        "Vernetzte Ventilatoren",
+        "Smarte Heizung",
+        "Thermostatventile",
+        "Temperaturmanagement"
+      ]
+    },
+    "energy": {
+      "name": "Energiemanagement",
+      "text": "Messen, verstehen und senken Sie Ihren Verbrauch.",
+      "items": [
+        "Smarte Steckdosen",
+        "Energiezähler",
+        "Strommessmodule",
+        "Smarte Relais",
+        "Verbrauchskontrolle",
+        "Steuerung von Stromkreisen"
+      ]
+    },
+    "shutters": {
+      "name": "Rollläden und Antriebe",
+      "text": "Rollläden, Jalousien, Vorhänge und Tore, die Ihren Szenarien folgen.",
+      "items": [
+        "Rollladenmotoren",
+        "Motorisierte Jalousien",
+        "Smarte Vorhänge",
+        "Motorisierte Tore",
+        "Motorsteuerungen"
+      ]
+    },
+    "gateways": {
+      "name": "Gateways und Netzwerk",
+      "text": "Die Verbindung zwischen Ihren Geräten und der Solea-Plattform.",
+      "items": [
+        "Zigbee-Gateways",
+        "Smart-Home-Zentralen",
+        "Zigbee-Sticks",
+        "Kommunikationsmodule",
+        "Lokale Gateways",
+        "Ethernet- und WLAN-Ausstattung"
+      ]
+    }
+  },
+  "solutions": {
+    "villa": {
+      "name": "Solea für Villen",
+      "text": "Ein ganzes Haus einfach gesteuert, vom Pool bis zum Tor.",
+      "items": [
+        "Lichtsteuerung",
+        "Klimatisierung",
+        "Rollläden",
+        "Sicherheit",
+        "Kameras",
+        "Türsprechanlage",
+        "Schlösser",
+        "Automatische Szenarien"
+      ]
+    },
+    "apartment": {
+      "name": "Solea für Wohnungen",
+      "text": "Vernetzter Komfort, abgestimmt auf Fläche und Rahmenbedingungen einer Wohnung.",
+      "items": [
+        "Beleuchtung",
+        "Komfort",
+        "Sicherheit",
+        "Zutrittskontrolle",
+        "Energiemanagement"
+      ]
+    },
+    "residence": {
+      "name": "Solea für Wohnanlagen",
+      "text": "Zutritt, Video und Gemeinschaftseinrichtungen für alle Bewohner verwaltet.",
+      "items": [
+        "Zutrittsverwaltung",
+        "Kameras",
+        "Türsprechanlagen",
+        "Tore",
+        "Schranken",
+        "Gemeinschaftseinrichtungen",
+        "Automationen"
+      ]
+    },
+    "business": {
+      "name": "Solea für Gewerbegebäude",
+      "text": "Büros, Geschäfte und Räumlichkeiten: weniger Verwaltung, mehr Kontrolle.",
+      "items": [
+        "Geräteverwaltung",
+        "Beleuchtung",
+        "Zutrittskontrolle",
+        "Überwachung",
+        "Automatisierung"
+      ]
+    }
+  },
+  "benefits": {
+    "simple": {
+      "title": "Einfach im Alltag",
+      "text": "Eine klare App für die ganze Familie, in sechs Sprachen."
+    },
+    "open": {
+      "title": "Offen und markenübergreifend",
+      "text": "Sie wählen Ihre Geräte, Solea verbindet sie."
+    },
+    "honest": {
+      "title": "Geprüfte Kompatibilität",
+      "text": "Wir versprechen eine Funktion nur, wenn das Modell sie wirklich unterstützt."
+    },
+    "scalable": {
+      "title": "Erweiterbar",
+      "text": "Beginnen Sie mit einem Raum und erweitern Sie auf Haus oder Wohnanlage."
+    },
+    "secure": {
+      "title": "Sicher",
+      "text": "Rollenbasierter Zugriff, verschlüsselte Verbindungen, Aktionsprotokoll."
+    },
+    "support": {
+      "title": "Begleitet",
+      "text": "Ein Netz von Installateuren und technischer Support an Ihrer Seite."
+    }
+  },
+  "discover": {
+    "eyebrow": "Solea entdecken",
+    "title": "Eine Plattform für alles, was ein Gebäude intelligent macht.",
+    "intro": "Solea ist ein von FlowIT entwickeltes Smart-Home-Ökosystem. Es verbindet, steuert und automatisiert Geräte verschiedener Marken und Technologien – in Villen, Wohnungen, Wohnanlagen und Gewerbegebäuden.",
+    "whatTitle": "Was ist Solea?",
+    "whatText": "Eine App, eine Plattform und bald ein eigenes Gateway. Gemeinsam ersetzen sie die vielen Hersteller-Apps durch eine einzige, einheitliche und sichere Oberfläche.",
+    "whyTitle": "Warum Solea?",
+    "why": [
+      "Sie sind an keine Marke gebunden: Solea ist herstellerunabhängig.",
+      "Die gesamte Installation wird an einem Ort gesteuert – auf Smartphone, Tablet oder Computer.",
+      "Automationen lassen Geräte zusammenarbeiten, die sich vorher nicht kannten.",
+      "Jede Kompatibilität ist geprüft und dokumentiert, Einschränkungen inklusive."
+    ],
+    "howTitle": "Wie funktioniert das Ökosystem?",
+    "how": [
+      {
+        "title": "Die Geräte",
+        "text": "Lampen, Sensoren, Kameras, Schlösser, Klimageräte: über Zigbee, WLAN oder Ethernet."
+      },
+      {
+        "title": "Das Gateway",
+        "text": "Vor Ort kommuniziert es mit den Geräten und führt Automationen möglichst nah aus."
+      },
+      {
+        "title": "Die Plattform",
+        "text": "Sie synchronisiert sicher den Zustand der Installation, die Nutzer und ihre Rechte."
+      },
+      {
+        "title": "Die App",
+        "text": "Sie sehen, steuern und planen alles – zu Hause oder aus der Ferne."
+      }
+    ],
+    "connectTitle": "Wie werden Geräte verbunden?",
+    "connectText": "Ein Installateur oder Sie selbst fügen jedes Gerät hinzu, ordnen es einem Raum zu und geben ihm einen Namen. Zigbee-Sensoren werden mit dem Gateway gekoppelt; WLAN- und IP-Geräte werden im Netzwerk erkannt; ONVIF-Kameras werden automatisch gefunden, sofern das Modell es erlaubt.",
+    "automateTitle": "Wie entstehen Automationen?",
+    "automateText": "Wählen Sie einen Auslöser (eine Uhrzeit, eine Anwesenheit, eine sich öffnende Tür), fügen Sie Bedingungen hinzu und dann die Aktionen in ihrer Reihenfolge. Szenen bündeln mehrere Aktionen in einem Fingertipp.",
+    "controlTitle": "Eine einzige Oberfläche",
+    "controlText": "Dashboard, Räume, Favoriten, Szenen, Video, Verlauf: dieselbe App für alle Geräte und alle Haushaltsmitglieder, mit passenden Rechten für jeden.",
+    "evolveTitle": "Eine Lösung, die mit Ihnen wächst",
+    "evolveText": "Starten Sie mit einigen Steckdosen und einem Sensor, ergänzen Sie später Kameras, Türsprechanlage und Zutrittskontrolle und skalieren Sie bis zur ganzen Wohnanlage. Die Installation wächst, ohne neu anzufangen."
+  },
+  "devicesPage": {
+    "eyebrow": "Kompatible Geräte",
+    "title": "Der Katalog der Geräte, die Solea integriert.",
+    "intro": "Solea ist für zahlreiche Gerätefamilien ausgelegt. Dieser Katalog wächst regelmäßig; jedes im Shop verkaufte Modell nennt seine Protokolle und eventuellen Einschränkungen.",
+    "protocols": "Technologien je nach Modell",
+    "honesty": "Unser Versprechen: Wir erklären ein Gerät nie für kompatibel, ohne Protokoll und tatsächliche Fähigkeiten geprüft zu haben."
+  },
+  "gatewayPage": {
+    "eyebrow": "Solea Gateway",
+    "status": "Bald weltweit erhältlich",
+    "title": "Der zentrale Punkt Ihres vernetzten Zuhauses.",
+    "intro": "Solea Gateway wird das Gateway des Solea-Ökosystems: Es verbindet Ihre kompatiblen Geräte mit der Plattform, verwaltet Automationen vor Ort und wird um neue Protokolle erweitert.",
+    "notForSale": "Dieses Produkt befindet sich in Entwicklung und ist noch nicht im Handel. Die endgültigen Hardware-Spezifikationen werden zum Marktstart veröffentlicht.",
+    "featuresTitle": "Geplante Funktionen und Technologien",
+    "features": [
+      "Verwaltung von Zigbee-Geräten",
+      "Kommunikation mit kompatiblen WLAN-Geräten",
+      "Bündelung der Smart-Home-Geräte",
+      "Lokale Kommunikation",
+      "Verwaltung der Automationen",
+      "Kommunikation mit der Solea-Plattform",
+      "MQTT-Integration",
+      "Schrittweise Erweiterung um weitere Protokolle"
+    ],
+    "viewFront": "Vorderansicht",
+    "viewSide": "Seitenansicht",
+    "viewSitu": "Im Wohnraum",
+    "formTitle": "Zum Marktstart informieren",
+    "formText": "Hinterlassen Sie Ihre E-Mail-Adresse: Wir benachrichtigen Sie, sobald Vorbestellungen in Ihrem Land möglich sind."
+  },
+  "solutionsPage": {
+    "eyebrow": "Lösungen",
+    "title": "Solea passt sich Ihrem Gebäude an.",
+    "intro": "Vom Studio bis zur Wohnanlage mit Hunderten Einheiten bietet Solea eine passend dimensionierte Lösung, installiert von Fachleuten."
+  },
+  "automationsPage": {
+    "eyebrow": "Automationen",
+    "title": "Szenarien, die für Sie arbeiten.",
+    "intro": "Eine Automation besteht aus Auslöser, Bedingungen und Aktionen. Hier einige Beispiele dessen, was Solea ermöglicht.",
+    "trigger": "Auslöser",
+    "action": "Aktion",
+    "scenarios": [
+      {
+        "key": "welcome",
+        "title": "Willkommen zu Hause",
+        "steps": [
+          "Anwesenheit erkannt",
+          "Licht geht an",
+          "Eine vordefinierte Stimmung wird aktiviert"
+        ]
+      },
+      {
+        "key": "leave",
+        "title": "Verlassen",
+        "steps": [
+          "Licht geht aus",
+          "Ausgewählte Steckdosen werden abgeschaltet",
+          "Sicherheit wird aktiviert"
+        ]
+      },
+      {
+        "key": "security",
+        "title": "Sicherheit",
+        "steps": [
+          "Öffnung erkannt",
+          "Eigentümer wird benachrichtigt",
+          "Sirene je nach eingestellten Regeln"
+        ]
+      },
+      {
+        "key": "climate",
+        "title": "Intelligente Temperatur",
+        "steps": [
+          "Temperatur wird gemessen",
+          "Heizung oder Klimaanlage wird ein- oder ausgeschaltet"
+        ]
+      },
+      {
+        "key": "visitor",
+        "title": "Besuch",
+        "steps": [
+          "Anruf von der Türsprechanlage",
+          "Besucher wird angezeigt",
+          "Tür öffnet, wenn der Nutzer dazu berechtigt ist"
+        ]
+      }
+    ]
+  },
+  "partnersPage": {
+    "eyebrow": "Partner und Installateure",
+    "title": "Gemeinsam die intelligenten Gebäude von morgen bauen.",
+    "intro": "Solea richtet sich an Fachleute, die Gebäude planen, ausstatten und betreuen.",
+    "targetsTitle": "Für wen?",
+    "targets": [
+      "Elektrofachhändler",
+      "Smart-Home-Installateure",
+      "Elektriker",
+      "Sicherheitsunternehmen",
+      "Integratoren",
+      "Bauträger",
+      "Bauunternehmen"
+    ],
+    "benefitsTitle": "Ihre Vorteile",
+    "benefits": [
+      "Zugang zu einem Katalog kompatibler Geräte",
+      "Eine Multi-Technologie-Lösung",
+      "Technische Begleitung",
+      "Die Möglichkeit, Solea-Installationen anzubieten",
+      "Das künftige Partnerprogramm"
+    ],
+    "formTitle": "Partneranfrage"
+  },
+  "contactPage": {
+    "eyebrow": "Kontakt und Angebot",
+    "title": "Sprechen wir über Ihr Projekt.",
+    "intro": "Beschreiben Sie Ihren Bedarf: Wir melden uns mit einem passenden Vorschlag.",
+    "emailLabel": "Per E-Mail"
+  },
+  "shopPage": {
+    "eyebrow": "Shop",
+    "title": "Der Solea-Shop öffnet demnächst.",
+    "text": "Wir stellen den Katalog kompatibler Geräte fertig. Jedes Produkt wird mit technischen Daten, Protokollen und geprüfter Solea-Kompatibilität vorgestellt. Derzeit wird noch kein Produkt online verkauft.",
+    "quote": "Angebot anfordern",
+    "devices": "Gerätefamilien ansehen"
+  },
+  "privacyPage": {
+    "title": "Datenschutz der Formulare",
+    "intro": "Diese Seite erklärt, was mit den über die Formulare gesendeten Informationen geschieht. Die vollständige Datenschutzerklärung wird mit dem Shop veröffentlicht.",
+    "items": [
+      "Verantwortlich: FlowIT, Herausgeber von Solea. Kontakt: contact@solea-dz.com.",
+      "Erhobene Daten: nur, was Sie eingeben (Name, E-Mail, Telefon, Land, Sprache, Nachricht).",
+      "Zweck: Ihre Anfrage beantworten, Sie über den Start von Solea Gateway informieren, falls gewünscht, und Ihnen Werbeinformationen nur mit Ihrer Einwilligung senden.",
+      "Speicherdauer: bis zu drei Jahre nach unserem letzten Austausch, danach Löschung.",
+      "Ihre Rechte: Auskunft, Berichtigung, Löschung und Widerruf der Einwilligung jederzeit per E-Mail an contact@solea-dz.com.",
+      "Cookies: Die Website speichert nur Ihre Einstellungen zu Sprache, Land und Währung. Keine Werbe-Cookies."
+    ]
+  },
+  "form": {
+    "firstName": "Vorname",
+    "lastName": "Nachname",
+    "name": "Vollständiger Name",
+    "company": "Unternehmen",
+    "activity": "Tätigkeit",
+    "email": "E-Mail",
+    "phone": "Telefon",
+    "phoneHint": "Mit internationaler Vorwahl, zum Beispiel +49…",
+    "country": "Land",
+    "language": "Bevorzugte Sprache",
+    "projectType": "Projektart",
+    "message": "Beschreibung des Bedarfs",
+    "choose": "Auswählen…",
+    "consentMarketing": "Ich möchte Werbeinformationen von Solea erhalten. Ich kann mich jederzeit abmelden.",
+    "consentLaunch": "Ich möchte per E-Mail über den Start von Solea Gateway informiert werden.",
+    "privacy": "Ihre Daten werden wie auf unserer Datenschutzseite beschrieben verarbeitet.",
+    "privacyLink": "Datenschutz",
+    "submit": "Senden",
+    "submitGateway": "Zum Start informieren",
+    "sending": "Wird gesendet…",
+    "success": "Vielen Dank! Ihre Anfrage ist eingegangen. Wir melden uns in Kürze.",
+    "successGateway": "Notiert! Sie erfahren als Erste vom Start von Solea Gateway.",
+    "errors": {
+      "required": "Bitte füllen Sie die Pflichtfelder aus.",
+      "email": "Ungültige E-Mail-Adresse.",
+      "phone": "Ungültige Telefonnummer.",
+      "consent": "Bitte setzen Sie das Häkchen zur Einwilligung.",
+      "tooMany": "Zu viele Anfragen gesendet. Bitte versuchen Sie es später erneut.",
+      "notConfigured": "Dieses Formular ist noch nicht mit unserer Datenbank verbunden. Schreiben Sie uns an contact@solea-dz.com.",
+      "server": "Ein Fehler ist aufgetreten. Bitte versuchen Sie es erneut oder schreiben Sie an contact@solea-dz.com."
+    },
+    "types": {
+      "villa": "Villa",
+      "apartment": "Wohnung",
+      "residence": "Wohnanlage",
+      "business": "Gewerbegebäude",
+      "installation": "Smart-Home-Installation",
+      "security": "Kameras und Sicherheit",
+      "intercom": "Türsprechanlage",
+      "partnership": "Partneranfrage"
+    },
+    "activities": {
+      "reseller": "Elektrofachhändler",
+      "installer": "Smart-Home-Installateur",
+      "electrician": "Elektriker",
+      "security": "Sicherheitsunternehmen",
+      "integrator": "Integrator",
+      "developer": "Bauträger",
+      "construction": "Bauunternehmen",
+      "other": "Sonstiges"
+    }
+  },
+  "footer": {
+    "tagline": "Das Smart-Home-Ökosystem, das Ihre intelligenten Geräte vereint.",
+    "by": "Solea ist eine von FlowIT entwickelte Lösung.",
+    "explore": "Entdecken",
+    "company": "Solea",
+    "contact": "Kontakt",
+    "rights": "Alle Rechte vorbehalten.",
+    "privacy": "Datenschutz",
+    "geoip": "IP-Geolokalisierung von DB-IP"
+  },
+  "notFound": {
+    "title": "Seite nicht gefunden",
+    "text": "Diese Seite existiert nicht oder wurde verschoben.",
+    "back": "Zur Startseite"
+  }
+}
