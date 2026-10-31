@@ -1,6 +1,6 @@
 # Piloter une vraie maison avec FlowIT Smart
 
-Ce qui marche déjà : l'application en ligne (https://flowit-connect.github.io/flowit-smart/)
+Ce qui marche déjà : l'application en ligne (https://app.solea-dz.com/)
 et sa base Supabase. Il manque un petit boîtier **dans la maison** qui parle aux appareils :
 c'est **Home Assistant**, avec le module **FlowIT Bridge** qui le relie à l'application.
 
