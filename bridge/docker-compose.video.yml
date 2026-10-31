@@ -1,0 +1,35 @@
+# Boîtier vidéo Solea : à installer DANS la villa ou l'immeuble, sur le même réseau que les
+# caméras et visiophones (mini-PC, Raspberry Pi 5…). Le serveur distant de la plateforme ne
+# voit pas ce réseau : il ne peut pas faire ce travail.
+#
+#   cp .env.video.example .env      # puis compléter (INTEGRATION_ID, clé Supabase)
+#   docker compose -f docker-compose.video.yml up -d
+#   docker compose -f docker-compose.video.yml logs -f bridge
+#
+# Réseau « host » : la recherche ONVIF (multicast) et WebRTC ont besoin du réseau local direct.
+# Ports utilisés : UDP 8189 (vidéo WebRTC). Aucun port à ouvrir sur la box Internet : la
+# vidéo passe en direct ou par le relais TURN de l'exploitant.
+
+services:
+  bridge:
+    build: .
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      - ADAPTER=video
+    network_mode: host
+    depends_on:
+      - mediamtx
+    logging:
+      driver: json-file
+      options: { max-size: 10m, max-file: "3" }
+
+  mediamtx:
+    image: bluenviron/mediamtx:1.12.3
+    restart: unless-stopped
+    network_mode: host
+    volumes:
+      - ./config/mediamtx.yml:/mediamtx.yml:ro
+    logging:
+      driver: json-file
+      options: { max-size: 10m, max-file: "3" }

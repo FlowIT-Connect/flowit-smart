@@ -42,6 +42,9 @@ class SupabaseBackend implements Backend {
         throw const BackendException('denied', 'Accès refusé.');
       }
       if (e.message.contains('LIMITE_APPAREILS')) throw BackendException('limit', e.message);
+      if (e.message.contains('IDENTIFIANTS_DANS_URL') || e.message.contains('TROP_DE_DEMANDES_VIDEO')) {
+        throw BackendException('invalid', e.message.replaceFirst(RegExp(r'^[A-Z_]+ : '), ''));
+      }
       if (e.code == 'P0001') throw BackendException('invalid', e.message);
       if (e.code == '23505') throw const BackendException('invalid', 'Cet élément existe déjà.');
       throw BackendException('unknown', e.message);
@@ -474,6 +477,84 @@ class SupabaseBackend implements Backend {
   /// Un seul canal temps réel « `camera:<maison>` » partagé par toutes les vues ouvertes
   /// (deux abonnements au même canal sur une connexion se couperaient l'un l'autre).
   final _cameraHubs = <String, _CameraHub>{};
+
+  // ------------------------------------------------------------------ Sécurité et vidéo
+  @override
+  Future<List<VideoSource>> listVideoSources(String homeId) => _guard(() async {
+        final rows = await _client.from('video_sources').select().eq('home_id', homeId).order('name');
+        return rows.map((r) => VideoSource.fromJson(r)).toList();
+      });
+
+  @override
+  Future<String> addVideoSource(String homeId, VideoSourceDraft d) => _guard(() async {
+        String? opt(String v) => v.trim().isEmpty ? null : v.trim();
+        final onvif = d.driver == 'onvif';
+        return await _client.rpc('add_video_source', params: {
+          'p_home_id': homeId,
+          'p_name': d.name.trim(),
+          'p_driver': d.driver,
+          'p_category': d.category,
+          'p_host': onvif ? opt(d.host) : null,
+          'p_port': onvif ? d.port : null,
+          'p_rtsp_url': onvif ? null : opt(d.rtspUrl),
+          'p_snapshot_url': onvif ? null : opt(d.snapshotUrl),
+          'p_username': opt(d.username),
+          'p_password': d.password.isEmpty ? null : d.password,
+          'p_location': opt(d.location),
+        }) as String;
+      });
+
+  @override
+  Future<void> setVideoSourceCredentials(String sourceId, String username, String password) => _guard(() async {
+        await _client.rpc('set_video_source_credentials', params: {'p_source_id': sourceId, 'p_username': username.trim(), 'p_password': password});
+      });
+
+  @override
+  Future<void> requestVideoSourceTest(String sourceId) => _guard(() async {
+        await _client.rpc('request_video_source_test', params: {'p_source_id': sourceId});
+      });
+
+  @override
+  Future<void> deleteVideoSource(String sourceId) => _guard(() async {
+        await _client.rpc('delete_video_source', params: {'p_source_id': sourceId});
+      });
+
+  @override
+  Future<String> requestVideoScan(String homeId) =>
+      _guard(() async => await _client.rpc('request_video_scan', params: {'p_home_id': homeId}) as String);
+
+  @override
+  Future<VideoScan?> getVideoScan(String scanId) => _guard(() async {
+        final row = await _client.from('video_scans').select('id, status, results, error').eq('id', scanId).maybeSingle();
+        return row == null ? null : VideoScan.fromJson(row);
+      });
+
+  @override
+  Future<MediaGateway?> getMediaGateway(String homeId) => _guard(() async {
+        final row = await _client.from('media_gateways').select().eq('home_id', homeId).maybeSingle();
+        return row == null ? null : MediaGateway.fromJson(row);
+      });
+
+  @override
+  Future<String> openVideoSession(String homeId, String deviceId, String offerSdp, {String quality = 'main'}) => _guard(() async {
+        final row = await _client
+            .from('video_sessions')
+            .insert({'home_id': homeId, 'device_id': deviceId, 'offer': offerSdp, 'quality': quality, 'user_id': _uid})
+            .select('id')
+            .single();
+        return row['id'] as String;
+      });
+
+  @override
+  Future<VideoSessionInfo?> getVideoSession(String sessionId) => _guard(() async {
+        final row = await _client.from('video_sessions').select('id, status, answer, error').eq('id', sessionId).maybeSingle();
+        return row == null ? null : VideoSessionInfo.fromJson(row);
+      });
+
+  @override
+  Future<void> closeVideoSession(String sessionId) => _guard(() async {
+        await _client.from('video_sessions').update({'status': 'closed'}).eq('id', sessionId);
+      });
 
   @override
   Stream<CameraFrame> watchCamera(String homeId, String deviceId) {

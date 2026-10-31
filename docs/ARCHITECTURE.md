@@ -47,3 +47,20 @@
   API cloud Tuya signée, interrogation périodique, confirmation par relecture de l'état.
 - `setup.js` : assistant de configuration sur PC (`npm run configurer`), écrit le `.env`.
 - `bridge.js` : inventaire, file de commandes, automatisations ; `store.js` : accès Supabase.
+- `udi/` : **Solea Universal Device Integration** (caméras, visiophones) : contrat commun
+  (`contract.js`), concentrateur qui isole chaque appareil (`hub.js`), pilotes `onvif` et `rtsp`
+  (`drivers/`), client ONVIF SOAP + WS-Discovery (`onvif/`), relais MediaMTX et identifiants TURN
+  temporaires (`media/`). Branché sur n'importe quel adaptateur par `addUdi()` ; `ADAPTER=video`
+  pour un boîtier qui ne fait que la vidéo. Voir [INTERPHONIE_VIDEO.md](INTERPHONIE_VIDEO.md).
+
+## Vidéo en direct (phase A du module interphonie)
+```
+ App ──insert video_sessions (offre SDP)──▶ Supabase ──temps réel──▶ Boîtier (passerelle)
+  ▲                                                                   │ WHEP 127.0.0.1
+  └──────────── réponse SDP ◀──────────── update video_sessions ◀── MediaMTX ◀─RTSP─ Caméra
+  └═══════════════ média WebRTC chiffré (direct ou relais TURN) ═══════╝
+```
+- Les identifiants des caméras sont dans `video_source_secrets` (aucune policy : service_role seul).
+- `video_sessions` : un membre ne peut ouvrir qu'un appareil autorisé (`can_use_device`) ; la
+  réponse n'est écrite que par le boîtier.
+- Sites (`sites`, `site_entrances`, `site_members`, `homes.site_id`) : villa ou immeuble.

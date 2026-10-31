@@ -42,6 +42,8 @@ class DemoBackend implements Backend {
   final _invitations = <Map<String, dynamic>>[];
   final _rooms = <String, Map<String, dynamic>>{};
   final _devices = <String, Map<String, dynamic>>{};
+  final _videoSources = <Map<String, dynamic>>[];
+  final _videoScans = <String, Map<String, dynamic>>{};
   final _caps = <Map<String, dynamic>>[];
   final _commands = <String, Map<String, dynamic>>{};
   final _scenes = <String, Map<String, dynamic>>{};
@@ -215,12 +217,33 @@ class DemoBackend implements Backend {
           ['hvac_mode', 'enum', true, {'options': ['off', 'cool', 'heat', 'dry', 'fan_only']}],
           ['current_temperature', 'sensor', false, {'unit': '°C'}],
         ]);
-    device('Caméra entrée', entree, 'wifi', 'local',
+    final cameraEntree = device('Caméra entrée', entree, 'wifi', 'local',
         vendor: 'TP-Link', model: 'Tapo C200', state: {'camera': 'idle', 'motion': false},
         caps: [
           ['camera', 'string', false, {'kind': 'camera'}],
           ['motion', 'sensor', false, {'kind': 'binary'}],
         ]);
+
+    // Équipement vidéo de démonstration : aucune caméra réelle n'est contactée.
+    _videoSources.add({
+      'id': newUuid(),
+      'home_id': homeId,
+      'device_id': cameraEntree,
+      'name': 'Caméra entrée',
+      'category': 'camera',
+      'driver': 'onvif',
+      'host': '192.168.1.20',
+      'port': 80,
+      'manufacturer': 'TP-Link',
+      'model': 'Tapo C200',
+      'firmware': '1.3.6',
+      'location': 'Porte d\'entrée',
+      'status': 'online',
+      'capabilities': {'video_stream': true, 'snapshot': true, 'motion_detection': true},
+      'diagnostic': _demoDiagnostic(),
+      'diagnosed_at': _now(),
+      'last_seen_at': _now(),
+    });
 
     // Amina ne voit que le salon (exemple de droits limités)
     _members[1]['permissions'] = {'devices': [plafonnier, ruban, volet]};
@@ -1041,6 +1064,120 @@ class DemoBackend implements Backend {
   }
 
   // ------------------------------------------------------------------ Caméras et photos
+  // ------------------------------------------------------------------ Sécurité et vidéo (démo)
+  static Map<String, dynamic> _demoDiagnostic() => {
+        'steps': [
+          {'step': 'connexion', 'ok': true, 'detail': 'Démonstration : aucun appareil réel n\'est contacté'},
+          {'step': 'identification', 'ok': true, 'detail': 'TP-Link · Tapo C200 · firmware 1.3.6'},
+          {'step': 'rtsp', 'ok': true, 'detail': 'Vidéo H264, audio PCMA'},
+          {'step': 'image', 'ok': true, 'detail': '84 Ko'},
+          {'step': 'événements', 'ok': true, 'detail': 'Mouvement via ONVIF'},
+        ],
+        'detected': {},
+      };
+
+  @override
+  Future<List<VideoSource>> listVideoSources(String homeId) async {
+    await _wait();
+    return _videoSources.where((s) => s['home_id'] == homeId).map((s) => VideoSource.fromJson(Map<String, dynamic>.from(s))).toList();
+  }
+
+  @override
+  Future<String> addVideoSource(String homeId, VideoSourceDraft d) async {
+    await _wait();
+    if (d.name.trim().isEmpty) throw const BackendException('invalid', 'Nom obligatoire.');
+    final id = newUuid();
+    final row = <String, dynamic>{
+      'id': id,
+      'home_id': homeId,
+      'name': d.name.trim(),
+      'category': d.category,
+      'driver': d.driver,
+      'host': d.driver == 'onvif' ? d.host.trim() : null,
+      'port': d.driver == 'onvif' ? d.port : null,
+      'rtsp_url': d.driver == 'rtsp' ? d.rtspUrl.trim() : null,
+      'location': d.location.trim().isEmpty ? null : d.location.trim(),
+      'status': 'pending',
+      'capabilities': {},
+      'test_requested_at': _now(),
+    };
+    _videoSources.add(row);
+    // En démonstration, le « boîtier » répond qu'aucun appareil réel n'a été contacté.
+    Timer(const Duration(milliseconds: 1500), () {
+      row
+        ..['status'] = 'offline'
+        ..['last_error'] = 'Démonstration : aucun boîtier vidéo réel'
+        ..['diagnostic'] = {
+          'steps': [
+            {'step': 'connexion', 'ok': false, 'detail': 'Démonstration : aucun boîtier vidéo réel'},
+          ],
+          'detected': {},
+        }
+        ..['diagnosed_at'] = _now();
+    });
+    return id;
+  }
+
+  @override
+  Future<void> setVideoSourceCredentials(String sourceId, String username, String password) => requestVideoSourceTest(sourceId);
+
+  @override
+  Future<void> requestVideoSourceTest(String sourceId) async {
+    await _wait();
+    final row = _videoSources.firstWhere((s) => s['id'] == sourceId, orElse: () => throw const BackendException('notFound', 'Équipement introuvable.'));
+    row['test_requested_at'] = _now();
+    Timer(const Duration(milliseconds: 1200), () => row['diagnosed_at'] = _now());
+  }
+
+  @override
+  Future<void> deleteVideoSource(String sourceId) async {
+    await _wait();
+    _videoSources.removeWhere((s) => s['id'] == sourceId);
+  }
+
+  @override
+  Future<String> requestVideoScan(String homeId) async {
+    await _wait();
+    final id = newUuid();
+    final scan = <String, dynamic>{'id': id, 'status': 'running', 'results': []};
+    _videoScans[id] = scan;
+    Timer(const Duration(milliseconds: 1500), () {
+      scan
+        ..['status'] = 'done'
+        ..['results'] = [
+          {'host': '192.168.1.20', 'port': 80, 'name': 'Tapo C200', 'hardware': 'C200', 'already_added': true},
+          {'host': '192.168.1.40', 'port': 80, 'name': 'Visiophone démo', 'hardware': 'VTO2202F-P', 'already_added': false},
+        ];
+    });
+    return id;
+  }
+
+  @override
+  Future<VideoScan?> getVideoScan(String scanId) async {
+    await _wait();
+    final s = _videoScans[scanId];
+    return s == null ? null : VideoScan.fromJson(Map<String, dynamic>.from(s));
+  }
+
+  @override
+  Future<MediaGateway?> getMediaGateway(String homeId) async {
+    await _wait();
+    // Boîtier simulé, sans relais vidéo : la démo montre des images fixes, pas de WebRTC.
+    return MediaGateway(relayOk: false, discovery: true, lastSeenAt: DateTime.now());
+  }
+
+  @override
+  Future<String> openVideoSession(String homeId, String deviceId, String offerSdp, {String quality = 'main'}) async {
+    await _wait();
+    throw const BackendException('invalid', 'Vidéo fluide indisponible en démonstration.');
+  }
+
+  @override
+  Future<VideoSessionInfo?> getVideoSession(String sessionId) async => null;
+
+  @override
+  Future<void> closeVideoSession(String sessionId) async {}
+
   @override
   Stream<CameraFrame> watchCamera(String homeId, String deviceId) async* {
     await _wait();

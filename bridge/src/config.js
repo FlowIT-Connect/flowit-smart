@@ -18,14 +18,19 @@ function int(env, name, fallback) {
 
 export function loadConfig(env = process.env) {
   const adapter = env.ADAPTER ?? 'home_assistant';
-  if (!['home_assistant', 'simulator', 'tuya_cloud'].includes(adapter)) {
-    throw new Error(`ADAPTER inconnu : ${adapter} (home_assistant | tuya_cloud | simulator)`);
+  if (!['home_assistant', 'simulator', 'tuya_cloud', 'video'].includes(adapter)) {
+    throw new Error(`ADAPTER inconnu : ${adapter} (home_assistant | tuya_cloud | simulator | video)`);
   }
   const tuya = adapter === 'tuya_cloud';
   const platform = ['true', '1', 'oui'].includes((env.PLATFORM ?? '').trim().toLowerCase());
   if (platform && adapter === 'home_assistant') {
     throw new Error('PLATFORM=true fonctionne avec ADAPTER=tuya_cloud (ou simulator), pas avec Home Assistant');
   }
+  // Caméras et visiophones (UDI) : boîtier installé sur place, jamais la passerelle de la plateforme
+  // (le serveur distant ne voit pas le réseau local des logements).
+  const video = adapter === 'video' || ['true', '1', 'oui'].includes((env.VIDEO ?? '').trim().toLowerCase());
+  if (video && platform) throw new Error('VIDEO=true : à utiliser sur le boîtier du logement, pas avec PLATFORM=true');
+  const list = (v) => String(v ?? '').split(/[,\s]+/).filter(Boolean);
   const tuyaRegion = tuya ? (env.TUYA_REGION || 'eu').trim() : null;
   if (tuya && !TUYA_REGIONS[tuyaRegion]) {
     throw new Error(`TUYA_REGION inconnue : ${tuyaRegion} (${Object.keys(TUYA_REGIONS).join(' | ')})`);
@@ -66,6 +71,18 @@ export function loadConfig(env = process.env) {
     // Caméras IP lues directement par la passerelle : "Nom=http://…/snapshot.jpg;Nom2=…"
     cameras: parseCameras(env.CAMERAS),
     ttlock,
+    video: video
+      ? {
+          mediamtxApiUrl: env.MEDIAMTX_API_URL?.trim() || 'http://127.0.0.1:9997',
+          mediamtxWebrtcUrl: env.MEDIAMTX_WEBRTC_URL?.trim() || 'http://127.0.0.1:8889',
+          relay: !['false', '0', 'non'].includes((env.MEDIAMTX ?? '').trim().toLowerCase()),
+          discovery: !['false', '0', 'non'].includes((env.VIDEO_DISCOVERY ?? '').trim().toLowerCase()),
+          subnets: env.VIDEO_SUBNETS ?? '',
+          stun: env.VIDEO_STUN_URLS !== undefined ? list(env.VIDEO_STUN_URLS) : ['stun:stun.l.google.com:19302'],
+          turn: list(env.VIDEO_TURN_URLS),
+          turnSecret: env.VIDEO_TURN_SECRET?.trim() || null,
+        }
+      : null,
     cameraIntervalMs: int(env, 'CAMERA_INTERVAL_MS', 1000),
     tuyaPollMs: int(env, 'TUYA_POLL_SECONDS', 30) * 1000,
     commandTimeoutMs: int(env, 'COMMAND_TIMEOUT_MS', 10_000),

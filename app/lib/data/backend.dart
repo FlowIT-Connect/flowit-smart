@@ -136,6 +136,26 @@ abstract class Backend {
   /// Images d'une caméra tant que le flux est écouté (la passerelle n'envoie rien sinon).
   Stream<CameraFrame> watchCamera(String homeId, String deviceId);
 
+  // Sécurité et vidéo (boîtier vidéo : caméras et visiophones ONVIF / RTSP)
+  /// Équipements vidéo du logement (propriétaire, administrateur, installateur).
+  Future<List<VideoSource>> listVideoSources(String homeId);
+  Future<String> addVideoSource(String homeId, VideoSourceDraft draft);
+  Future<void> setVideoSourceCredentials(String sourceId, String username, String password);
+  Future<void> requestVideoSourceTest(String sourceId);
+  Future<void> deleteVideoSource(String sourceId);
+
+  /// Recherche ONVIF sur le réseau local, faite par le boîtier vidéo.
+  Future<String> requestVideoScan(String homeId);
+  Future<VideoScan?> getVideoScan(String scanId);
+
+  /// État du boîtier vidéo (null : aucun boîtier n'a encore été installé).
+  Future<MediaGateway?> getMediaGateway(String homeId);
+
+  /// Vidéo WebRTC : dépose l'offre SDP, le boîtier répond avec celle du relais.
+  Future<String> openVideoSession(String homeId, String deviceId, String offerSdp, {String quality = 'main'});
+  Future<VideoSessionInfo?> getVideoSession(String sessionId);
+  Future<void> closeVideoSession(String sessionId);
+
   /// Photo prise par l'utilisateur (bucket privé, accès vérifié côté serveur).
   Future<Uint8List> downloadDevicePhoto(String path);
 

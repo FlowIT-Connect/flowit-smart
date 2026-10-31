@@ -1,0 +1,40 @@
+# MediaMTX : relais vidéo du boîtier Solea (caméras et visiophones).
+# Lit les flux RTSP sur le réseau local et les donne à l'application en WebRTC.
+# Tout est fermé sauf le média WebRTC (UDP 8189, chiffré DTLS-SRTP) :
+#   - l'API et le point WHEP n'écoutent que sur 127.0.0.1 (seule la passerelle Solea s'en sert),
+#   - RTSP, RTMP, HLS et SRT sont coupés : aucun flux caméra n'est réexposé.
+# Les chemins (un par caméra) sont créés par la passerelle via l'API ; rien à déclarer ici.
+
+logLevel: info
+
+api: yes
+apiAddress: 127.0.0.1:9997
+
+rtsp: no
+rtmp: no
+hls: no
+srt: no
+
+webrtc: yes
+webrtcAddress: 127.0.0.1:8889
+webrtcLocalUDPAddress: :8189
+webrtcLocalTCPAddress: ""
+# Serveurs STUN/TURN : écrits par la passerelle au démarrage (identifiants TURN temporaires).
+webrtcICEServers2: []
+
+authMethod: internal
+authInternalUsers:
+  # API et WHEP réservés à la machine locale (la passerelle).
+  - user: any
+    pass:
+    ips: ["127.0.0.1", "::1"]
+    permissions:
+      - action: api
+      - action: read
+      - action: publish
+
+pathDefaults:
+  sourceOnDemand: yes
+  rtspTransport: tcp
+
+paths: {}
