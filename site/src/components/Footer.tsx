@@ -37,6 +37,11 @@ export async function Footer() {
                 <Mail className="size-4" aria-hidden /> contact@solea-dz.com
               </a>
             </li>
+            <li>
+              <a href="mailto:support@solea-dz.com" className="text-white/75 transition hover:text-amber">
+                {t("support")} : <span dir="ltr">support@solea-dz.com</span>
+              </a>
+            </li>
             <li><Link href="/partners" className="text-white/75 transition hover:text-amber">{nav("partners")}</Link></li>
           </ul>
         </div>

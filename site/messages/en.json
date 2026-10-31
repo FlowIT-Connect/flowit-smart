@@ -560,7 +560,7 @@
       "Data collected: only what you enter (name, email, phone, country, language, message).",
       "Purpose: to answer your request, to notify you of the Solea Gateway launch if you asked for it, and to send you marketing information only if you agreed to it.",
       "Retention: up to three years after our last exchange, then deletion.",
-      "Your rights: access, correction, deletion and withdrawal of consent at any time, by email to contact@solea-dz.com.",
+      "Your rights: access, correction, deletion and withdrawal of consent at any time, by email to support@solea-dz.com.",
       "Cookies: the site only stores your language, country and currency preferences. No advertising cookies."
     ]
   },
@@ -625,7 +625,8 @@
     "contact": "Contact",
     "rights": "All rights reserved.",
     "privacy": "Privacy",
-    "geoip": "IP geolocation by DB-IP"
+    "geoip": "IP geolocation by DB-IP",
+    "support": "Support and complaints"
   },
   "notFound": {
     "title": "Page not found",

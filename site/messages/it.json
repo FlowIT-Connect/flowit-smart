@@ -560,7 +560,7 @@
       "Dati raccolti: solo quelli che inserisci (nome, e-mail, telefono, paese, lingua, messaggio).",
       "Finalità: rispondere alla tua richiesta, avvisarti del lancio di Solea Gateway se lo hai chiesto e inviarti informazioni commerciali solo con il tuo consenso.",
       "Conservazione: fino a tre anni dopo il nostro ultimo contatto, poi cancellazione.",
-      "I tuoi diritti: accesso, rettifica, cancellazione e revoca del consenso in qualsiasi momento, via e-mail a contact@solea-dz.com.",
+      "I tuoi diritti: accesso, rettifica, cancellazione e revoca del consenso in qualsiasi momento, via e-mail a support@solea-dz.com.",
       "Cookie: il sito salva solo le tue preferenze di lingua, paese e valuta. Nessun cookie pubblicitario."
     ]
   },
@@ -625,7 +625,8 @@
     "contact": "Contatti",
     "rights": "Tutti i diritti riservati.",
     "privacy": "Privacy",
-    "geoip": "Geolocalizzazione IP di DB-IP"
+    "geoip": "Geolocalizzazione IP di DB-IP",
+    "support": "Assistenza e reclami"
   },
   "notFound": {
     "title": "Pagina non trovata",

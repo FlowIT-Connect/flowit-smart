@@ -560,7 +560,7 @@
       "Erhobene Daten: nur, was Sie eingeben (Name, E-Mail, Telefon, Land, Sprache, Nachricht).",
       "Zweck: Ihre Anfrage beantworten, Sie über den Start von Solea Gateway informieren, falls gewünscht, und Ihnen Werbeinformationen nur mit Ihrer Einwilligung senden.",
       "Speicherdauer: bis zu drei Jahre nach unserem letzten Austausch, danach Löschung.",
-      "Ihre Rechte: Auskunft, Berichtigung, Löschung und Widerruf der Einwilligung jederzeit per E-Mail an contact@solea-dz.com.",
+      "Ihre Rechte: Auskunft, Berichtigung, Löschung und Widerruf der Einwilligung jederzeit per E-Mail an support@solea-dz.com.",
       "Cookies: Die Website speichert nur Ihre Einstellungen zu Sprache, Land und Währung. Keine Werbe-Cookies."
     ]
   },
@@ -625,7 +625,8 @@
     "contact": "Kontakt",
     "rights": "Alle Rechte vorbehalten.",
     "privacy": "Datenschutz",
-    "geoip": "IP-Geolokalisierung von DB-IP"
+    "geoip": "IP-Geolokalisierung von DB-IP",
+    "support": "Support und Reklamationen"
   },
   "notFound": {
     "title": "Seite nicht gefunden",
