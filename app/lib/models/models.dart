@@ -2,6 +2,10 @@
 
 import 'dart:typed_data';
 
+import 'video.dart';
+
+export 'video.dart';
+
 enum HomeRole { owner, admin, member, installer }
 
 enum Availability { available, unavailable, unknown }
@@ -329,6 +333,23 @@ class Device {
 
   /// Caméra IP : image en direct dans la fiche.
   bool get isCamera => capabilities.any((c) => c.isCamera);
+
+  /// Capacité « camera » (null si l'appareil n'est pas une caméra).
+  Capability? get cameraCapability {
+    for (final c in capabilities) {
+      if (c.isCamera) return c;
+    }
+    return null;
+  }
+
+  /// Vidéo fluide WebRTC par le boîtier vidéo (sinon : images fixes).
+  bool get hasLiveVideo => cameraCapability?.metadata['live'] == 'webrtc';
+
+  /// Capacités déclarées par le boîtier vidéo (UDI).
+  UdiCapabilities get udi => UdiCapabilities.fromJson(cameraCapability?.metadata['udi']);
+
+  /// Caméra ou visiophone (métadonnée « category » posée par le boîtier).
+  bool get isIntercom => cameraCapability?.metadata['category'] == 'intercom';
 
   /// Interrupteur principal (tuile : appui = bascule).
   Capability? get primarySwitch => capability('switch');

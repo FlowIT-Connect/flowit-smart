@@ -64,6 +64,9 @@ export class Bridge {
       this.store.setIntegrationStatus(this.config.integrationId, ok ? 'connected' : 'error', ok ? null : 'Moteur domotique injoignable').catch(() => {}),
     );
 
+    // Équipements vidéo (UDI) : le concentrateur a besoin du logement avant de démarrer.
+    this.adapter.attachHome?.({ homeId: this.homeId, store: this.store, resolveDevice: (deviceId) => this.devices.get(deviceId)?.externalId ?? null });
+
     try {
       await this.adapter.start();
     } catch (e) {
@@ -84,7 +87,9 @@ export class Bridge {
     if (this.config.runAutomations !== false) {
       await this.refreshAutomations();
       every(this.config.automationRefreshMs, () => this.refreshAutomations());
-      every(10_000, () => this.tickTimeTriggers());
+      // Boîtier vidéo à côté d'une autre passerelle : seuls les déclencheurs de SES appareils
+      // (mouvement d'une caméra…) tournent ici ; les déclencheurs horaires restent à l'autre.
+      if (this.config.runTimeTriggers !== false) every(10_000, () => this.tickTimeTriggers());
     }
     if (this.store.subscribeCameraWatch) {
       this.cameras = new CameraStreamer({

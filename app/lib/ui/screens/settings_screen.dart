@@ -9,6 +9,7 @@ import '../widgets/common.dart';
 import '../widgets/plan_card.dart';
 import 'admin_devices_screen.dart';
 import 'admin_payments_screen.dart';
+import 'security/security_screen.dart';
 import 'onboarding_screen.dart';
 
 /// Paramètres : compte, langue, maison, membres, intégrations, journal.
@@ -132,6 +133,13 @@ class SettingsScreen extends StatelessWidget {
             title: Text(context.tr('members.title')),
             trailing: const ForwardChevron(),
             onTap: () => push(const MembersPage()),
+          ),
+          ListTile(
+            leading: TileIcon(Icons.videocam_rounded, color: f.blue),
+            title: Text(context.tr('security.title')),
+            subtitle: Text(context.tr('security.settingsHelp')),
+            trailing: const ForwardChevron(),
+            onTap: () => push(const SecurityScreen()),
           ),
           if (state.canManage)
             ListTile(

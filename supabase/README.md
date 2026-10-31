@@ -18,6 +18,18 @@ Schéma initial dérivé du cahier des charges v1.0 (§4, §5, §7, §9).
 | `automations` | Déclencheur, conditions et actions (JSON validé) |
 | `event_logs` | Journal en lecture seule, alimenté par triggers et backend |
 
+## Sécurité et vidéo (`20261103000000_solea_video.sql`)
+
+| Table | Rôle |
+|---|---|
+| `sites`, `site_entrances`, `site_members` | Villa ou immeuble, entrées, gestionnaire / agent de sécurité / installateur |
+| `homes.site_id`, `homes.unit_label` | Logement rattaché à un immeuble (via `set_home_site`) |
+| `video_sources` | Caméras et visiophones ONVIF / RTSP, état et diagnostic (gestionnaires du logement) |
+| `video_source_secrets` | Identifiants des appareils, sans policy (boîtier seul) |
+| `video_scans` | Recherche ONVIF demandée depuis l'application |
+| `video_sessions` | Signalisation WebRTC (offre de l'app, réponse du boîtier) |
+| `media_gateways` | État du boîtier vidéo et serveurs STUN/TURN |
+
 ## Sécurité vérifiée (tests locaux sur PostgreSQL 16)
 
 - Un utilisateur étranger ne voit aucune maison ni appareil et ne peut pas commander.

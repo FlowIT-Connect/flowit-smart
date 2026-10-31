@@ -21,7 +21,22 @@ export class MemoryStore {
     this.pairings = [];
     this.deviceLimit = null; // null = sans limite
     this.waiting = new Map();
+    this.videoSources = [];
+    this.videoSessions = [];
+    this.videoScans = [];
+    this.mediaGateways = new Map();
   }
+
+  // Équipements vidéo (UDI)
+  async listVideoSources(homeId) { return this.videoSources.filter((s) => s.home_id === homeId).map((s) => ({ ...s })); }
+  async updateVideoSource(id, patch) { Object.assign(this.videoSources.find((s) => s.id === id) ?? {}, patch); }
+  async listVideoSessions(homeId, tracked = []) {
+    return this.videoSessions.filter((s) => s.home_id === homeId && (s.status === 'offer' || tracked.includes(s.id))).map((s) => ({ ...s }));
+  }
+  async updateVideoSession(id, patch) { Object.assign(this.videoSessions.find((s) => s.id === id) ?? {}, patch); }
+  async listPendingVideoScans(homeId) { return this.videoScans.filter((s) => s.home_id === homeId && s.status === 'pending'); }
+  async updateVideoScan(id, patch) { Object.assign(this.videoScans.find((s) => s.id === id) ?? {}, patch); }
+  async upsertMediaGateway(homeId, row) { this.mediaGateways.set(homeId, { home_id: homeId, ...row }); }
 
   async getIntegration(id) { return this.integrations.get(id) ?? null; }
   async getHome(id) { return this.homes.get(id) ?? null; }

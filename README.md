@@ -25,5 +25,7 @@ Démarrage rapide sans matériel ni compte : `cd app && flutter run -d chrome`
 
 **Caméras IP, photos d'appareils, température extérieure** : voir [docs/CAMERAS_PHOTOS_METEO.md](docs/CAMERAS_PHOTOS_METEO.md).
 
+**Sécurité et vidéo** (caméras et visiophones ONVIF / RTSP, vidéo fluide WebRTC, villas et immeubles) : voir [docs/INTERPHONIE_VIDEO.md](docs/INTERPHONIE_VIDEO.md).
+
 Lire ensuite : [Architecture](docs/ARCHITECTURE.md), [Installation](docs/INSTALLATION.md),
 [Tests](docs/TESTS.md), [Limites connues](docs/LIMITES.md), [Dépendances](docs/DEPENDANCES.md).

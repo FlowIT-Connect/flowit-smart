@@ -15,11 +15,18 @@ import { applyAddonOptions } from './addon_options.js';
 import { log, setLogLevel } from './log.js';
 import { simulatedFrame } from './png.js';
 import { SupabaseStore } from './store.js';
+import { VideoOnlyAdapter } from './adapters/video_only.js';
+import { addUdi, UdiHub } from './udi/index.js';
+import { MediaMtx } from './udi/media/mediamtx.js';
+import { discoverOnvif, subnetFilter } from './udi/onvif/discovery.js';
 
 applyAddonOptions();
 const config = loadConfig();
 setLogLevel(config.logLevel);
 config.runAutomations = process.env.RUN_AUTOMATIONS !== 'false';
+// Boîtier vidéo (ADAPTER=video) : déclencheurs horaires désactivés par défaut, la passerelle
+// principale du logement s'en charge (sinon chaque automatisation horaire partirait deux fois).
+config.runTimeTriggers = config.adapter === 'video' ? process.env.RUN_TIME_TRIGGERS === 'true' : process.env.RUN_TIME_TRIGGERS !== 'false';
 
 let adapter;
 if (config.adapter === 'simulator') {
@@ -40,6 +47,8 @@ if (config.adapter === 'simulator') {
   const client = new TuyaClient({ accessId: config.tuyaAccessId, accessSecret: config.tuyaAccessSecret, baseUrl: config.tuyaBaseUrl });
   adapter = new TuyaCloudAdapter({ client, pollMs: config.tuyaPollMs, imageBase: config.tuyaImageUrl });
   log.info('bridge.tuya_cloud', { region: config.tuyaBaseUrl, poll_seconds: config.tuyaPollMs / 1000 });
+} else if (config.adapter === 'video') {
+  adapter = new VideoOnlyAdapter();
 } else {
   adapter = new HomeAssistantAdapter({ url: config.haUrl, wsUrl: config.haWsUrl ?? undefined, token: config.haToken, filter: config.haEntityFilter });
 }
@@ -52,6 +61,21 @@ if (config.cameras.length) {
 if (config.ttlock) {
   addTTLock(adapter, new TTLockClient(config.ttlock), { pollMs: config.ttlock.pollMs });
   log.info('bridge.ttlock', { api: config.ttlock.baseUrl, poll_seconds: config.ttlock.pollMs / 1000 });
+}
+
+if (config.video) {
+  const v = config.video;
+  const allowed = subnetFilter(v.subnets);
+  const hub = new UdiHub({
+    mediamtx: v.relay ? new MediaMtx({ apiUrl: v.mediamtxApiUrl, webrtcUrl: v.mediamtxWebrtcUrl }) : null,
+    discover: v.discovery ? (opts) => discoverOnvif(opts) : null,
+    allowedSubnet: allowed,
+    stun: v.stun,
+    turn: v.turn,
+    turnSecret: v.turnSecret,
+  });
+  addUdi(adapter, hub);
+  log.info('bridge.video', { relay: v.relay, discovery: v.discovery, turn: v.turn.length > 0 });
 }
 
 const store = new SupabaseStore(config.supabaseUrl, config.supabaseServiceKey);

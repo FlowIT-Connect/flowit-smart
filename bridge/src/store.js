@@ -161,6 +161,64 @@ export class SupabaseStore {
     return () => this.db.removeChannel(channel);
   }
 
+  // ---------------------------------------------------------------- Équipements vidéo (UDI)
+  /** Équipements vidéo du logement, avec leurs identifiants (service_role uniquement). */
+  async listVideoSources(homeId) {
+    const rows = check(
+      await this.db
+        .from('video_sources')
+        .select('id, home_id, name, category, driver, host, port, rtsp_url, rtsp_sub_url, snapshot_url, manufacturer, model, enabled, diagnosed_at, test_requested_at, credentials_updated_at, video_source_secrets(username, password)')
+        .eq('home_id', homeId),
+    );
+    return rows.map(({ video_source_secrets: sec, ...r }) => {
+      const s = Array.isArray(sec) ? sec[0] : sec;
+      return { ...r, username: s?.username ?? '', password: s?.password ?? '' };
+    });
+  }
+
+  async updateVideoSource(id, patch) {
+    check(await this.db.from('video_sources').update(patch).eq('id', id));
+  }
+
+  /** Sessions à traiter : nouvelles offres de moins d'une minute + sessions suivies (pour les fermer). */
+  async listVideoSessions(homeId, trackedIds = []) {
+    const since = new Date(Date.now() - 60_000).toISOString();
+    const offers = check(
+      await this.db.from('video_sessions').select('id, device_id, quality, offer, status, created_at').eq('home_id', homeId).eq('status', 'offer').gte('created_at', since).order('created_at').limit(20),
+    );
+    const tracked = trackedIds.length
+      ? check(await this.db.from('video_sessions').select('id, device_id, quality, status, created_at').in('id', trackedIds))
+      : [];
+    return [...offers, ...tracked];
+  }
+
+  async updateVideoSession(id, patch) {
+    check(await this.db.from('video_sessions').update(patch).eq('id', id));
+  }
+
+  async listPendingVideoScans(homeId) {
+    return check(await this.db.from('video_scans').select('id, created_at').eq('home_id', homeId).eq('status', 'pending').order('created_at').limit(1));
+  }
+
+  async updateVideoScan(id, patch) {
+    check(await this.db.from('video_scans').update(patch).eq('id', id));
+  }
+
+  async upsertMediaGateway(homeId, row) {
+    check(await this.db.from('media_gateways').upsert({ home_id: homeId, ...row }));
+  }
+
+  /** Temps réel : nouvelle offre vidéo, recherche demandée ou équipement modifié. */
+  subscribeVideo(homeId, onChange) {
+    const filter = `home_id=eq.${homeId}`;
+    const channel = this.db.channel(`udi:${homeId}`);
+    for (const table of ['video_sessions', 'video_scans', 'video_sources']) {
+      channel.on('postgres_changes', { event: '*', schema: 'public', table, filter }, () => onChange(table));
+    }
+    channel.subscribe();
+    return () => this.db.removeChannel(channel);
+  }
+
   /** Canal temps réel des caméras : « watch » de l'application, « frame » de la passerelle. */
   subscribeCameraWatch(homeId, onWatch) {
     const channel = this.db
