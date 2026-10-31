@@ -1,0 +1,9 @@
+# Netlify : héberge le site international (dossier site/) sur solea-dz.com.
+# L'application Flutter reste sur app.solea-dz.com (GitHub Pages).
+[build]
+  base = "site"
+  command = "npm run build"
+  publish = ".next"
+
+[build.environment]
+  NODE_VERSION = "22"

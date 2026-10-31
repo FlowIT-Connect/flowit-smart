@@ -1,0 +1,636 @@
+{
+  "meta": {
+    "siteName": "Solea",
+    "title": "Solea: your home, your world, one intelligent ecosystem",
+    "description": "Solea brings lighting, security, IP cameras, video intercoms, access control, comfort and energy together in one open smart home platform for villas, apartments, residential buildings and commercial properties.",
+    "discover": {
+      "title": "Discover Solea",
+      "description": "What Solea is, how the ecosystem works and how it grows with your needs."
+    },
+    "devices": {
+      "title": "Compatible devices",
+      "description": "Lighting, IP cameras, video intercoms, access control, Zigbee sensors, climate, energy, shutters and gateways: the device families Solea integrates."
+    },
+    "gateway": {
+      "title": "Solea Gateway",
+      "description": "The upcoming Solea smart home gateway: Zigbee, Wi-Fi, local automations, MQTT. Coming soon worldwide."
+    },
+    "solutions": {
+      "title": "Solutions",
+      "description": "Solea for villas, apartments, residential buildings and commercial properties."
+    },
+    "automations": {
+      "title": "Automations",
+      "description": "Welcome home, leaving, security, temperature, visitors: scenarios that work for you."
+    },
+    "partners": {
+      "title": "Partners and installers",
+      "description": "Resellers, installers, electricians, integrators, developers: offer Solea to your customers."
+    },
+    "contact": {
+      "title": "Contact and quotes",
+      "description": "Tell us about your project: villa, apartment, residential building, commercial property, cameras, video intercom."
+    },
+    "shop": {
+      "title": "Shop",
+      "description": "The Solea shop for compatible devices."
+    },
+    "privacy": {
+      "title": "Form privacy",
+      "description": "How Solea handles the data sent through the website forms."
+    }
+  },
+  "nav": {
+    "home": "Home",
+    "discover": "Discover Solea",
+    "devices": "Devices",
+    "solutions": "Solutions",
+    "automations": "Automations",
+    "gateway": "Gateway",
+    "partners": "Partners",
+    "contact": "Contact",
+    "shop": "Shop",
+    "quote": "Request a quote",
+    "menu": "Menu",
+    "close": "Close",
+    "skip": "Skip to content"
+  },
+  "prefs": {
+    "button": "Language, country and currency",
+    "title": "Your preferences",
+    "language": "Language",
+    "country": "Country",
+    "currency": "Currency",
+    "otherCountry": "Other country",
+    "save": "Save",
+    "note": "Prices converted into another currency are indicative. The final price is set when you place your order."
+  },
+  "geo": {
+    "suggest": "It looks like you are in {country}. Show the site in {language}, with prices in {currency}?",
+    "suggestNoCountry": "Show the site in {language}, with prices in {currency}?",
+    "accept": "Yes, thanks",
+    "change": "Choose",
+    "dismiss": "Close"
+  },
+  "common": {
+    "learnMore": "Learn more",
+    "requestStudy": "Request a study",
+    "comingSoon": "Coming soon",
+    "conceptNote": "Concept illustration, not a final product image.",
+    "seeAll": "See all",
+    "step": "Step {n}"
+  },
+  "hero": {
+    "eyebrow": "Smart Home & Smart Building",
+    "title": "Your home. Your world. One intelligent ecosystem.",
+    "text": "Solea brings lighting, security, cameras, video intercom, access, comfort and energy together in a single app, whatever the brand of your devices.",
+    "ctaDiscover": "Discover Solea",
+    "ctaShop": "Explore the shop",
+    "statProtocols": "technologies combined",
+    "statFamilies": "device families",
+    "statApp": "app to control everything",
+    "sceneLabel": "Illustration of a home controlled by Solea"
+  },
+  "home": {
+    "featuresEyebrow": "Features",
+    "featuresTitle": "Your whole building, in one interface.",
+    "featuresText": "Solea centralises your devices, makes them work together and keeps you in control, at home or away.",
+    "techEyebrow": "Technologies",
+    "techTitle": "An open platform, independent of manufacturers.",
+    "techText": "Solea speaks the market's standards. For every device, we state precisely what is supported.",
+    "categoriesEyebrow": "Devices",
+    "categoriesTitle": "Nine device families, one ecosystem.",
+    "categoriesCta": "See all compatible devices",
+    "gatewayEyebrow": "Coming soon",
+    "gatewayTitle": "Solea Gateway, the local heart of your installation.",
+    "gatewayText": "A gateway designed for Solea: Zigbee, Wi-Fi devices, automations that run on site and communication with the platform.",
+    "gatewayCta": "Get notified at launch",
+    "automationsEyebrow": "Automations",
+    "automationsTitle": "Your home anticipates, you enjoy.",
+    "automationsCta": "Explore the scenarios",
+    "solutionsEyebrow": "Solutions",
+    "solutionsTitle": "An answer for every type of building.",
+    "shopEyebrow": "Shop",
+    "shopTitle": "Compatible devices are coming to the shop.",
+    "shopText": "Our catalogue is being prepared. Every product will be listed with its protocols, verified Solea compatibility and any limitations. For a project right now, request a quote.",
+    "shopCta": "Visit the shop",
+    "benefitsEyebrow": "Why Solea",
+    "benefitsTitle": "Built to last, designed to grow.",
+    "partnerTitle": "Installer, reseller, developer?",
+    "partnerText": "Offer Solea to your customers: a multi-technology catalogue, technical support and an upcoming partner programme.",
+    "partnerCta": "Become a partner"
+  },
+  "features": {
+    "control": {
+      "title": "Central control",
+      "text": "Lights, shutters, air conditioning, plugs, cameras and locks in a single app."
+    },
+    "automation": {
+      "title": "Smart automations",
+      "text": "Scenarios triggered by time, presence, a sensor or a button."
+    },
+    "security": {
+      "title": "Security and video",
+      "text": "IP cameras, detectors and alerts together, with live video on compatible models."
+    },
+    "access": {
+      "title": "Intercom and access",
+      "text": "See who is at the door, answer and open remotely, based on each user's rights."
+    },
+    "energy": {
+      "title": "Energy under control",
+      "text": "Plugs and metering modules to track and reduce consumption."
+    },
+    "local": {
+      "title": "Local gateway",
+      "text": "An architecture that can run with an on-site gateway, close to the devices."
+    }
+  },
+  "tech": {
+    "zigbee": {
+      "name": "Zigbee",
+      "text": "Low-power wireless sensors and modules in a mesh network."
+    },
+    "wifi": {
+      "name": "Wi-Fi",
+      "text": "Plugs, switches, cameras and devices connected to the home network."
+    },
+    "ethernet": {
+      "name": "Ethernet",
+      "text": "Wired cameras, recorders and door stations, for reliability."
+    },
+    "onvif": {
+      "name": "ONVIF",
+      "text": "The IP camera standard: discovery, video streams and, depending on the model, PTZ control."
+    },
+    "rtsp": {
+      "name": "RTSP",
+      "text": "Video streams from compatible cameras and recorders."
+    },
+    "sip": {
+      "name": "SIP / RTP",
+      "text": "Audio and video calls from compatible IP intercoms."
+    },
+    "webrtc": {
+      "name": "WebRTC",
+      "text": "Smooth, encrypted live video in the app."
+    },
+    "mqtt": {
+      "name": "MQTT",
+      "text": "Lightweight messaging between the gateway, devices and the platform."
+    }
+  },
+  "categories": {
+    "lighting": {
+      "name": "Smart lighting",
+      "text": "Create moods, schedule and control every light point.",
+      "items": [
+        "Smart bulbs",
+        "Smart switches",
+        "Dimmers",
+        "LED strips",
+        "LED controllers",
+        "Lighting control modules",
+        "Light sensors"
+      ]
+    },
+    "security": {
+      "name": "Security and surveillance",
+      "text": "Cameras, detectors and sirens on one dashboard.",
+      "items": [
+        "Wi-Fi IP cameras",
+        "Ethernet IP cameras",
+        "Indoor cameras",
+        "Outdoor cameras",
+        "PTZ cameras",
+        "Cameras with motion detection",
+        "NVR video recorders",
+        "Motion detectors",
+        "Door and window sensors",
+        "Sirens",
+        "Smoke detectors",
+        "Water leak detectors"
+      ],
+      "note": "Available features depend on each model (ONVIF, RTSP, HTTP/HTTPS, API or via a gateway). We state, camera by camera, what is actually supported."
+    },
+    "intercom": {
+      "name": "IP video intercoms",
+      "text": "See your visitors, answer and open from your phone.",
+      "items": [
+        "IP video intercoms",
+        "Outdoor door stations",
+        "Indoor monitors",
+        "Connected video intercoms",
+        "Video doorbells",
+        "Remote opening",
+        "Visitor management",
+        "Audio and video calls",
+        "Gate and door opening"
+      ],
+      "note": "Depending on the equipment: SIP and RTP for calls, ONVIF and RTSP for video, WebRTC for display in the app."
+    },
+    "access": {
+      "name": "Access control",
+      "text": "Manage who comes in and when, and keep an access history.",
+      "items": [
+        "Smart locks",
+        "RFID readers",
+        "Keypads",
+        "Door controllers",
+        "Gate control",
+        "Automatic barriers",
+        "Garage doors",
+        "Exit buttons",
+        "Compatible biometric readers"
+      ]
+    },
+    "sensors": {
+      "name": "Zigbee sensors",
+      "text": "The eyes and ears of your installation, wireless and battery powered.",
+      "items": [
+        "Motion",
+        "Door and window opening",
+        "Temperature",
+        "Humidity",
+        "Light level",
+        "Water leak",
+        "Presence",
+        "Vibration",
+        "Smoke",
+        "Air quality"
+      ]
+    },
+    "climate": {
+      "name": "Comfort and climate",
+      "text": "The right temperature at the right time, without waste.",
+      "items": [
+        "Smart thermostats",
+        "Compatible air conditioners",
+        "Infrared controllers",
+        "Connected fans",
+        "Smart heating",
+        "Thermostatic valves",
+        "Temperature management"
+      ]
+    },
+    "energy": {
+      "name": "Energy management",
+      "text": "Measure, understand and reduce your consumption.",
+      "items": [
+        "Smart plugs",
+        "Energy meters",
+        "Power metering modules",
+        "Smart relays",
+        "Consumption control",
+        "Electrical circuit management"
+      ]
+    },
+    "shutters": {
+      "name": "Shutters and motors",
+      "text": "Shutters, blinds, curtains and gates that follow your scenarios.",
+      "items": [
+        "Roller shutter motors",
+        "Motorised blinds",
+        "Smart curtains",
+        "Motorised gates",
+        "Motor controls"
+      ]
+    },
+    "gateways": {
+      "name": "Gateways and network",
+      "text": "The link between your devices and the Solea platform.",
+      "items": [
+        "Zigbee gateways",
+        "Home automation controllers",
+        "Zigbee dongles",
+        "Communication modules",
+        "Local gateways",
+        "Ethernet and Wi-Fi equipment"
+      ]
+    }
+  },
+  "solutions": {
+    "villa": {
+      "name": "Solea for villas",
+      "text": "A whole house controlled simply, from the pool to the gate.",
+      "items": [
+        "Lighting control",
+        "Air conditioning",
+        "Roller shutters",
+        "Security",
+        "Cameras",
+        "Video intercom",
+        "Locks",
+        "Automatic scenarios"
+      ]
+    },
+    "apartment": {
+      "name": "Solea for apartments",
+      "text": "Connected comfort, adapted to the space and constraints of an apartment.",
+      "items": [
+        "Lighting",
+        "Comfort",
+        "Security",
+        "Access control",
+        "Energy management"
+      ]
+    },
+    "residence": {
+      "name": "Solea for residential buildings",
+      "text": "Access, video and shared facilities managed for every resident.",
+      "items": [
+        "Access management",
+        "Cameras",
+        "Video intercoms",
+        "Gates",
+        "Barriers",
+        "Shared facilities",
+        "Automations"
+      ]
+    },
+    "business": {
+      "name": "Solea for commercial buildings",
+      "text": "Offices, shops and premises: less management, more control.",
+      "items": [
+        "Equipment management",
+        "Lighting",
+        "Access control",
+        "Surveillance",
+        "Automation"
+      ]
+    }
+  },
+  "benefits": {
+    "simple": {
+      "title": "Simple every day",
+      "text": "A clear app for the whole family, in six languages."
+    },
+    "open": {
+      "title": "Open and multi-brand",
+      "text": "You choose your devices, Solea brings them together."
+    },
+    "honest": {
+      "title": "Verified compatibility",
+      "text": "We only advertise a feature if the model really supports it."
+    },
+    "scalable": {
+      "title": "Scalable",
+      "text": "Start with one room, extend to the house or the whole building."
+    },
+    "secure": {
+      "title": "Secure",
+      "text": "Role-based access, encrypted exchanges, action log."
+    },
+    "support": {
+      "title": "Supported",
+      "text": "A network of installers and technical support by your side."
+    }
+  },
+  "discover": {
+    "eyebrow": "Discover Solea",
+    "title": "One platform for everything that makes a building smart.",
+    "intro": "Solea is a smart home ecosystem developed by FlowIT. It connects, controls and automates devices from different brands and technologies in villas, apartments, residential buildings and commercial properties.",
+    "whatTitle": "What is Solea?",
+    "whatText": "An app, a platform and, soon, a dedicated gateway. Together they replace the many manufacturer apps with a single, consistent and secure interface.",
+    "whyTitle": "Why choose Solea?",
+    "why": [
+      "You are not locked into one brand: Solea is independent of manufacturers.",
+      "The whole installation is controlled from one place, on phone, tablet or computer.",
+      "Automations make devices that never knew each other work together.",
+      "Every compatibility is verified and documented, limitations included."
+    ],
+    "howTitle": "How does the ecosystem work?",
+    "how": [
+      {
+        "title": "The devices",
+        "text": "Lights, sensors, cameras, locks, air conditioners: over Zigbee, Wi-Fi or Ethernet."
+      },
+      {
+        "title": "The gateway",
+        "text": "On site, it talks to the devices and runs automations as close as possible."
+      },
+      {
+        "title": "The platform",
+        "text": "It securely synchronises the installation state, users and their rights."
+      },
+      {
+        "title": "The app",
+        "text": "You see, control and schedule everything, at home or remotely."
+      }
+    ],
+    "connectTitle": "How are devices connected?",
+    "connectText": "An installer or you add each device, place it in its room and give it a name. Zigbee sensors pair with the gateway; Wi-Fi and IP devices are recognised on the network; ONVIF cameras are discovered automatically when the model allows it.",
+    "automateTitle": "How are automations created?",
+    "automateText": "Choose a trigger (a time, a presence, a door opening), add conditions, then the actions to run in sequence. Scenes group several actions into a single tap.",
+    "controlTitle": "One single interface",
+    "controlText": "Dashboard, rooms, favourites, scenes, video, history: the same app for all devices and all household members, with rights suited to each person.",
+    "evolveTitle": "A solution that grows with you",
+    "evolveText": "Start with a few plugs and a sensor, add cameras, video intercom and access control later, then scale up to an entire residential building. The installation evolves without starting over."
+  },
+  "devicesPage": {
+    "eyebrow": "Compatible devices",
+    "title": "The catalogue of devices Solea integrates.",
+    "intro": "Solea is designed to welcome many families of equipment. This catalogue grows regularly; every model sold in the shop states its protocols and any limitations.",
+    "protocols": "Technologies depending on the model",
+    "honesty": "Our commitment: we never declare a device compatible without checking its protocol and actual capabilities."
+  },
+  "gatewayPage": {
+    "eyebrow": "Solea Gateway",
+    "status": "Coming soon worldwide",
+    "title": "The central point of your connected home.",
+    "intro": "Solea Gateway will be the gateway of the Solea ecosystem: it will link your compatible devices to the platform, manage automations on site and evolve towards new protocols.",
+    "notForSale": "This product is under development and not yet on sale. Final hardware specifications will be published at launch.",
+    "featuresTitle": "Planned features and technologies",
+    "features": [
+      "Zigbee device management",
+      "Communication with compatible Wi-Fi devices",
+      "Centralisation of smart home devices",
+      "Local communication",
+      "Automation management",
+      "Communication with the Solea platform",
+      "MQTT integration",
+      "Gradual extension to other protocols"
+    ],
+    "viewFront": "Front view",
+    "viewSide": "Side view",
+    "viewSitu": "In a home",
+    "formTitle": "Get notified at launch",
+    "formText": "Leave your email: we will let you know as soon as pre-orders open in your country."
+  },
+  "solutionsPage": {
+    "eyebrow": "Solutions",
+    "title": "Solea adapts to your building.",
+    "intro": "From a studio to a residence with hundreds of homes, Solea offers a right-sized answer, installed by professionals."
+  },
+  "automationsPage": {
+    "eyebrow": "Automations",
+    "title": "Scenarios that work for you.",
+    "intro": "An automation is a trigger, conditions and actions. Here are a few examples of what Solea makes possible.",
+    "trigger": "Trigger",
+    "action": "Action",
+    "scenarios": [
+      {
+        "key": "welcome",
+        "title": "Welcome home",
+        "steps": [
+          "Presence detected",
+          "Lights switch on",
+          "A preset mood is activated"
+        ]
+      },
+      {
+        "key": "leave",
+        "title": "Leaving",
+        "steps": [
+          "Lights switch off",
+          "Selected plugs are turned off",
+          "Security is armed"
+        ]
+      },
+      {
+        "key": "security",
+        "title": "Security",
+        "steps": [
+          "Opening detected",
+          "The owner is notified",
+          "A siren sounds according to the configured rules"
+        ]
+      },
+      {
+        "key": "climate",
+        "title": "Smart temperature",
+        "steps": [
+          "Temperature is read",
+          "Heating or air conditioning switches on or off"
+        ]
+      },
+      {
+        "key": "visitor",
+        "title": "Visitor",
+        "steps": [
+          "Call from the video intercom",
+          "The visitor is shown",
+          "The door opens if the user has the right to open it"
+        ]
+      }
+    ]
+  },
+  "partnersPage": {
+    "eyebrow": "Partners and installers",
+    "title": "Let's build tomorrow's smart buildings together.",
+    "intro": "Solea is for professionals who design, equip and maintain buildings.",
+    "targetsTitle": "Who is it for?",
+    "targets": [
+      "Electrical equipment resellers",
+      "Home automation installers",
+      "Electricians",
+      "Security companies",
+      "Integrators",
+      "Property developers",
+      "Construction companies"
+    ],
+    "benefitsTitle": "Your benefits",
+    "benefits": [
+      "Access to a catalogue of compatible devices",
+      "A multi-technology solution",
+      "Technical support",
+      "The ability to offer Solea installations",
+      "The upcoming partner programme"
+    ],
+    "formTitle": "Partnership request"
+  },
+  "contactPage": {
+    "eyebrow": "Contact and quotes",
+    "title": "Let's talk about your project.",
+    "intro": "Describe what you need: we will get back to you with a tailored proposal.",
+    "emailLabel": "By email"
+  },
+  "shopPage": {
+    "eyebrow": "Shop",
+    "title": "The Solea shop opens soon.",
+    "text": "We are finalising the catalogue of compatible devices. Every product will be listed with its technical specifications, protocols and verified Solea compatibility. No product is on sale online yet.",
+    "quote": "Request a quote",
+    "devices": "See device families"
+  },
+  "privacyPage": {
+    "title": "Form privacy",
+    "intro": "This page explains what happens to the information sent through the website forms. The full privacy policy will be published with the shop.",
+    "items": [
+      "Controller: FlowIT, publisher of Solea. Contact: contact@solea-dz.com.",
+      "Data collected: only what you enter (name, email, phone, country, language, message).",
+      "Purpose: to answer your request, to notify you of the Solea Gateway launch if you asked for it, and to send you marketing information only if you agreed to it.",
+      "Retention: up to three years after our last exchange, then deletion.",
+      "Your rights: access, correction, deletion and withdrawal of consent at any time, by email to support@solea-dz.com.",
+      "Cookies: the site only stores your language, country and currency preferences. No advertising cookies."
+    ]
+  },
+  "form": {
+    "firstName": "First name",
+    "lastName": "Last name",
+    "name": "Full name",
+    "company": "Company",
+    "activity": "Business type",
+    "email": "Email",
+    "phone": "Phone",
+    "phoneHint": "With the international code, for example +44…",
+    "country": "Country",
+    "language": "Preferred language",
+    "projectType": "Project type",
+    "message": "Describe your needs",
+    "choose": "Choose…",
+    "consentMarketing": "I agree to receive marketing information from Solea. I can unsubscribe at any time.",
+    "consentLaunch": "I agree to be notified by email when Solea Gateway launches.",
+    "privacy": "Your data is handled as described on our Privacy page.",
+    "privacyLink": "Privacy",
+    "submit": "Send",
+    "submitGateway": "Notify me at launch",
+    "sending": "Sending…",
+    "success": "Thank you! Your request has been received. We will get back to you shortly.",
+    "successGateway": "Done! You will be among the first to hear about the Solea Gateway launch.",
+    "errors": {
+      "required": "Please fill in the required fields.",
+      "email": "Invalid email address.",
+      "phone": "Invalid phone number.",
+      "consent": "Please tick the consent box.",
+      "tooMany": "Too many requests sent. Please try again later.",
+      "notConfigured": "This form is not connected to our database yet. Please write to contact@solea-dz.com.",
+      "server": "Something went wrong. Please try again or write to contact@solea-dz.com."
+    },
+    "types": {
+      "villa": "Villa",
+      "apartment": "Apartment",
+      "residence": "Residential building",
+      "business": "Commercial building",
+      "installation": "Smart home installation",
+      "security": "Cameras and security",
+      "intercom": "Video intercom",
+      "partnership": "Partnership request"
+    },
+    "activities": {
+      "reseller": "Electrical equipment reseller",
+      "installer": "Home automation installer",
+      "electrician": "Electrician",
+      "security": "Security company",
+      "integrator": "Integrator",
+      "developer": "Property developer",
+      "construction": "Construction company",
+      "other": "Other"
+    }
+  },
+  "footer": {
+    "tagline": "The smart home ecosystem that brings your intelligent devices together.",
+    "by": "Solea is a solution developed by FlowIT.",
+    "explore": "Explore",
+    "company": "Solea",
+    "contact": "Contact",
+    "rights": "All rights reserved.",
+    "privacy": "Privacy",
+    "geoip": "IP geolocation by DB-IP",
+    "support": "Support and complaints"
+  },
+  "notFound": {
+    "title": "Page not found",
+    "text": "This page does not exist or has been moved.",
+    "back": "Back to home"
+  }
+}

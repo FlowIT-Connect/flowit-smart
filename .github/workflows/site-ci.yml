@@ -1,0 +1,53 @@
+# Site Solea (dossier site/) : compilation, tests unitaires, tests SQL et tests navigateur.
+name: Site Solea - tests
+
+on:
+  pull_request:
+    paths: ["site/**", ".github/workflows/site-ci.yml"]
+  push:
+    branches: [main]
+    paths: ["site/**", ".github/workflows/site-ci.yml"]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: site
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_PASSWORD: postgres
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd pg_isready --health-interval 5s --health-timeout 5s --health-retries 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: site/package-lock.json
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npm test
+      - name: Tests SQL (projet Supabase du site)
+        env:
+          PGHOST: localhost
+          PGUSER: postgres
+          PGPASSWORD: postgres
+        run: |
+          out=$(sh supabase/tests/run_tests.sh 2>&1)
+          echo "$out" | grep -E "OK:|ÉCHEC|ERROR"
+          ! echo "$out" | grep -qE "ÉCHEC|ERROR"
+      - run: npm run build
+        env:
+          NEXT_TELEMETRY_DISABLED: 1
+      - name: Tests navigateur
+        run: |
+          npm install --no-save playwright
+          npx playwright install --with-deps chromium
+          sh scripts/serve-standalone.sh > /tmp/site.log 2>&1 &
+          sleep 3
+          node tests/e2e.mjs http://127.0.0.1:3100

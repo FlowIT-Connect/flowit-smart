@@ -7,6 +7,7 @@ Application domotique multimarque (cahier des charges v1.0 du 26/10/2026).
 | `app/` | Application Flutter (Android, iOS, Web), FR / EN / AR (RTL) |
 | `bridge/` | FlowIT Bridge : passerelle Node.js qui relie Supabase à Home Assistant sur le réseau local, ou directement au cloud Tuya |
 | `supabase/` | Migrations SQL (schéma, RLS, fonctions) et tests |
+| `site/` | Site international Solea (vitrine, puis boutique et administration), Next.js, 6 langues : voir [site/README.md](site/README.md) |
 | `docs/` | Architecture, installation, tests, limites, dépendances |
 | `screenshots/` | Captures de l'application en mode démo |
 

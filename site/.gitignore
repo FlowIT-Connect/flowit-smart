@@ -1,0 +1,11 @@
+node_modules/
+.next/
+out/
+.env
+.env.local
+*.tsbuildinfo
+next-env.d.ts
+data/*.mmdb
+test-results/
+screenshots-tmp/
+screenshots/*.png
