@@ -2,10 +2,13 @@
 // (pending → sent → confirmed | failed | timeout | rejected) et automatisations locales.
 
 import {
+  activeModes,
   closedCovers,
   conditionsHold,
   exceptionHolds,
   localTime,
+  modeTriggerFired,
+  presencePlan,
   stateTriggerFired,
   sunTriggerDue,
   timeTriggerDue,
@@ -57,6 +60,10 @@ export class Bridge {
     this.followUps = new Map();
     /** Exécutions récentes par automatisation (coupe-circuit anti-boucle). */
     this.recentRuns = new Map();
+    /** Modes du logement (été / hiver / vacances) et simulation de présence. */
+    this.modeRow = null;
+    this.modes = [];
+    this.simulation = null; // { day, plan: [{id, on, off, state}] }
     this.inflightDevices = new Set();
     this.inflightRuns = new Set();
     this.running = new Set();
@@ -112,6 +119,10 @@ export class Bridge {
       // (mouvement d'une caméra…) tournent ici ; les déclencheurs horaires restent à l'autre.
       if (this.config.runTimeTriggers !== false) {
         every(10_000, () => this.tickTimeTriggers());
+        every(60_000, async () => {
+          await this.evaluateModes(); // départ / retour atteint
+          await this.tickPresenceSimulation();
+        });
         // Météo lue par la passerelle elle-même : les règles tournent même téléphone éteint.
         if (this.config.weather !== false) {
           await this.refreshWeather().catch((e) => log.warn('weather.failed', { error: e.message }));
@@ -452,6 +463,81 @@ export class Bridge {
     this.automations = [...list].sort((a, b) => (b.priority === 'security') - (a.priority === 'security'));
     const integ = await this.store.getIntegration(this.config.integrationId);
     this.enabled = integ?.status !== 'disabled';
+    await this.refreshModes();
+  }
+
+  // ------------------------------------------------------------------ Modes Été / Hiver / Vacances
+  async refreshModes() {
+    try {
+      this.modeRow = (await this.store.getHomeModes?.(this.homeId)) ?? null;
+    } catch {
+      this.modeRow = null; // base pas encore à jour
+    }
+    await this.evaluateModes();
+  }
+
+  /** Changement de mode (réglage ou date de départ / retour atteinte) → déclencheurs « mode ». */
+  async evaluateModes() {
+    const before = this.modes;
+    const after = activeModes(this.modeRow, this.clock());
+    this.modes = after;
+    // Premier relevé après un redémarrage : pas de déclenchement, le mode était déjà là.
+    if (!this.modesLoaded) {
+      this.modesLoaded = true;
+      return;
+    }
+    if (before.join() === after.join()) return;
+    log.info('modes.changed', { modes: after });
+    const now = localTime(this.clock(), this.timezone);
+    for (const a of this.automations) {
+      if (modeTriggerFired(a.trigger, before, after)) await this.runAutomation(a, now, `mode:${a.trigger.mode}:${a.trigger.event ?? 'start'}`);
+    }
+    if (!after.includes('vacation')) await this.#endSimulation();
+  }
+
+  /**
+   * Simulation de présence pendant les vacances : lumières choisies allumées puis
+   * éteintes à des heures différentes chaque soir, à partir du coucher du soleil.
+   */
+  async tickPresenceSimulation() {
+    const row = this.modeRow;
+    const ids = Array.isArray(row?.simulation_devices) ? row.simulation_devices.filter((id) => this.devices.has(id)) : [];
+    if (!this.modes.includes('vacation') || !row?.presence_simulation || !ids.length) {
+      await this.#endSimulation();
+      return;
+    }
+    const now = localTime(this.clock(), this.timezone);
+    const day = now.key.slice(0, 10);
+    if (this.simulation?.day !== day) {
+      const sunset = this.weather?.sunset instanceof Date ? localTime(this.weather.sunset, this.timezone) : null;
+      const start = Math.min(21 * 60, sunset && sunset.key.slice(0, 10) === day ? sunset.minutes : 19 * 60);
+      this.simulation = { day, plan: presencePlan(ids, start, this.random ?? Math.random).map((p) => ({ ...p, state: false })) };
+    }
+    for (const p of this.simulation.plan) {
+      const want = now.minutes >= p.on && now.minutes < p.off;
+      if (want !== p.state) {
+        p.state = want;
+        await this.#simCommand(p.id, want, `${day}:${p.id}:${want ? 'on' : 'off'}`);
+      }
+    }
+  }
+
+  async #endSimulation() {
+    const sim = this.simulation;
+    this.simulation = null;
+    for (const p of sim?.plan ?? []) {
+      if (p.state) await this.#simCommand(p.id, false, `${sim.day}:${p.id}:end`);
+    }
+  }
+
+  async #simCommand(deviceId, on, key) {
+    try {
+      await this.store.insertCommand({ home_id: this.homeId, device_id: deviceId, capability_key: 'switch', value: on, idempotency_key: `sim:${key}` });
+      log.info('presence.simulation', { device_id: deviceId, on });
+      await this.processQueue();
+    } catch (e) {
+      log.warn('presence.simulation_failed', { error: e.message });
+    }
   }
 
   #ctx() {

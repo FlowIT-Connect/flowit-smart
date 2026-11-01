@@ -149,3 +149,40 @@ export function closedCovers(actions) {
       (a.capability_key === 'cover_control' && a.value === 'close'),
   ).length;
 }
+
+/** Modes actifs d'après le réglage du logement : 'summer' | 'winter', 'vacation' (entre les dates). */
+export function activeModes(row, date) {
+  if (!row) return [];
+  const modes = [];
+  if (row.season === 'summer' || row.season === 'winter') modes.push(row.season);
+  if (row.vacation) {
+    const t = date.getTime();
+    const from = row.vacation_from ? Date.parse(row.vacation_from) : null;
+    const to = row.vacation_to ? Date.parse(row.vacation_to) : null;
+    if ((from == null || t >= from) && (to == null || t < to)) modes.push('vacation');
+  }
+  return modes;
+}
+
+/** Déclencheur de mode : vrai quand le mode commence (start) ou se termine (end). */
+export function modeTriggerFired(trigger, before, after) {
+  if (trigger?.type !== 'mode') return false;
+  const was = before.includes(trigger.mode);
+  const is = after.includes(trigger.mode);
+  return trigger.event === 'end' ? was && !is : !was && is;
+}
+
+/**
+ * Plan de simulation de présence pour une soirée : chaque lumière s'allume à une
+ * heure tirée au hasard entre `startMin` et 22 h, pour 20 à 90 minutes, et tout
+ * est éteint à 23 h 30 au plus tard. Minutes depuis minuit, heure du logement.
+ */
+export function presencePlan(deviceIds, startMin, random = Math.random) {
+  const end = 23 * 60 + 30;
+  const latestOn = Math.max(startMin, 22 * 60);
+  return deviceIds.map((id) => {
+    const on = Math.round(startMin + random() * (latestOn - startMin));
+    const off = Math.min(end, on + 20 + Math.round(random() * 70));
+    return { id, on, off };
+  });
+}

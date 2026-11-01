@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:math';
 import 'dart:typed_data';
 
+import '../core/home_modes.dart';
 import '../core/notifications.dart';
 import '../models/models.dart';
 import 'backend.dart';
@@ -54,6 +55,7 @@ class DemoBackend implements Backend {
   final _logs = <Map<String, dynamic>>[];
   final _notifications = <Map<String, dynamic>>[];
   final _automationRuns = <Map<String, dynamic>>[];
+  final _homeModes = <String, Map<String, dynamic>>{};
   int _notifSeq = 0;
   final _photos = <String, Uint8List>{};
   final _accessCodes = <Map<String, dynamic>>[];
@@ -1160,6 +1162,22 @@ class DemoBackend implements Backend {
   Future<void> deleteAutomation(String automationId) async {
     await _wait();
     _automations.remove(automationId);
+  }
+
+  @override
+  Future<HomeModes?> getHomeModes(String homeId) async {
+    await _wait();
+    final row = _homeModes[homeId];
+    return row == null ? null : HomeModes.fromJson(row);
+  }
+
+  @override
+  Future<void> saveHomeModes(String homeId, HomeModes modes) async {
+    await _wait();
+    _requireManager(homeId);
+    final row = {'home_id': homeId, ...modes.toJson()};
+    _homeModes[homeId] = row;
+    _events.add(RealtimeEvent('home_modes', 'UPDATE', Map<String, dynamic>.from(row)));
   }
 
   @override

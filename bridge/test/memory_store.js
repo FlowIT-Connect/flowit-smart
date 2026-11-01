@@ -26,6 +26,7 @@ export class MemoryStore {
     this.videoScans = [];
     this.mediaGateways = new Map();
     this.automationRuns = [];
+    this.homeModes = new Map();
     this.weatherReadings = [];
     this.notifications = [];
   }
@@ -43,6 +44,7 @@ export class MemoryStore {
 
   async getIntegration(id) { return this.integrations.get(id) ?? null; }
   async getHome(id) { return this.homes.get(id) ?? null; }
+  async getHomeModes(homeId) { return this.homeModes.get(homeId) ?? null; }
   async insertAutomationRun(row) { this.automationRuns.push({ ...row, created_at: new Date().toISOString() }); }
   async insertWeatherReading(row) { this.weatherReadings.push(row); }
   async notifyHome(homeId, type, body, data = {}, ref = null) { this.notifications.push({ homeId, type, body, data, ref }); }
