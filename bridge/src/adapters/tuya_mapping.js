@@ -87,6 +87,142 @@ export function hexToHsv(hex) {
   return { h: Math.round((h + 360) % 360), s: max ? d / max : 0, v: max };
 }
 
+// ---------------------------------------------------------------- Climatisation / chauffage
+/** Modes Tuya → modes FlowIT (mêmes noms que Home Assistant). */
+const TUYA_HVAC = {
+  cold: 'cool', cool: 'cool', cooling: 'cool',
+  hot: 'heat', heat: 'heat', heating: 'heat',
+  wet: 'dry', dehumidification: 'dry', dehumidify: 'dry', dry: 'dry',
+  wind: 'fan_only', fan: 'fan_only', fan_only: 'fan_only', air: 'fan_only',
+  auto: 'auto',
+};
+/** Ordre d'affichage des modes. */
+export const HVAC_ORDER = ['off', 'auto', 'cool', 'heat', 'dry', 'fan_only', 'heat_cool'];
+/** Vitesses de ventilation Tuya → FlowIT. */
+const TUYA_FAN = {
+  auto: 'auto', mute: 'quiet', sleep: 'quiet', quiet: 'quiet', silent: 'quiet',
+  low: 'low', '1': 'low', level_1: 'low',
+  mid: 'medium', middle: 'medium', medium: 'medium', '2': 'medium', level_2: 'medium',
+  high: 'high', strong: 'high', '3': 'high', level_3: 'high', turbo: 'turbo', '4': 'turbo', level_4: 'turbo',
+};
+const FAN_ORDER = ['auto', 'quiet', 'low', 'medium', 'high', 'turbo'];
+/** Programmes Tuya des thermostats / vannes → ambiances FlowIT. */
+const TUYA_PRESET = {
+  auto: 'schedule', program: 'schedule', programming: 'schedule', smart: 'schedule',
+  manual: 'manual', hand: 'manual', temp_manual: 'manual',
+  eco: 'eco', comfort: 'comfort', holiday: 'away', away: 'away', leave: 'away',
+  sleep: 'sleep', boost: 'boost', antifreeze: 'frost', frost: 'frost', frost_protection: 'frost',
+};
+const TUYA_ACTION = {
+  heating: 'heating', heat: 'heating', hot: 'heating', opened: 'heating', open: 'heating',
+  cooling: 'cooling', cold: 'cooling', cool: 'cooling',
+  standby: 'idle', idle: 'idle', stop: 'idle', closed: 'idle', close: 'idle', warming: 'idle',
+  drying: 'drying', fan: 'fan', wind: 'fan', off: 'off',
+};
+
+const enumRange = (c) => (Array.isArray(c?.values?.range) ? c.values.range.map(String) : []);
+const firstCode = (list, ok) => list.find(ok);
+
+/**
+ * Énumération Tuya traduite : options FlowIT ordonnées, lecture et écriture via la table.
+ * Les valeurs inconnues sont gardées telles quelles (l'app les affiche en brut).
+ */
+function translatedEnum(code, c, table, order) {
+  const raw = enumRange(c);
+  const toFlow = new Map();
+  const toTuya = new Map();
+  for (const r of raw) {
+    const f = table[r.toLowerCase()] ?? r;
+    if (!toTuya.has(f)) toTuya.set(f, r);
+    toFlow.set(r, f);
+  }
+  const options = [...toTuya.keys()].sort((a, b) => (order.indexOf(a) + 1 || 99) - (order.indexOf(b) + 1 || 99));
+  return { options, read: (st) => toFlow.get(String(st.get(code))) ?? null, write: (v) => [{ code, value: toTuya.get(v) }] };
+}
+
+function climateCapabilities(codes, writable, has) {
+  const caps = [];
+  const tempCode = firstCode(['temp_set', 'temp', 'temp_set_c'], (k) => writable(k) && codes.get(k).type === 'Integer');
+  if (!tempCode) return caps;
+  const c = codes.get(tempCode);
+  const s = scaleOf(c);
+  caps.push({
+    key: 'target_temperature', type: 'number', writable: true,
+    metadata: { min: (c.values.min ?? 50) / s, max: (c.values.max ?? 350) / s, step: (c.values.step ?? 5) / s || 0.5, unit: '°C' },
+    read: (st) => {
+      const v = num(st.get(tempCode));
+      return v == null ? null : round(v / s, 2);
+    },
+    write: (v) => [{ code: tempCode, value: Math.round(v * s) }],
+  });
+  if (has('temp_current')) caps.push({ key: 'current_temperature', type: 'sensor', writable: false, ...scaled('temp_current', codes.get('temp_current'), '°C') });
+
+  // Mode : « mode » décrit soit un mode de clim (froid, chaud…), soit un programme de thermostat.
+  const powerCode = firstCode(['switch', 'switch_1', 'power'], (k) => writable(k) && codes.get(k).type === 'Boolean');
+  const modeCode = firstCode(['mode', 'work_mode', 'mode_set'], (k) => writable(k) && codes.get(k).type === 'Enum');
+  const modeRange = modeCode ? enumRange(codes.get(modeCode)) : [];
+  const isHvac = modeRange.some((r) => ['cold', 'cool', 'wet', 'wind', 'dehumidification'].includes(r.toLowerCase()));
+  if (modeCode && isHvac) {
+    const e = translatedEnum(modeCode, codes.get(modeCode), TUYA_HVAC, HVAC_ORDER);
+    const options = powerCode ? ['off', ...e.options.filter((o) => o !== 'off')] : e.options;
+    caps.push({
+      key: 'hvac_mode', type: 'enum', writable: true, metadata: { options },
+      read: (st) => (powerCode && st.get(powerCode) === false ? 'off' : e.read(st)),
+      write: (v) => {
+        if (v === 'off') return [{ code: powerCode, value: false }];
+        return [...(powerCode ? [{ code: powerCode, value: true }] : []), ...e.write(v)];
+      },
+    });
+  } else if (powerCode) {
+    // Radiateur, chaudière, thermostat simple : arrêt ou chauffe.
+    caps.push({
+      key: 'hvac_mode', type: 'enum', writable: true, metadata: { options: ['off', 'heat'] },
+      read: (st) => (st.get(powerCode) === false ? 'off' : st.get(powerCode) === true ? 'heat' : null),
+      write: (v) => [{ code: powerCode, value: v !== 'off' }],
+    });
+  }
+  if (modeCode && !isHvac && modeRange.length > 1) {
+    const e = translatedEnum(modeCode, codes.get(modeCode), TUYA_PRESET, ['schedule', 'manual', 'comfort', 'eco', 'sleep', 'away', 'frost', 'boost']);
+    caps.push({ key: 'preset', type: 'enum', writable: true, metadata: { options: e.options }, read: e.read, write: e.write });
+  }
+
+  const fanCode = firstCode(['windspeed', 'fan_speed_enum', 'fan_speed', 'wind', 'fan_level'], (k) => writable(k) && codes.get(k).type === 'Enum');
+  if (fanCode) {
+    const e = translatedEnum(fanCode, codes.get(fanCode), TUYA_FAN, FAN_ORDER);
+    caps.push({ key: 'fan_mode', type: 'enum', writable: true, metadata: { options: e.options }, read: e.read, write: e.write });
+  }
+  const swingCode = firstCode(['swing', 'switch_vertical', 'shake', 'switch_horizontal', 'windshake'], (k) => writable(k) && codes.get(k).type === 'Boolean');
+  if (swingCode) caps.push(boolCap('swing', swingCode));
+  if (writable('eco') && codes.get('eco').type === 'Boolean') caps.push(boolCap('eco', 'eco'));
+  if (writable('sleep') && codes.get('sleep').type === 'Boolean') caps.push(boolCap('sleep', 'sleep'));
+  if (writable('window_check') && codes.get('window_check').type === 'Boolean') caps.push(boolCap('window_detection', 'window_check'));
+  if (writable('child_lock') && codes.get('child_lock').type === 'Boolean') caps.push(boolCap('child_lock', 'child_lock'));
+  if (has('window_state')) {
+    caps.push({
+      key: 'window_open', type: 'sensor', writable: false, metadata: { kind: 'binary' },
+      read: (st) => {
+        const v = st.get('window_state');
+        return v === 'open' || v === true ? true : v === 'close' || v === 'closed' || v === false ? false : null;
+      },
+    });
+  }
+  const actionCode = firstCode(['work_state', 'valve_state'], (k) => has(k) && codes.get(k).type === 'Enum');
+  if (actionCode) {
+    caps.push({
+      key: 'hvac_action', type: 'enum', writable: false, metadata: {},
+      read: (st) => {
+        const v = st.get(actionCode);
+        return v == null ? null : TUYA_ACTION[String(v).toLowerCase()] ?? null;
+      },
+    });
+  }
+  return caps;
+}
+
+function boolCap(key, code) {
+  return { key, type: 'boolean', writable: true, metadata: {}, read: (st) => (typeof st.get(code) === 'boolean' ? st.get(code) : null), write: (v) => [{ code, value: v }] };
+}
+
 // ---------------------------------------------------------------- Capacités
 /**
  * Capacités FlowIT d'un appareil Tuya.
@@ -171,26 +307,14 @@ export function tuyaCapabilities(category, codes) {
     });
   }
 
-  // Thermostat : consigne (échelle Tuya) et température mesurée.
-  if (writable('temp_set')) {
-    const c = codes.get('temp_set');
-    const s = scaleOf(c);
-    caps.push({
-      key: 'target_temperature', type: 'number', writable: true,
-      metadata: { min: (c.values.min ?? 50) / s, max: (c.values.max ?? 350) / s, step: (c.values.step ?? 5) / s || 0.5, unit: '°C' },
-      read: (st) => {
-        const v = num(st.get('temp_set'));
-        return v == null ? null : round(v / s, 2);
-      },
-      write: (v) => [{ code: 'temp_set', value: Math.round(v * s) }],
-    });
-    if (has('temp_current')) caps.push({ key: 'current_temperature', type: 'sensor', writable: false, ...scaled('temp_current', codes.get('temp_current'), '°C') });
-  }
+  // Climatisation et chauffage : clim (kt), thermostat (wk), vanne de radiateur (wkf),
+  // radiateur (qn), chauffe-eau / chaudière (rs), clim infrarouge (infrared_ac).
+  caps.push(...climateCapabilities(codes, writable, has));
 
   // Capteurs (lecture seule).
   for (const [list, key, unit] of SENSORS) {
     const code = list.find(has);
-    if (!code || (key === 'temperature' && writable('temp_set'))) continue;
+    if (!code || (key === 'temperature' && ['temp_set', 'temp', 'temp_set_c'].some(writable))) continue;
     if (codes.get(code).type !== 'Integer') continue;
     caps.push({ key, type: 'sensor', writable: false, ...scaled(code, codes.get(code), unit) });
   }

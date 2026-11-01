@@ -64,6 +64,27 @@ void main() {
     expect(find.text('Verrou'), findsNothing);
   });
 
+  testWidgets('fiche climatiseur : mode, ventilation, oscillation, mode nuit', (tester) async {
+    final state = await pumpApp(tester);
+    await signIn(tester);
+    await tester.tap(find.text('Appareils').last);
+    await tester.pumpAndSettle();
+    await tester.enterText(find.byType(TextField).first, 'climatiseur');
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Climatiseur salon'));
+    await tester.pumpAndSettle();
+    expect(find.text('Climatisation'), findsWidgets);
+    expect(find.text('Moyenne'), findsOneWidget);
+    await tester.ensureVisible(find.text('Moyenne'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Moyenne'));
+    await tester.pump(const Duration(milliseconds: 400));
+    expect(state.devices.values.firstWhere((d) => d.name == 'Climatiseur salon').state['fan_mode'], 'medium');
+    expect(find.text('Oscillation'), findsOneWidget);
+    expect(find.text('Mode nuit'), findsOneWidget);
+    await tester.pump(const Duration(seconds: 3));
+  });
+
   testWidgets('boîtier TTLock : activation par le propriétaire puis code d\'accès', (tester) async {
     await pumpApp(tester);
     await signIn(tester);
