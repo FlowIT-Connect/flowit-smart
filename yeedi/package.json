@@ -1,0 +1,23 @@
+{
+  "name": "solea-yeedi",
+  "version": "1.0.0",
+  "description": "Module Solea pour les robots aspirateurs yeedi / Ecovacs : relie le cloud yeedi à la passerelle Solea par une petite API locale.",
+  "type": "module",
+  "private": true,
+  "license": "GPL-3.0-or-later",
+  "engines": {
+    "node": ">=22"
+  },
+  "main": "src/index.js",
+  "scripts": {
+    "start": "node src/index.js",
+    "local": "node --env-file=.env src/index.js",
+    "test": "node --test test/*.test.js"
+  },
+  "dependencies": {
+    "ecovacs-deebot": "0.9.5"
+  },
+  "overrides": {
+    "reconnect-core": "1.3.0"
+  }
+}

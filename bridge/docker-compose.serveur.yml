@@ -6,13 +6,29 @@
 #   docker compose -f docker-compose.serveur.yml logs -f bridge         # voir le journal
 #
 # Aucun port n'est ouvert : la passerelle ne fait que des connexions sortantes
-# (Supabase, cloud Tuya, cloud TTLock).
+# (Supabase, cloud Tuya, cloud TTLock, cloud yeedi).
+#
+# Robots aspirateurs yeedi (facultatif, module séparé sous licence GPL, dossier ../yeedi) :
+#   1. remplir ../yeedi/.env (voir ../yeedi/LISEZMOI.md), avec YEEDI_HOST=0.0.0.0
+#   2. ajouter dans .env : YEEDI_URL=http://yeedi:8790 et le même YEEDI_TOKEN
+#   3. docker compose -f docker-compose.serveur.yml --profile yeedi up -d --build
 
 services:
   bridge:
     build: .
     restart: unless-stopped
     env_file: .env
+    logging:
+      driver: json-file
+      options: { max-size: 10m, max-file: "3" }
+
+  yeedi:
+    profiles: [yeedi]
+    build: ../yeedi
+    restart: unless-stopped
+    env_file: ../yeedi/.env
+    environment:
+      - YEEDI_HOST=0.0.0.0
     logging:
       driver: json-file
       options: { max-size: 10m, max-file: "3" }

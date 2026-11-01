@@ -158,6 +158,15 @@ class DemoBackend implements Backend {
           ['switch', 'boolean', true],
           ['power', 'sensor', false, {'unit': 'W'}],
         ]);
+    device('Robot aspirateur', cuisine, 'wifi', 'cloud',
+        vendor: 'yeedi', model: '2 hybrid', state: {'vacuum_state': 'charging', 'battery': 92, 'suction': 'standard'},
+        caps: [
+          ['vacuum_action', 'enum', true, {'kind': 'vacuum', 'options': ['start', 'pause', 'resume', 'stop', 'charge']}],
+          ['vacuum_state', 'sensor', false, {'kind': 'vacuum_state'}],
+          ['suction', 'enum', true, {'options': ['quiet', 'standard', 'strong', 'max']}],
+          ['battery', 'sensor', false, {'unit': '%'}],
+          ['vacuum_error', 'sensor', false, {'kind': 'text'}],
+        ]);
     device('Thermostat', salon, 'wifi', 'cloud',
         vendor: 'Netatmo', model: 'Smart Thermostat', state: {'target_temperature': 21.0, 'hvac_mode': 'heat', 'current_temperature': 20.4},
         caps: [
@@ -766,6 +775,14 @@ class DemoBackend implements Backend {
         final state = Map<String, dynamic>.from(d['state'] as Map);
         if (row['capability_key'] == 'ekey') {
           state['ekeys'] = _demoKeys((state['ekeys'] as List?) ?? const [], Map<String, dynamic>.from(row['value'] as Map));
+        } else if (row['capability_key'] == 'vacuum_action') {
+          // Robot simulé : l'action devient son nouvel état, comme le confirmerait le vrai robot.
+          state['vacuum_state'] = switch (row['value']) {
+            'start' || 'resume' => 'cleaning',
+            'pause' => 'paused',
+            'charge' => 'returning',
+            _ => 'idle',
+          };
         } else if (row['capability_key'] != 'access_code') {
           state[row['capability_key'] as String] = row['value'];
         }

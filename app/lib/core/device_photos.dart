@@ -12,6 +12,7 @@ String devicePhotoKey(Device d) => switch (deviceKind(d)) {
       DeviceKind.plug => 'plug',
       DeviceKind.cover => 'blinds',
       DeviceKind.lock => 'lock',
+      DeviceKind.vacuum => 'vacuum',
       DeviceKind.door => 'door_sensor',
       DeviceKind.motion => 'motion_sensor',
       DeviceKind.sensor => 'sensor',
