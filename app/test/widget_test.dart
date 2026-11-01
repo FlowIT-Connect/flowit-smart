@@ -31,6 +31,7 @@ void main() {
     await signIn(tester);
     expect(find.text('Favoris'), findsOneWidget);
     expect(find.text('Plafonnier'), findsWidgets);
+    await tester.scrollUntilVisible(find.text('Ampoule chevet'), 200, scrollable: find.byType(Scrollable).first);
     expect(find.text('Ampoule chevet'), findsOneWidget, reason: 'section À vérifier');
   });
 

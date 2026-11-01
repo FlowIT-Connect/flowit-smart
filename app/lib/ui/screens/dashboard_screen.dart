@@ -10,6 +10,7 @@ import '../widgets/device_controls.dart';
 import '../widgets/device_visual.dart';
 import '../widgets/weather_widgets.dart';
 import 'device_detail.dart';
+import '../widgets/home_modes_bar.dart';
 import '../widgets/home_summary_panel.dart';
 import '../widgets/room_visual.dart';
 import 'rooms_screen.dart';
@@ -56,6 +57,9 @@ class DashboardScreen extends StatelessWidget {
           padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
           child: _StatusPills(devices: all, onShowDevices: () => onNavigate(2)),
         ),
+      ),
+      const SliverToBoxAdapter(
+        child: Padding(padding: EdgeInsets.fromLTRB(16, 12, 16, 0), child: HomeModesBar()),
       ),
       SliverToBoxAdapter(child: SectionHeader(context.tr('dashboard.favorites'))),
       if (pinned.isEmpty)

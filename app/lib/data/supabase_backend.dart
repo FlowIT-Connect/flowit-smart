@@ -3,6 +3,7 @@ import 'dart:typed_data';
 
 import 'package:supabase_flutter/supabase_flutter.dart';
 
+import '../core/home_modes.dart';
 import '../core/notifications.dart';
 import '../models/models.dart';
 import 'backend.dart';
@@ -495,6 +496,16 @@ class SupabaseBackend implements Backend {
       });
 
   @override
+  Future<HomeModes?> getHomeModes(String homeId) => _guard(() async {
+        final row = await _client.from('home_modes').select().eq('home_id', homeId).maybeSingle();
+        return row == null ? null : HomeModes.fromJson(row);
+      });
+
+  @override
+  Future<void> saveHomeModes(String homeId, HomeModes modes) =>
+      _guard(() => _client.from('home_modes').upsert({'home_id': homeId, ...modes.toJson()}));
+
+  @override
   Future<List<AutomationRun>> listAutomationRuns(String homeId, {String? automationId, int limit = 50}) => _guard(() async {
         var q = _client.from('automation_runs').select().eq('home_id', homeId);
         if (automationId != null) q = q.eq('automation_id', automationId);
@@ -764,7 +775,7 @@ class SupabaseBackend implements Backend {
     final byHome = PostgresChangeFilter(type: PostgresChangeFilterType.eq, column: 'home_id', value: homeId);
     channel = _client.channel('home:$homeId');
     // notifications : la RLS ne transmet que celles de l'utilisateur connecté.
-    for (final table in ['devices', 'device_commands', 'scene_runs', 'notifications']) {
+    for (final table in ['devices', 'device_commands', 'scene_runs', 'notifications', 'home_modes']) {
       channel.onPostgresChanges(
         event: PostgresChangeEvent.all,
         schema: 'public',

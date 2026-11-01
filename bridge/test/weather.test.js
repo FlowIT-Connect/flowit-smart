@@ -3,7 +3,7 @@ import { afterEach, beforeEach, test } from 'node:test';
 
 import { FakeHomeAssistant } from '../src/adapters/fake_home_assistant.js';
 import { HomeAssistantAdapter } from '../src/adapters/home_assistant.js';
-import { closedCovers, conditionsHold, exceptionHolds, isNight, localTime, sunTriggerDue } from '../src/automations.js';
+import { activeModes, closedCovers, conditionsHold, exceptionHolds, isNight, localTime, modeTriggerFired, presencePlan, sunTriggerDue } from '../src/automations.js';
 import { Bridge } from '../src/bridge.js';
 import { setLogLevel } from '../src/log.js';
 import { fetchWeather } from '../src/weather.js';
@@ -172,4 +172,43 @@ test('coupe-circuit : 30 exécutions par heure au plus', async () => {
   }
   assert.equal(store.commands.filter((c) => c.automation_id === 'l1').length, 30);
   assert.equal(store.automationRuns.filter((r) => r.status === 'skipped').length, 1);
+});
+
+test('modes : saison, vacances entre les dates, déclencheurs début / fin, plan de simulation', () => {
+  const row = { season: 'summer', vacation: true, vacation_from: '2026-12-20T00:00:00Z', vacation_to: '2027-01-03T00:00:00Z' };
+  assert.deepEqual(activeModes(row, new Date('2026-12-01T00:00:00Z')), ['summer']);
+  assert.deepEqual(activeModes(row, new Date('2026-12-25T00:00:00Z')), ['summer', 'vacation']);
+  assert.deepEqual(activeModes(null, new Date()), []);
+  assert.ok(modeTriggerFired({ type: 'mode', mode: 'vacation' }, ['summer'], ['summer', 'vacation']));
+  assert.ok(modeTriggerFired({ type: 'mode', mode: 'vacation', event: 'end' }, ['vacation'], []));
+  assert.ok(!modeTriggerFired({ type: 'mode', mode: 'winter' }, [], ['summer']));
+  const plan = presencePlan(['a', 'b'], 18 * 60, () => 0.5);
+  for (const p of plan) {
+    assert.ok(p.on >= 18 * 60 && p.on <= 22 * 60);
+    assert.ok(p.off > p.on && p.off <= 23 * 60 + 30);
+  }
+  const ctx = { modes: ['vacation'] };
+  assert.ok(conditionsHold([{ type: 'mode', mode: 'vacation' }], {}, localTime(new Date(), 'Africa/Algiers'), ctx));
+});
+
+test('vacances : simulation de présence le soir, tout éteint au retour ; déclencheur « départ en vacances »', async () => {
+  const strip = store.deviceByName('Ruban LED TV');
+  const plug = store.deviceByName('Prise café');
+  store.automations.push({
+    id: 'm1', home_id: 'home-1', name: 'Départ', enabled: true, run_locally: true,
+    trigger: { type: 'mode', mode: 'vacation', event: 'start' }, conditions: [],
+    actions: [{ device_id: plug.id, capability_key: 'switch', value: false }],
+  });
+  await bridge.refreshAutomations(); // premier relevé : aucun mode
+  store.homeModes.set('home-1', { season: 'none', vacation: true, presence_simulation: true, simulation_devices: [strip.id] });
+  // 19 h 10 à Alger, dans le futur : les commandes créées à l'heure réelle sont déjà dues.
+  clockNow = new Date('2030-01-07T18:10:00Z');
+  bridge.random = () => 0; // allumage dès le début de soirée
+  await bridge.refreshAutomations();
+  assert.ok(store.commands.some((c) => c.automation_id === 'm1'), 'déclencheur de départ exécuté');
+  await bridge.tickPresenceSimulation();
+  assert.ok(await until(() => strip.state.switch === true), 'lumière allumée par la simulation');
+  store.homeModes.set('home-1', { season: 'none', vacation: false });
+  await bridge.refreshAutomations();
+  assert.ok(await until(() => strip.state.switch === false), 'éteinte au retour');
 });

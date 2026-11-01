@@ -338,6 +338,13 @@ export class SupabaseStore {
     check(await this.db.from('event_logs').insert(row));
   }
 
+  /** Modes du logement (null : aucun réglage, ou base pas encore à jour). */
+  async getHomeModes(homeId) {
+    const res = await this.db.from('home_modes').select('*').eq('home_id', homeId).maybeSingle();
+    if (res.error) return null;
+    return res.data;
+  }
+
   async insertAutomationRun(row) {
     check(await this.db.from('automation_runs').insert(row));
   }

@@ -9,6 +9,7 @@ import '../core/app_launcher.dart';
 import '../core/appearance.dart';
 import '../core/ble_lock.dart';
 import '../core/l10n.dart';
+import '../core/home_modes.dart';
 import '../core/notifications.dart';
 import '../data/backend.dart';
 import '../data/weather.dart';
@@ -94,6 +95,9 @@ class AppState extends ChangeNotifier {
   List<Automation> automations = const [];
   List<SceneRun> sceneRuns = const [];
   List<Invitation> myInvitations = const [];
+
+  /// Modes Été / Hiver / Vacances du logement.
+  HomeModes homeModes = HomeModes.none;
 
   /// Centre de notifications de la maison courante (plus récentes d'abord).
   List<AppNotification> notifications = const [];
@@ -325,6 +329,7 @@ class AppState extends ChangeNotifier {
     automations = const [];
     sceneRuns = const [];
     notifications = const [];
+    homeModes = HomeModes.none;
     plan = null;
     pending.clear();
     _photoCache.clear();
@@ -356,6 +361,7 @@ class AppState extends ChangeNotifier {
       automations = results[3] as List<Automation>;
       sceneRuns = results[4] as List<SceneRun>;
       await refreshPlan(notify: false);
+      await _loadHomeModes(h.id);
       loadError = null;
       _setOnline(true);
     } on BackendException catch (e) {
@@ -394,7 +400,33 @@ class AppState extends ChangeNotifier {
         notifyListeners();
       case 'notifications':
         _onNotification(e);
+      case 'home_modes':
+        homeModes = HomeModes.fromJson(e.record);
+        notifyListeners();
     }
+  }
+
+  // ---------------------------------------------------------------- Modes
+  Future<void> _loadHomeModes(String homeId) async {
+    try {
+      homeModes = await backend.getHomeModes(homeId) ?? HomeModes.none;
+    } on BackendException {
+      homeModes = HomeModes.none; // base pas encore à jour
+    }
+  }
+
+  Future<bool> saveHomeModes(HomeModes next, {String? success}) async {
+    final h = home;
+    if (h == null) return false;
+    final previous = homeModes;
+    homeModes = next;
+    notifyListeners();
+    final ok = await run(() => backend.saveHomeModes(h.id, next), success: success);
+    if (!ok) {
+      homeModes = previous;
+      notifyListeners();
+    }
+    return ok;
   }
 
   // ---------------------------------------------------------------- Notifications

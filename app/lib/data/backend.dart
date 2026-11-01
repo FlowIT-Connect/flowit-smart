@@ -1,6 +1,7 @@
 import 'dart:math';
 import 'dart:typed_data';
 
+import '../core/home_modes.dart';
 import '../core/notifications.dart';
 import '../models/models.dart';
 
@@ -136,6 +137,10 @@ abstract class Backend {
   Future<List<Automation>> listAutomations(String homeId);
   Future<Automation> saveAutomation(Automation automation, {bool isNew = false});
   Future<void> deleteAutomation(String automationId);
+
+  /// Modes Été / Hiver / Vacances (null : jamais réglés).
+  Future<HomeModes?> getHomeModes(String homeId);
+  Future<void> saveHomeModes(String homeId, HomeModes modes);
 
   /// Historique d'exécution écrit par la passerelle (le plus récent d'abord).
   Future<List<AutomationRun>> listAutomationRuns(String homeId, {String? automationId, int limit = 50});

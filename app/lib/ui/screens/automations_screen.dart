@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../../core/home_modes.dart';
 import '../../core/l10n.dart';
 import '../../core/theme.dart';
 import '../../data/backend.dart';
@@ -60,6 +61,7 @@ class _AutomationCard extends StatelessWidget {
       'device_state' => (Icons.sensors_rounded, f.violet),
       'weather' => (Icons.air_rounded, f.blue),
       'sun' => (Icons.wb_twilight_rounded, f.warning),
+      'mode' => (Icons.flight_takeoff_rounded, f.success),
       _ => (Icons.schedule_rounded, f.blue),
     };
     final follow = a.followUp;
@@ -186,6 +188,8 @@ String describeTrigger(BuildContext context, AppState state, Map<String, dynamic
         'value': '${t['value']} ${weatherUnit('${t['metric']}')}',
       }) +
           ((t['for_minutes'] as num? ?? 0) > 0 ? context.tr('automation.trigger.forMinutes', {'minutes': '${t['for_minutes']}'}) : '');
+    case 'mode':
+      return context.tr(t['event'] == 'end' ? 'automation.trigger.modeEnd' : 'automation.trigger.modeStart', {'mode': context.tr('modes.${t['mode']}')});
     case 'sun':
       final offset = (t['offset_minutes'] as num?)?.toInt() ?? 0;
       return context.tr('automation.trigger.sun.${t['event'] == 'sunrise' ? 'sunrise' : 'sunset'}') +
@@ -210,6 +214,7 @@ String describeCondition(BuildContext context, AppState state, Map<String, dynam
       'value': '${c['value']} ${weatherUnit('${c['metric']}')}',
     });
   }
+  if (c['type'] == 'mode') return context.tr('automation.condition.mode', {'mode': context.tr('modes.${c['mode']}')});
   if (c['type'] == 'sun') return context.tr(c['is'] == 'day' ? 'automation.condition.day' : 'automation.condition.night');
   final d = state.devices[c['device_id']];
   final cap = d?.capability('${c['capability_key']}');
@@ -261,6 +266,14 @@ class _WeatherRule {
   Map<String, dynamic> toJson() => {'type': 'weather', 'metric': metric, 'op': op, 'value': value};
 }
 
+/// Condition « mode actif » (été, hiver, vacances).
+class _ModeRule {
+  String mode;
+  _ModeRule({this.mode = 'vacation'});
+}
+
+const homeModeKeys = ['summer', 'winter', 'vacation'];
+
 /// Condition « il fait nuit / jour ».
 class _SunRule {
   bool night;
@@ -273,6 +286,7 @@ Object _ruleFromJson(Map<String, dynamic> c) => switch (c['type']) {
       'time_range' => _TimeRange('${c['from']}', '${c['to']}'),
       'weather' => _WeatherRule(metric: '${c['metric'] ?? 'wind_speed'}', op: '${c['op'] ?? 'gt'}', value: c['value'] as num?),
       'sun' => _SunRule(night: c['is'] != 'day'),
+      'mode' => _ModeRule(mode: '${c['mode'] ?? 'vacation'}'),
       _ => _StateRule.fromJson(c),
     };
 
@@ -280,6 +294,7 @@ Map<String, dynamic> _ruleToJson(Object r) => switch (r) {
       _TimeRange t => {'type': 'time_range', 'from': t.from, 'to': t.to},
       _WeatherRule w => w.toJson(),
       _SunRule s => {'type': 'sun', 'is': s.night ? 'night' : 'day'},
+      _ModeRule m => {'type': 'mode', 'mode': m.mode},
       _ => (r as _StateRule).toJson(),
     };
 
@@ -314,6 +329,8 @@ class _AutomationEditorState extends State<AutomationEditor> {
   late int _weatherFor = (widget.automation?.trigger['for_minutes'] as num?)?.toInt() ?? 2;
   late String _sunEvent = (widget.automation?.trigger['event'] as String?) ?? 'sunset';
   late int _sunOffset = (widget.automation?.trigger['offset_minutes'] as num?)?.toInt() ?? 0;
+  late String _mode = (widget.automation?.trigger['mode'] as String?) ?? 'vacation';
+  late String _modeEvent = (widget.automation?.trigger['event'] as String?) == 'end' ? 'end' : 'start';
   late List<Object> _conditions = [for (final c in widget.automation?.conditions ?? const <Map<String, dynamic>>[]) _ruleFromJson(c)];
   late List<Object> _exceptions = [for (final c in widget.automation?.exceptions ?? const <Map<String, dynamic>>[]) _ruleFromJson(c)];
   late List<Object> _actions = [
@@ -337,6 +354,7 @@ class _AutomationEditorState extends State<AutomationEditor> {
         'device_state' => _triggerRule.toJson(),
         'weather' => {..._weather.toJson(), 'for_minutes': _weatherFor},
         'sun' => {'type': 'sun', 'event': _sunEvent, 'offset_minutes': _sunOffset},
+        'mode' => {'type': 'mode', 'mode': _mode, 'event': _modeEvent},
         _ => {'type': 'manual'},
       };
 
@@ -467,6 +485,7 @@ class _AutomationEditorState extends State<AutomationEditor> {
                   'time' => _TimeRange('22:00', '06:00'),
                   'weather' => _WeatherRule(),
                   'sun' => _SunRule(),
+                  'mode' => _ModeRule(),
                   _ => _StateRule(),
                 })),
             itemBuilder: (_) => [
@@ -474,6 +493,7 @@ class _AutomationEditorState extends State<AutomationEditor> {
               PopupMenuItem(value: 'time', child: Text(context.tr('automation.condition.timeRange'))),
               PopupMenuItem(value: 'weather', child: Text(context.tr('automation.condition.weatherMenu'))),
               PopupMenuItem(value: 'sun', child: Text(context.tr('automation.condition.sunMenu'))),
+              PopupMenuItem(value: 'mode', child: Text(context.tr('automation.condition.modeMenu'))),
             ],
           ),
         ),
@@ -500,6 +520,7 @@ class _AutomationEditorState extends State<AutomationEditor> {
                       selected: {r.night},
                       onSelectionChanged: (v) => setState(() => r.night = v.first),
                     ),
+                  _ModeRule m => _modeChoice(m.mode, (v) => setState(() => m.mode = v)),
                   _ => _StateRuleEditor(rule: list[i] as _StateRule, onChanged: () => setState(() {})),
                 },
               ]),
@@ -536,6 +557,14 @@ class _AutomationEditorState extends State<AutomationEditor> {
           ),
         ),
       ]);
+
+  Widget _modeChoice(String mode, ValueChanged<String> onChanged) => SegmentedButton<String>(
+        segments: [
+          for (final m in homeModeKeys) ButtonSegment(value: m, icon: Icon(modeIcons[m], size: 18), label: Text(context.tr('modes.$m'))),
+        ],
+        selected: {mode},
+        onSelectionChanged: (v) => onChanged(v.first),
+      );
 
   Widget _minutesField(String labelKey, int value, ValueChanged<int> onChanged, {Key? key, bool signed = false}) => TextFormField(
         key: key,
@@ -589,6 +618,7 @@ class _AutomationEditorState extends State<AutomationEditor> {
                 ('device_state', Icons.sensors),
                 ('weather', Icons.air_rounded),
                 ('sun', Icons.wb_twilight_rounded),
+                ('mode', Icons.flight_takeoff_rounded),
                 ('manual', Icons.touch_app_outlined),
               ])
                 ChoiceChip(
@@ -646,6 +676,18 @@ class _AutomationEditorState extends State<AutomationEditor> {
               ),
               const SizedBox(height: 12),
               _minutesField('automation.sunOffset', _sunOffset, (v) => _sunOffset = v.clamp(-240, 240), signed: true),
+            ],
+            if (_type == 'mode') ...[
+              _modeChoice(_mode, (v) => setState(() => _mode = v)),
+              const SizedBox(height: 12),
+              SegmentedButton<String>(
+                segments: [
+                  ButtonSegment(value: 'start', label: Text(context.tr('automation.modeStart'))),
+                  ButtonSegment(value: 'end', label: Text(context.tr('automation.modeEnd'))),
+                ],
+                selected: {_modeEvent},
+                onSelectionChanged: (v) => setState(() => _modeEvent = v.first),
+              ),
             ],
             if (_type == 'manual') Text(context.tr('automation.manualHelp')),
 
