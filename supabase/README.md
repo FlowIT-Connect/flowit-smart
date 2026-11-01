@@ -28,6 +28,22 @@ Schéma initial dérivé du cahier des charges v1.0 (§4, §5, §7, §9).
 
 Lecture par tous les membres du logement, écriture par le propriétaire et les administrateurs.
 
+## Apparence (`20261105000000_solea_appearance.sql`)
+
+`profiles.preferences` (JSON, 16 Ko au plus) garde le thème, l'arrière-plan et les réglages de verre ; photo d'arrière-plan dans le bucket privé `backgrounds` (`<user_id>/bg-<horodatage>.<ext>`), visible par l'utilisateur seul.
+
+## Centre de notifications (`20261106000000_solea_notifications.sql`)
+
+| Élément | Rôle |
+|---|---|
+| `notifications` | Une ligne par destinataire : type (12), catégorie, priorité, lue / non lue. Le client lit, marque comme lu et supprime ; il ne crée ni ne réécrit rien |
+| Déclencheurs | `devices` (état réel et disponibilité écrits par la passerelle), `automations.last_run_at`, `video_sources.status` |
+| `notify_home()` | Réservé à la passerelle (`service_role`) : vents forts, volets fermés automatiquement |
+| Réglages | `profiles.preferences -> notifications` : `{"off": [types], "temp_max": 35, "temp_min": 5}` |
+| `push_tokens` | Jetons des téléphones pour le push (application fermée) |
+
+Anti-doublon par type et par appareil (10 min pour un mouvement, 1 h pour une température…). Une notification ratée ne bloque jamais l'écriture de l'état d'un appareil.
+
 ## Sécurité et vidéo (`20261103000000_solea_video.sql`)
 
 | Table | Rôle |
