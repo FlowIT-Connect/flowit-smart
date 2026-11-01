@@ -14,7 +14,7 @@ import {
   timeTriggerDue,
   weatherTriggerHolds,
 } from './automations.js';
-import { DEFAULT_PRESETS, deviceCommands, effectivePreset, openWindow, seasonMode, windowOffCommands, windowRestoreCommands } from './climate.js';
+import { DEFAULT_PRESETS, anticipatedPreset, deviceCommands, openWindow, seasonMode, windowOffCommands, windowRestoreCommands, zoneKind, zoneTemperature } from './climate.js';
 import { fetchWeather } from './weather.js';
 import { CameraStreamer } from './cameras.js';
 import { log } from './log.js';
@@ -70,6 +70,8 @@ export class Bridge {
     /** Fenêtre ouverte : zone -> ouverte depuis (ms), et coupures en cours (modes à remettre). */
     this.windowOpenSince = new Map();
     this.windowCuts = new Map();
+    /** Préchauffage en cours : zone -> ambiance anticipée. */
+    this.preheating = new Map();
     this.inflightDevices = new Set();
     this.inflightRuns = new Set();
     this.running = new Set();
@@ -568,7 +570,21 @@ export class Bridge {
     for (const zone of data.zones) {
       if (!zone.enabled) continue;
       if (await this.#climateWindow(zone, presets, mode, now)) continue;
-      const { preset, source } = effectivePreset(zone, data.settings, this.modes, now, local);
+      const { preset, source } = anticipatedPreset({
+        zone,
+        settings: data.settings,
+        modes: this.modes,
+        now,
+        localAt: (d) => (d === now ? local : localTime(d, this.timezone)),
+        presets,
+        kind: zoneKind(zone, this.devices, mode),
+        measured: zoneTemperature(zone, this.devices),
+        outdoor: typeof this.weather?.temperature === 'number' ? this.weather.temperature : null,
+        maxMinutes: data.settings?.preheat === false ? 0 : data.settings?.preheat_max ?? 120,
+        ongoing: this.preheating.get(zone.id) ?? null,
+      });
+      if (source === 'preheat') this.preheating.set(zone.id, preset);
+      else this.preheating.delete(zone.id);
       const signature = `${preset}|${source}|${mode}|${JSON.stringify(presets[preset] ?? null)}|${(zone.devices ?? []).join()}`;
       if (this.climateApplied.get(zone.id) === signature) continue;
       let target = null;

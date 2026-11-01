@@ -152,3 +152,62 @@ export function windowRestoreCommands(device, savedMode, season) {
   const mode = savedMode && savedMode !== 'off' ? savedMode : season;
   return mode && options.includes(mode) ? [{ capability_key: 'hvac_mode', value: mode }] : [];
 }
+
+// ------------------------------------------------------------------ Températures intelligentes (phase 4)
+
+/** Température mesurée dans la pièce : le premier appareil qui en donne une. */
+export function zoneTemperature(zone, devices) {
+  for (const id of zone.devices ?? []) {
+    const s = devices.get(id)?.state ?? {};
+    const v = s.current_temperature ?? s.temperature;
+    if (typeof v === 'number' && Number.isFinite(v)) return v;
+  }
+  return null;
+}
+
+/** Chauffage ou clim pour la pièce : la saison, sinon une clim déjà en froid. */
+export function zoneKind(zone, devices, season) {
+  if (season) return season;
+  return (zone.devices ?? []).some((id) => devices.get(id)?.state?.hvac_mode === 'cool') ? 'cool' : 'heat';
+}
+
+/**
+ * Minutes pour amener la pièce de measured à target : 15 min par degré en chauffage,
+ * 10 en clim, plus quand il gèle (ou fait très chaud) dehors.
+ */
+export function warmupMinutes(measured, target, kind, outdoor) {
+  if (measured == null || target == null) return 0;
+  const gap = kind === 'cool' ? measured - target : target - measured;
+  if (!(gap > 0)) return 0;
+  let rate = kind === 'cool' ? 10 : 15;
+  if (typeof outdoor === 'number') {
+    if (kind === 'cool') rate *= outdoor >= 38 ? 1.5 : outdoor >= 32 ? 1.25 : 1;
+    else rate *= outdoor < 0 ? 1.5 : outdoor < 8 ? 1.25 : 1;
+  }
+  return Math.ceil(gap * rate);
+}
+
+const PREHEAT_STEP = 5;
+
+/**
+ * Ambiance à appliquer en tenant compte du préchauffage : si le prochain changement
+ * (dans maxMinutes) demande plus de chaud (ou de froid) et que la pièce mettra au moins
+ * ce temps à y arriver, on l'applique dès maintenant (source « preheat »). Un préchauffage
+ * commencé ([ongoing]) continue jusqu'au changement, même si l'écart se réduit.
+ */
+export function anticipatedPreset({ zone, settings, modes, now, localAt, presets, kind, measured, outdoor, maxMinutes, ongoing = null }) {
+  const current = effectivePreset(zone, settings, modes, now, localAt(now));
+  if (!(maxMinutes > 0) || (measured == null && !ongoing)) return current;
+  const curT = presetTemperature(presets, current.preset, kind);
+  for (let m = PREHEAT_STEP; m <= maxMinutes; m += PREHEAT_STEP) {
+    const at = new Date(now.getTime() + m * 60_000);
+    const next = effectivePreset(zone, settings, modes, at, localAt(at));
+    if (next.preset === current.preset) continue;
+    const t = presetTemperature(presets, next.preset, kind);
+    const warmer = t != null && (curT == null || (kind === 'cool' ? t < curT : t > curT));
+    if (!warmer) return current;
+    if (ongoing === next.preset || warmupMinutes(measured, t, kind, outdoor) >= m) return { preset: next.preset, source: 'preheat' };
+    return current;
+  }
+  return current;
+}

@@ -81,3 +81,9 @@ update public.climate_zones set devices = '[]', windows = '["ca100000-0000-0000-
 select pg_temp.check((select window_delay = 5 and jsonb_array_length(windows) = 1 and not active_window from public.climate_zones), 'capteur de fenêtre associé à la pièce');
 select pg_temp.check(pg_temp.fails($$update public.climate_zones set windows = '["ca100000-0000-0000-0000-000000000002"]'$$), 'capteur d''un autre logement refusé');
 select pg_temp.check(pg_temp.fails($$update public.climate_zones set window_delay = 90$$), 'délai hors limites refusé');
+
+-- Températures intelligentes (migration 20261112000000_solea_climate_smart.sql)
+select pg_temp.check((select preheat and preheat_max = 120 from public.climate_settings where home_id = 'ca000000-0000-0000-0000-000000000001'), 'préchauffage actif par défaut, 2 h au plus');
+update public.climate_settings set preheat = false, preheat_max = 60 where home_id = 'ca000000-0000-0000-0000-000000000001';
+select pg_temp.check((select not preheat and preheat_max = 60 from public.climate_settings where home_id = 'ca000000-0000-0000-0000-000000000001'), 'préchauffage réglé');
+select pg_temp.check(pg_temp.fails($$update public.climate_settings set preheat_max = 600$$), 'avance hors limites refusée');

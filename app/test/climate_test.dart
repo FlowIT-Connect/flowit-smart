@@ -46,6 +46,40 @@ void main() {
       expect(next.toJson().containsKey('active_window'), isFalse, reason: 'écrit par la passerelle');
       expect(const ClimateZone(roomId: 'r').windowDelay, 2);
     });
+
+    test('températures intelligentes : préchauffage et heure de retour', () {
+      final s = ClimateSettings.fromJson({'preheat': false, 'preheat_max': 60});
+      expect(s.preheat, isFalse);
+      expect(s.preheatMax, 60);
+      expect(ClimateSettings.fromJson(const {}).preheat, isTrue);
+      expect(s.copyWith(preheat: true).toJson()['preheat_max'], 60);
+      final now = DateTime(2030, 1, 7, 15, 30);
+      expect(returnTime(const TimeOfDay(hour: 18, minute: 0), now), DateTime(2030, 1, 7, 18));
+      expect(returnTime(const TimeOfDay(hour: 8, minute: 0), now), DateTime(2030, 1, 8, 8), reason: 'heure passée : demain');
+    });
+  });
+
+  testWidgets('accueil : Je pars puis Je rentre', (tester) async {
+    final state = await pumpApp(tester);
+    await signIn(tester);
+    await tester.pumpAndSettle();
+    final leave = find.byKey(const ValueKey('climate-leave'));
+    await tester.scrollUntilVisible(leave, 200, scrollable: find.byType(Scrollable).first);
+    await tester.pumpAndSettle();
+    await tester.tap(leave);
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Absence jusqu\'à mon retour'));
+    await tester.pumpAndSettle();
+    expect(state.climate.settings.activeHomePreset(), 'away');
+    expect(state.climate.settings.homePresetUntil, isNull);
+    final back = find.byKey(const ValueKey('climate-back'));
+    await tester.ensureVisible(back);
+    await tester.pumpAndSettle();
+    await tester.tap(back);
+    await tester.pumpAndSettle();
+    expect(state.climate.settings.activeHomePreset(), isNull);
+    expect(find.byKey(const ValueKey('climate-leave')), findsOneWidget);
+    await tester.pump(const Duration(seconds: 4));
   });
 
   testWidgets('pièce : associer un capteur de fenêtre et choisir le délai', (tester) async {

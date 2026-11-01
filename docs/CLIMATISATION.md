@@ -83,3 +83,18 @@ Dans le réglage d'une pièce, la section **Fenêtre ouverte** associe les capte
 - Redémarrage de la passerelle pendant une coupure : la pièce reste coupée, et à la fermeture le mode de la saison est remis.
 
 Base : migration `20261111000000_solea_climate_windows.sql` (colonnes `windows`, `window_delay`, `active_window`).
+
+## Températures intelligentes
+
+- **Je pars / Je rentre** (accueil et écran Chauffage et clim) : « Je pars » met toute la maison en Absence,
+  jusqu'au retour ou jusqu'à une heure annoncée (« Je rentre à 18 h ») ; « Je rentre » remet chaque pièce sur son programme.
+- **Préchauffage anticipé** (actif par défaut, avance de 2 h au plus, réglable de 1 à 4 h) : la passerelle regarde
+  le prochain changement d'ambiance (programme, fin d'une Absence, retour annoncé). S'il demande plus de chaud
+  (ou plus de frais en clim) et que la pièce mettra au moins ce temps à y arriver, elle l'applique dès maintenant
+  (la pièce affiche « préchauffage pour l'heure prévue »). Une fois commencé, le préchauffage continue jusqu'à l'heure prévue.
+- Temps de montée estimé : 15 min par degré en chauffage, 10 en clim, d'après la température mesurée dans la pièce ;
+  **météo** : +25 % sous 8 °C dehors, +50 % sous 0 °C (en clim : au-dessus de 32 et 38 °C).
+- Pas de préchauffage vers une ambiance plus fraîche (Nuit), ni sans température mesurée dans la pièce.
+- Géolocalisation (départ et retour détectés par le téléphone) : prévue plus tard, en option.
+
+Base : migration `20261112000000_solea_climate_smart.sql` (colonnes `preheat`, `preheat_max` de `climate_settings`).

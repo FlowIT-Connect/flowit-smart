@@ -497,8 +497,11 @@ class AppState extends ChangeNotifier {
   }
 
   /// Ambiance d'une pièce (celle écrite par la passerelle, sinon calculée ici).
-  (String, String) climatePresetFor(ClimateZone zone) =>
-      effectivePreset(zone, climate.settings, vacation: homeModes.vacationActive());
+  (String, String) climatePresetFor(ClimateZone zone) {
+    // Le préchauffage n'est connu que de la passerelle.
+    if (zone.activeSource == 'preheat' && zone.activePreset != null && climate.settings.preheat) return (zone.activePreset!, 'preheat');
+    return effectivePreset(zone, climate.settings, vacation: homeModes.vacationActive());
+  }
 
   // ---------------------------------------------------------------- Notifications
   Future<void> loadNotifications() async {
