@@ -39,7 +39,7 @@ void main() {
   testWidgets('écran Apparence : thème et fond enregistrés dans le profil', (tester) async {
     final state = await pumpApp(tester);
     await signIn(tester);
-    await tester.tap(find.text('Paramètres').last);
+    await tester.tap(find.text('Réglages').last);
     await tester.pumpAndSettle();
     final settings = find.byType(Scrollable).first;
     await tester.scrollUntilVisible(find.byKey(const ValueKey('open-appearance')), 200, scrollable: settings);

@@ -5,7 +5,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'widget_test.dart' show pumpApp, signIn;
 
 Future<void> openSecurity(WidgetTester tester) async {
-  await tester.tap(find.text('Paramètres').last);
+  await tester.tap(find.text('Réglages').last);
   await tester.pumpAndSettle();
   final entry = find.text('Sécurité et vidéo');
   await tester.scrollUntilVisible(entry, 200, scrollable: find.byType(Scrollable).first);

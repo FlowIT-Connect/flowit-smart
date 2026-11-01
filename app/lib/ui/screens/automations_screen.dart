@@ -119,7 +119,7 @@ class _AutomationCard extends StatelessWidget {
             if (a.lastRunAt != null)
               Padding(
                 padding: const EdgeInsets.only(top: 10),
-                child: Text(context.tr('automation.lastRun', {'when': relativeTime(context, a.lastRunAt)}), style: theme.textTheme.labelSmall?.copyWith(color: f.inkFaint)),
+                child: Text(context.tr('automation.lastRun', {'when': relativeTime(context, a.lastRunAt)}), style: theme.textTheme.labelSmall?.copyWith(color: f.inkSoft)),
               ),
           ]),
         ),
