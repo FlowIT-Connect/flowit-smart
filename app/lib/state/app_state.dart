@@ -5,6 +5,7 @@ import 'dart:typed_data';
 import 'package:flutter/widgets.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import '../core/push.dart';
 import '../core/app_launcher.dart';
 import '../core/appearance.dart';
 import '../core/ble_lock.dart';
@@ -45,7 +46,8 @@ class AppState extends ChangeNotifier {
       this.weatherService,
       this.ble = const NoBleLock(),
       this.launcher = const AppLauncher(),
-      this.pairingPoll = const Duration(seconds: 2)})
+      this.pairingPoll = const Duration(seconds: 2),
+      this.push = const NoPush()})
       : locale = initialLocale ?? const Locale('fr') {
     _authSub = backend.authChanges.listen(_onAuth);
     _recoverySub = backend.passwordRecovery.listen((_) {
@@ -56,6 +58,9 @@ class AppState extends ChangeNotifier {
   }
 
   final Backend backend;
+
+  /// Notifications push quand l'app est fermée (Firebase), désactivées par défaut.
+  final PushService push;
   final Duration commandTimeout;
 
   /// Bluetooth TTLock (app Android) ; indisponible sur le web.
@@ -204,6 +209,7 @@ class AppState extends ChangeNotifier {
     notifyListeners();
     unawaited(_loadPlatformAdmin());
     unawaited(syncAppearance());
+    unawaited(push.register((token, platform) => backend.savePushToken(token, platform, locale.languageCode)));
     await loadHomes();
   }
 
@@ -259,6 +265,13 @@ class AppState extends ChangeNotifier {
   }
 
   Future<void> signOut() async {
+    // Ce téléphone ne reçoit plus les notifications du compte.
+    final token = await push.unregister();
+    if (token != null) {
+      try {
+        await backend.deletePushToken(token);
+      } catch (_) {}
+    }
     await run(backend.signOut);
   }
 
