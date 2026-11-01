@@ -160,6 +160,10 @@ abstract class Backend {
   Future<void> markAllNotificationsRead(String homeId);
   Future<void> deleteNotification(int id);
 
+  /// Jeton push du téléphone (notifications app fermée) pour l'utilisateur connecté.
+  Future<void> savePushToken(String token, String platform, String locale);
+  Future<void> deletePushToken(String token);
+
   // --- Caméras et photos d'appareils
   /// Images d'une caméra tant que le flux est écouté (la passerelle n'envoie rien sinon).
   Stream<CameraFrame> watchCamera(String homeId, String deviceId);

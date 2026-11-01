@@ -568,6 +568,18 @@ class SupabaseBackend implements Backend {
   @override
   Future<void> deleteNotification(int id) => _guard(() => _client.from('notifications').delete().eq('id', id));
 
+  @override
+  Future<void> savePushToken(String token, String platform, String locale) => _guard(() => _client.from('push_tokens').upsert({
+        'token': token,
+        'user_id': currentUserId,
+        'platform': platform,
+        'locale': locale,
+        'updated_at': DateTime.now().toUtc().toIso8601String(),
+      }));
+
+  @override
+  Future<void> deletePushToken(String token) => _guard(() => _client.from('push_tokens').delete().eq('token', token));
+
   // ---------------------------------------------------------------- Caméras et photos
   /// Un seul canal temps réel « `camera:<maison>` » partagé par toutes les vues ouvertes
   /// (deux abonnements au même canal sur une connexion se couperaient l'un l'autre).

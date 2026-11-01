@@ -1248,6 +1248,19 @@ class DemoBackend implements Backend {
     _notifications.removeWhere((n) => n['id'] == id);
   }
 
+  /// Jetons push enregistrés (lus par les tests).
+  final pushTokens = <String, Map<String, String>>{};
+
+  @override
+  Future<void> savePushToken(String token, String platform, String locale) async {
+    pushTokens[token] = {'platform': platform, 'locale': locale};
+  }
+
+  @override
+  Future<void> deletePushToken(String token) async {
+    pushTokens.remove(token);
+  }
+
   // ------------------------------------------------------------------ Caméras et photos
   // ------------------------------------------------------------------ Sécurité et vidéo (démo)
   static Map<String, dynamic> _demoDiagnostic() => {
