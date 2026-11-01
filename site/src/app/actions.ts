@@ -47,6 +47,30 @@ async function rpc(fn: string, args: Record<string, unknown>): Promise<FormState
   }
 }
 
+/**
+ * Copie de la demande vers Netlify Forms, qui l'envoie par e-mail à l'équipe
+ * (notification réglée dans Netlify). Seulement après l'enregistrement réussi dans Supabase.
+ * Facultatif : sans NETLIFY_FORMS_URL, rien n'est envoyé. Un échec ne bloque jamais le visiteur.
+ */
+async function notify(form: string, fields: Record<string, string>): Promise<void> {
+  const url = process.env.NETLIFY_FORMS_URL;
+  if (!url) return;
+  try {
+    const res = await fetch(url, {
+      method: "POST",
+      headers: { "Content-Type": "application/x-www-form-urlencoded" },
+      body: new URLSearchParams({ "form-name": form, ...fields }).toString(),
+      cache: "no-store",
+      signal: AbortSignal.timeout(5000),
+    });
+    if (!res.ok) console.error(`[forms] notification ${form} ${res.status}`);
+  } catch (e) {
+    console.error(`[forms] notification ${form}`, e);
+  }
+}
+
+const yesNo = (fd: FormData, name: string) => (fd.get(name) === "on" ? "oui" : "non");
+
 function common(fd: FormData) {
   return {
     honeypot: clean(fd.get("website")),
@@ -65,13 +89,17 @@ export async function submitGateway(_: FormState, fd: FormData): Promise<FormSta
   if (!COUNTRY_RE.test(country) || !isLocale(preferred) || !isLocale(locale)) return { ok: false, error: "required" };
   if (fd.get("consent_launch") !== "on") return { ok: false, error: "consent" };
   if (throttled((await context()).ip)) return { ok: false, error: "tooMany" };
-  return rpc("submit_gateway_signup", {
+  const saved = await rpc("submit_gateway_signup", {
     p_email: email,
     p_country: country,
     p_locale: preferred,
     p_marketing: fd.get("consent_marketing") === "on",
     p_source_locale: locale,
   });
+  if (saved?.ok) {
+    await notify("solea-gateway", { email, pays: country, langue: preferred, infos_commerciales: yesNo(fd, "consent_marketing"), page_langue: locale });
+  }
+  return saved;
 }
 
 export async function submitContact(_: FormState, fd: FormData): Promise<FormState> {
@@ -87,7 +115,7 @@ export async function submitContact(_: FormState, fd: FormData): Promise<FormSta
   if (phone && !isPhone(phone)) return { ok: false, error: "phone" };
   if (!COUNTRY_RE.test(country) || !(projectTypes as readonly string[]).includes(type) || !isLocale(locale)) return { ok: false, error: "required" };
   if (throttled((await context()).ip)) return { ok: false, error: "tooMany" };
-  return rpc("submit_contact_request", {
+  const saved = await rpc("submit_contact_request", {
     p_first_name: first,
     p_last_name: last,
     p_email: email,
@@ -98,6 +126,13 @@ export async function submitContact(_: FormState, fd: FormData): Promise<FormSta
     p_locale: locale,
     p_marketing: fd.get("consent_marketing") === "on",
   });
+  if (saved?.ok) {
+    await notify("solea-contact", {
+      prenom: first, nom: last, email, telephone: phone, pays: country, type_projet: type,
+      message, infos_commerciales: yesNo(fd, "consent_marketing"), page_langue: locale,
+    });
+  }
+  return saved;
 }
 
 export async function submitPartner(_: FormState, fd: FormData): Promise<FormState> {
@@ -113,7 +148,7 @@ export async function submitPartner(_: FormState, fd: FormData): Promise<FormSta
   if (!isPhone(phone)) return { ok: false, error: "phone" };
   if (!COUNTRY_RE.test(country) || !(partnerActivities as readonly string[]).includes(activity) || !isLocale(locale)) return { ok: false, error: "required" };
   if (throttled((await context()).ip)) return { ok: false, error: "tooMany" };
-  return rpc("submit_partner_request", {
+  const saved = await rpc("submit_partner_request", {
     p_name: name,
     p_company: company,
     p_activity: activity,
@@ -124,4 +159,11 @@ export async function submitPartner(_: FormState, fd: FormData): Promise<FormSta
     p_locale: locale,
     p_marketing: fd.get("consent_marketing") === "on",
   });
+  if (saved?.ok) {
+    await notify("solea-partenaire", {
+      nom: name, societe: company, activite: activity, email, telephone: phone, pays: country,
+      message, infos_commerciales: yesNo(fd, "consent_marketing"), page_langue: locale,
+    });
+  }
+  return saved;
 }
