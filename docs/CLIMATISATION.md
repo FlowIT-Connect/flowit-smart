@@ -26,3 +26,28 @@ qu'ils déclarent réellement : rien n'est supposé. Ce qui n'est pas déclaré 
 
 Dans la fenêtre de la passerelle, cherchez la ligne de l'appareil et envoyez-nous sa
 catégorie et la liste de ses codes Tuya : on ajoute la correspondance.
+
+## Solea HVAC Connect : ajouter un équipement par sa marque
+
+Dans **Appareils › Ajouter un appareil › Climatisation et chauffage**, Solea guide en 5 étapes :
+
+1. **Type** : climatiseur, chaudière, thermostat ou tête de radiateur.
+2. **Marque** : environ 45 marques de clims et 45 de chaudières, celles distribuées en Algérie en tête ; « Autre marque » propose les solutions universelles.
+3. **Modèle** (référence facultative) et présence du Wi-Fi.
+4. **Façon de le connecter**, la recommandée en premier :
+
+| Voie | Pour | Ce qu'elle permet |
+| --- | --- | --- |
+| Wi-Fi via Smart Life | appareils compatibles Smart Life / Tuya | marche, mode, consigne, ventilation, température |
+| Télécommande infrarouge Tuya | toute clim à télécommande | marche, mode, consigne, ventilation (sans retour d'état) |
+| Application du fabricant via Home Assistant | Daikin, MELCloud, SmartThings, LG ThinQ, Gree+, ViCare, myVAILLANT… | tout ce que permet l'application |
+| Thermostat connecté sur la chaudière | toutes les chaudières (bornier thermostat d'ambiance) | chauffe selon la pièce, programmes, ambiances |
+| Passerelle OpenTherm | chaudières avec bornier OpenTherm | départ, eau chaude, modulation, diagnostic |
+| Bus de la chaudière (eBUS, EMS) | groupes Vaillant et Bosch | consignes, états, codes d'erreur |
+| Interface Modbus / RS485 | clims professionnelles, VRF, grosses chaudières | consigne, température réelle, état, codes d'erreur |
+
+5. **Mise en place et test** : les étapes s'affichent, puis « Tester la connexion » demande à la passerelle de repérer l'appareil et affiche les commandes réellement disponibles.
+
+Sécurité : Solea ne coupe jamais l'alimentation électrique d'une chaudière ; il passe toujours par l'entrée de commande prévue par le fabricant.
+
+Ajouter une marque = une ligne dans `app/lib/core/hvac_catalog.dart` : aucune intégration n'est codée marque par marque.
