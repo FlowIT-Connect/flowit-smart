@@ -8,6 +8,7 @@ import '../../state/app_state.dart';
 import '../widgets/common.dart';
 import '../widgets/device_controls.dart';
 
+String _fmtRate(double v) => v == v.roundToDouble() ? v.toStringAsFixed(0) : v.toStringAsFixed(1);
 String _two(int v) => v.toString().padLeft(2, '0');
 String _fmtTemp(double? t) => t == null ? '—' : '${t == t.roundToDouble() ? t.toStringAsFixed(0) : t.toStringAsFixed(1)} °C';
 
@@ -456,6 +457,23 @@ class _ClimateZoneScreenState extends State<ClimateZoneScreen> {
             ],
             const SizedBox(height: 8),
             Card(child: Padding(padding: const EdgeInsets.all(8), child: ClimatePresetButtons(current: saved.activeOverride(), roomId: saved.roomId, compact: true))),
+            if (saved.heatRate != null || saved.coolRate != null)
+              Padding(
+                padding: const EdgeInsets.only(top: 8),
+                child: Row(children: [
+                  Icon(Icons.insights_rounded, size: 18, color: context.flow.inkSoft),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      [
+                        if (saved.heatRate != null) context.tr('climate.rate.heat', {'n': _fmtRate(saved.heatRate!)}),
+                        if (saved.coolRate != null) context.tr('climate.rate.cool', {'n': _fmtRate(saved.coolRate!)}),
+                      ].join(' · '),
+                      style: Theme.of(context).textTheme.bodySmall,
+                    ),
+                  ),
+                ]),
+              ),
             if (manage) ...[
               SwitchListTile(
                 contentPadding: EdgeInsets.zero,

@@ -246,3 +246,36 @@ test('températures intelligentes : temps de montée et préchauffage anticipé'
   // Clim : Confort à 24 °C, pièce à 30 °C, 6 × 10 = 60 min.
   assert.deepEqual(anticipatedPreset({ ...base, kind: 'cool', outdoor: 30, now: at('2030-01-07T05:00:00Z'), measured: 30 }), { preset: 'comfort', source: 'preheat' });
 });
+
+test('apprentissage : minutes par degré mesurées puis lissées', async () => {
+  const { trackWarmup, blendRate, warmupMinutes, anticipatedPreset } = await import('../src/climate.js');
+  const t0 = Date.UTC(2030, 0, 7, 5);
+  const min = 60_000;
+  let r = trackWarmup(null, { target: 21, measured: 20.5, kind: 'heat', nowMs: t0, outdoor: 10 });
+  assert.equal(r.track, null, 'moins de 1 °C : rien à apprendre');
+  r = trackWarmup(null, { target: 21, measured: 17, kind: 'heat', nowMs: t0, outdoor: 4 });
+  assert.equal(r.track.factor, 1.25);
+  r = trackWarmup(r.track, { target: 21, measured: 19, kind: 'heat', nowMs: t0 + 30 * min, outdoor: 4 });
+  assert.ok(r.track && r.rate == null, 'en cours');
+  r = trackWarmup(r.track, { target: 21, measured: 20.9, kind: 'heat', nowMs: t0 + 50 * min, outdoor: 4 });
+  // 50 min pour 3,9 °C, marge météo 1,25 retirée : 10,3 min/°C.
+  assert.equal(r.track, null);
+  assert.equal(r.rate, 10.3);
+  // Consigne changée en route : on abandonne.
+  const s = trackWarmup(null, { target: 21, measured: 17, kind: 'heat', nowMs: t0 }).track;
+  assert.equal(trackWarmup(s, { target: 18, measured: 17.5, kind: 'heat', nowMs: t0 + min }).track, null);
+  // Clim : 28 → 24 en 30 min.
+  const c = trackWarmup(null, { target: 24, measured: 28, kind: 'cool', nowMs: t0, outdoor: 30 }).track;
+  assert.equal(trackWarmup(c, { target: 24, measured: 24.1, kind: 'cool', nowMs: t0 + 30 * min, outdoor: 30 }).rate, 7.7);
+
+  assert.equal(blendRate(null, 10), 10);
+  assert.equal(blendRate('20', 10), 17);
+  assert.equal(warmupMinutes(17, 21, 'heat', 10, 8), 32, 'vitesse apprise utilisée');
+
+  const zone = { schedule: [{ days: [1, 2, 3, 4, 5, 6, 7], at: '07:00', preset: 'comfort' }, { days: [1, 2, 3, 4, 5, 6, 7], at: '22:00', preset: 'sleep' }] };
+  const { localTime } = await import('../src/automations.js');
+  const base = { zone, settings: null, modes: [], localAt: (d) => localTime(d, 'Africa/Algiers'), presets: null, kind: 'heat', outdoor: 10, maxMinutes: 120, measured: 17 };
+  // 6 h 30 : 4 °C × 8 min = 32 min ≥ 30 → on commence ; à 6 h, pas encore (contre 60 min par défaut).
+  assert.equal(anticipatedPreset({ ...base, now: new Date('2030-01-07T05:30:00Z'), rate: 8 }).source, 'preheat');
+  assert.equal(anticipatedPreset({ ...base, now: new Date('2030-01-07T05:00:00Z'), rate: 8 }).source, 'schedule');
+});

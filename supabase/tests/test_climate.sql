@@ -87,3 +87,8 @@ select pg_temp.check((select preheat and preheat_max = 120 from public.climate_s
 update public.climate_settings set preheat = false, preheat_max = 60 where home_id = 'ca000000-0000-0000-0000-000000000001';
 select pg_temp.check((select not preheat and preheat_max = 60 from public.climate_settings where home_id = 'ca000000-0000-0000-0000-000000000001'), 'préchauffage réglé');
 select pg_temp.check(pg_temp.fails($$update public.climate_settings set preheat_max = 600$$), 'avance hors limites refusée');
+
+-- Préchauffage qui apprend (migration 20261113000000_solea_climate_learning.sql)
+update public.climate_zones set heat_rate = 11.4 where room_id = 'ca200000-0000-0000-0000-000000000001';
+select pg_temp.check((select heat_rate = 11.4 and cool_rate is null from public.climate_zones where room_id = 'ca200000-0000-0000-0000-000000000001'), 'vitesse de chauffe enregistrée');
+select pg_temp.check(pg_temp.fails($$update public.climate_zones set cool_rate = 500$$), 'vitesse hors limites refusée');

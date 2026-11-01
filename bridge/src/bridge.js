@@ -14,7 +14,7 @@ import {
   timeTriggerDue,
   weatherTriggerHolds,
 } from './automations.js';
-import { DEFAULT_PRESETS, anticipatedPreset, deviceCommands, openWindow, seasonMode, windowOffCommands, windowRestoreCommands, zoneKind, zoneTemperature } from './climate.js';
+import { DEFAULT_PRESETS, anticipatedPreset, blendRate, presetTemperature, trackWarmup, deviceCommands, openWindow, seasonMode, windowOffCommands, windowRestoreCommands, zoneKind, zoneTemperature } from './climate.js';
 import { fetchWeather } from './weather.js';
 import { CameraStreamer } from './cameras.js';
 import { log } from './log.js';
@@ -72,6 +72,8 @@ export class Bridge {
     this.windowCuts = new Map();
     /** Préchauffage en cours : zone -> ambiance anticipée. */
     this.preheating = new Map();
+    /** Apprentissage : montée en température suivie par zone. */
+    this.warmups = new Map();
     this.inflightDevices = new Set();
     this.inflightRuns = new Set();
     this.running = new Set();
@@ -569,7 +571,14 @@ export class Bridge {
     const presets = data.settings?.presets ?? DEFAULT_PRESETS;
     for (const zone of data.zones) {
       if (!zone.enabled) continue;
-      if (await this.#climateWindow(zone, presets, mode, now)) continue;
+      if (await this.#climateWindow(zone, presets, mode, now)) {
+        this.warmups.delete(zone.id);
+        continue;
+      }
+      const kind = zoneKind(zone, this.devices, mode);
+      const measured = zoneTemperature(zone, this.devices);
+      const outdoor = typeof this.weather?.temperature === 'number' ? this.weather.temperature : null;
+      const rateKey = kind === 'cool' ? 'cool_rate' : 'heat_rate';
       const { preset, source } = anticipatedPreset({
         zone,
         settings: data.settings,
@@ -577,12 +586,22 @@ export class Bridge {
         now,
         localAt: (d) => (d === now ? local : localTime(d, this.timezone)),
         presets,
-        kind: zoneKind(zone, this.devices, mode),
-        measured: zoneTemperature(zone, this.devices),
-        outdoor: typeof this.weather?.temperature === 'number' ? this.weather.temperature : null,
+        kind,
+        measured,
+        outdoor,
         maxMinutes: data.settings?.preheat === false ? 0 : data.settings?.preheat_max ?? 120,
         ongoing: this.preheating.get(zone.id) ?? null,
+        rate: zone[rateKey] == null ? null : Number(zone[rateKey]),
       });
+      const learn = trackWarmup(this.warmups.get(zone.id), { target: presetTemperature(presets, preset, kind), measured, kind, nowMs: now.getTime(), outdoor });
+      if (learn.track) this.warmups.set(zone.id, learn.track);
+      else this.warmups.delete(zone.id);
+      if (learn.rate != null) {
+        const rate = blendRate(zone[rateKey], learn.rate);
+        zone[rateKey] = rate;
+        log.info('climate.rate_learned', { zone_id: zone.id, kind, rate });
+        await this.store.updateClimateZone(zone.id, { [rateKey]: rate }).catch((e) => log.warn('climate.save_failed', { error: e.message }));
+      }
       if (source === 'preheat') this.preheating.set(zone.id, preset);
       else this.preheating.delete(zone.id);
       const signature = `${preset}|${source}|${mode}|${JSON.stringify(presets[preset] ?? null)}|${(zone.devices ?? []).join()}`;

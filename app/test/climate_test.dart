@@ -45,6 +45,11 @@ void main() {
       expect(next.toJson()['window_delay'], 1);
       expect(next.toJson().containsKey('active_window'), isFalse, reason: 'écrit par la passerelle');
       expect(const ClimateZone(roomId: 'r').windowDelay, 2);
+      final learned = ClimateZone.fromJson({'room_id': 'r', 'heat_rate': '11.5', 'cool_rate': 8});
+      expect(learned.heatRate, 11.5);
+      expect(learned.coolRate, 8);
+      expect(learned.copyWith(enabled: false).heatRate, 11.5);
+      expect(learned.toJson().containsKey('heat_rate'), isFalse, reason: 'appris par la passerelle');
     });
 
     test('températures intelligentes : préchauffage et heure de retour', () {

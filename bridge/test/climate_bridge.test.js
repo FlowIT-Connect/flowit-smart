@@ -143,3 +143,20 @@ test('préchauffage : la pièce est chauffée avant l\'heure prévue, puis le pr
   await bridge.tickClimate();
   assert.equal(store.climateZones[0].active_preset, 'sleep');
 });
+
+test('apprentissage : la vitesse de chauffe de la pièce est mesurée et enregistrée', async () => {
+  const thermo = store.deviceByName('Thermostat');
+  store.climateZones.push({
+    id: 'z1', home_id: 'home-1', room_id: 'r1', enabled: true, devices: [thermo.id], heat_rate: null,
+    schedule: [{ days: [1, 2, 3, 4, 5, 6, 7], at: '00:00', preset: 'comfort' }],
+  });
+  fake.setState('climate.thermostat', 'heat', { current_temperature: 16 });
+  assert.ok(await until(() => bridge.devices.get(thermo.id).state.current_temperature === 16));
+  clockNow = new Date('2030-01-07T09:00:00Z');
+  await bridge.tickClimate();
+  fake.setState('climate.thermostat', 'heat', { current_temperature: 21 });
+  assert.ok(await until(() => bridge.devices.get(thermo.id).state.current_temperature === 21));
+  clockNow = new Date('2030-01-07T10:00:00Z'); // 5 °C en 60 min
+  await bridge.tickClimate();
+  assert.equal(store.climateZones[0].heat_rate, 12);
+});

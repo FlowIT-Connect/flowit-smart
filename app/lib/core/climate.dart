@@ -146,6 +146,10 @@ class ClimateZone {
   final int windowDelay;
   final bool activeWindow;
 
+  /// Minutes par degré apprises par la passerelle (null : pas encore mesuré).
+  final double? heatRate;
+  final double? coolRate;
+
   const ClimateZone({
     this.id,
     required this.roomId,
@@ -160,6 +164,8 @@ class ClimateZone {
     this.windows = const [],
     this.windowDelay = 2,
     this.activeWindow = false,
+    this.heatRate,
+    this.coolRate,
   });
 
   factory ClimateZone.fromJson(Map<String, dynamic> j) => ClimateZone(
@@ -176,6 +182,8 @@ class ClimateZone {
         windows: [for (final d in (j['windows'] as List?) ?? const []) '$d'],
         windowDelay: (j['window_delay'] as num?)?.toInt() ?? 2,
         activeWindow: (j['active_window'] as bool?) ?? false,
+        heatRate: _num(j['heat_rate']),
+        coolRate: _num(j['cool_rate']),
       );
 
   /// Champs réglés depuis l'app (l'état actif est écrit par la passerelle).
@@ -204,8 +212,12 @@ class ClimateZone {
         windows: windows ?? this.windows,
         windowDelay: windowDelay ?? this.windowDelay,
         activeWindow: activeWindow,
+        heatRate: heatRate,
+        coolRate: coolRate,
       );
 }
+
+double? _num(Object? v) => v is num ? v.toDouble() : v is String ? double.tryParse(v) : null;
 
 /// Avances de préchauffage proposées (minutes).
 const preheatChoices = [60, 120, 180, 240];
