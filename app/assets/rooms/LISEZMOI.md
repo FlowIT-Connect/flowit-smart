@@ -8,3 +8,5 @@ jardin_terrasse, garage, entree_couloir (liste dans lib/core/room_library.dart).
 Tant qu'une photo manque, l'app affiche une illustration aux couleurs de la catégorie.
 Rien à changer dans le code : reconstruisez simplement l'application.
 Crédits et licences : CREDITS.json.
+
+Photos actuelles : Pexels / Unsplash (licences gratuites, usage commercial permis), redimensionnées à 1200 px, JPEG qualité 78.

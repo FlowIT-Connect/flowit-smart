@@ -5,3 +5,5 @@ Une photo par image, nommée `<catégorie>_<n>.jpg` (ou .webp/.png), format port
 maison_contemporaine, interieur_luxe, abstrait_couleurs, technologie, minimaliste
 (liste dans lib/core/appearance.dart). Sans photo, l'app affiche un dégradé de la catégorie.
 Crédits et licences : CREDITS.json.
+
+Photos actuelles : Pexels / Unsplash (licences gratuites, usage commercial permis), redimensionnées à 1440 px de haut, JPEG qualité 78.
