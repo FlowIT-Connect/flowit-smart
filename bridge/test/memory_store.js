@@ -25,6 +25,9 @@ export class MemoryStore {
     this.videoSessions = [];
     this.videoScans = [];
     this.mediaGateways = new Map();
+    this.automationRuns = [];
+    this.weatherReadings = [];
+    this.notifications = [];
   }
 
   // Équipements vidéo (UDI)
@@ -40,6 +43,9 @@ export class MemoryStore {
 
   async getIntegration(id) { return this.integrations.get(id) ?? null; }
   async getHome(id) { return this.homes.get(id) ?? null; }
+  async insertAutomationRun(row) { this.automationRuns.push({ ...row, created_at: new Date().toISOString() }); }
+  async insertWeatherReading(row) { this.weatherReadings.push(row); }
+  async notifyHome(homeId, type, body, data = {}, ref = null) { this.notifications.push({ homeId, type, body, data, ref }); }
   async setIntegrationStatus(id, status, lastError, lastSyncAt) {
     const i = this.integrations.get(id);
     if (i.status === 'disabled') return;
