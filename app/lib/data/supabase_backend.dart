@@ -118,6 +118,42 @@ class SupabaseBackend implements Backend {
   Future<void> updateLocale(String locale) =>
       _guard(() => _client.from('profiles').update({'locale': locale}).eq('id', _uid));
 
+  @override
+  Future<Map<String, dynamic>?> getPreferences() => _guard(() async {
+        final row = await _client.from('profiles').select('preferences').eq('id', _uid).maybeSingle();
+        final p = row?['preferences'];
+        return p is Map ? Map<String, dynamic>.from(p) : null;
+      });
+
+  @override
+  Future<void> savePreferences(Map<String, dynamic> preferences) =>
+      _guard(() => _client.from('profiles').update({'preferences': preferences}).eq('id', _uid));
+
+  @override
+  Future<String> uploadBackground(Uint8List bytes, String contentType) => _guard(() async {
+        final ext = imageExtension(contentType);
+        if (ext == null) throw const BackendException('invalid', 'Format d\'image non pris en charge (JPEG, PNG ou WebP).');
+        final path = '$_uid/bg-${DateTime.now().millisecondsSinceEpoch}.$ext';
+        await _client.storage.from('backgrounds').uploadBinary(
+              path,
+              bytes,
+              fileOptions: FileOptions(contentType: contentType, cacheControl: '31536000'),
+            );
+        return path;
+      });
+
+  @override
+  Future<Uint8List> downloadBackground(String path) => _guard(() => _client.storage.from('backgrounds').download(path));
+
+  @override
+  Future<void> deleteBackground(String path) async {
+    try {
+      await _client.storage.from('backgrounds').remove([path]);
+    } catch (_) {
+      // Ancienne photo orpheline : sans conséquence.
+    }
+  }
+
   // ---------------------------------------------------------------- Maisons
   @override
   Future<List<Home>> listHomes() => _guard(() async {

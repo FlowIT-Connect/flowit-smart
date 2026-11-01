@@ -39,6 +39,15 @@ abstract class Backend {
   Future<void> deleteAccount();
   Future<void> updateLocale(String locale);
 
+  /// Préférences du profil (apparence…), null si aucune.
+  Future<Map<String, dynamic>?> getPreferences();
+  Future<void> savePreferences(Map<String, dynamic> preferences);
+
+  /// Photo d'arrière-plan personnelle (bucket privé backgrounds, propre à l'utilisateur).
+  Future<String> uploadBackground(Uint8List bytes, String contentType);
+  Future<Uint8List> downloadBackground(String path);
+  Future<void> deleteBackground(String path);
+
   // --- Maisons et membres (§5.2)
   Future<List<Home>> listHomes();
   Future<Home> createHome(String name, String timezone);

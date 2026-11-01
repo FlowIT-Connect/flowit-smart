@@ -103,6 +103,8 @@ flutter:
     - assets/devices/
     # Bibliothèque d'images des pièces (voir assets/rooms/LISEZMOI.md)
     - assets/rooms/
+    # Bibliothèque des arrière-plans (voir assets/backgrounds/LISEZMOI.md)
+    - assets/backgrounds/
   fonts:
     - family: Manrope
       fonts:

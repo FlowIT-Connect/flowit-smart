@@ -6,6 +6,7 @@ import 'package:flutter/widgets.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../core/app_launcher.dart';
+import '../core/appearance.dart';
 import '../core/ble_lock.dart';
 import '../core/l10n.dart';
 import '../data/backend.dart';
@@ -191,7 +192,50 @@ class AppState extends ChangeNotifier {
     }
     notifyListeners();
     unawaited(_loadPlatformAdmin());
+    unawaited(syncAppearance());
     await loadHomes();
+  }
+
+  // ---------------------------------------------------------------- Apparence
+  /// Reprend l'apparence enregistrée dans le profil (autre téléphone, réinstallation).
+  Future<void> syncAppearance() async {
+    try {
+      final prefs = await backend.getPreferences();
+      if (prefs == null || prefs['appearance'] == null) return;
+      final remote = Appearance.fromJson(prefs['appearance']);
+      final controller = AppearanceController.instance;
+      if (remote == controller.value && (remote.photoPath == null || controller.photoBytes != null)) return;
+      Uint8List? photo;
+      if (remote.photoPath != null) {
+        try {
+          photo = await backend.downloadBackground(remote.photoPath!);
+        } on BackendException {
+          await controller.set(remote.copyWith(clearBackground: true));
+          return;
+        }
+      }
+      await controller.set(remote, photo: photo);
+    } on BackendException {
+      // Hors ligne : l'apparence gardée sur l'appareil reste en place.
+    }
+  }
+
+  /// Applique tout de suite l'apparence puis l'enregistre dans le profil.
+  /// [photo] : nouvelle photo d'arrière-plan importée.
+  Future<bool> saveAppearance(Appearance look, {Uint8List? photo, String? photoType}) async {
+    final controller = AppearanceController.instance;
+    final previousPhoto = controller.value.photoPath;
+    return run(() async {
+      var next = look;
+      if (photo != null && photoType != null) {
+        final path = await backend.uploadBackground(photo, photoType);
+        next = look.copyWith(background: 'photo:$path');
+      }
+      await controller.set(next, photo: photo);
+      final prefs = await backend.getPreferences() ?? <String, dynamic>{};
+      await backend.savePreferences({...prefs, 'appearance': next.toJson()});
+      if (previousPhoto != null && previousPhoto != next.photoPath) await backend.deleteBackground(previousPhoto);
+    }, success: tr('appearance.saved'));
   }
 
   Future<void> _loadPlatformAdmin() async {

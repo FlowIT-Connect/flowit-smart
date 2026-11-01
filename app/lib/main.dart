@@ -5,6 +5,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import 'app.dart';
+import 'core/appearance.dart';
 import 'core/ble_lock.dart';
 import 'core/config.dart';
 import 'core/device_photos.dart';
@@ -27,6 +28,8 @@ Future<void> main() async {
   await ThemeController.instance.load();
   await DevicePhotoCatalog.load();
   await RoomLibrary.load();
+  await BackgroundLibrary.load();
+  await AppearanceController.instance.load();
 
   final Backend backend;
   if (AppConfig.hasSupabase) {

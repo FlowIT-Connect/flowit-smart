@@ -402,6 +402,36 @@ class DemoBackend implements Backend {
   @override
   Future<void> updateLocale(String locale) async {}
 
+  Map<String, dynamic>? _preferences;
+
+  @override
+  Future<Map<String, dynamic>?> getPreferences() async {
+    await _wait();
+    return _preferences == null ? null : Map<String, dynamic>.from(_preferences!);
+  }
+
+  @override
+  Future<void> savePreferences(Map<String, dynamic> preferences) async {
+    await _wait();
+    _preferences = Map<String, dynamic>.from(preferences);
+  }
+
+  @override
+  Future<String> uploadBackground(Uint8List bytes, String contentType) async {
+    await _wait();
+    final ext = imageExtension(contentType);
+    if (ext == null) throw const BackendException('invalid', 'Format d\'image non pris en charge (JPEG, PNG ou WebP).');
+    final path = '$_me/bg-${DateTime.now().millisecondsSinceEpoch}.$ext';
+    _photos[path] = bytes;
+    return path;
+  }
+
+  @override
+  Future<Uint8List> downloadBackground(String path) => downloadDevicePhoto(path);
+
+  @override
+  Future<void> deleteBackground(String path) async => _photos.remove(path);
+
   // ------------------------------------------------------------------ Maisons
   @override
   Future<List<Home>> listHomes() async {
