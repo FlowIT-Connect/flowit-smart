@@ -345,6 +345,20 @@ export class SupabaseStore {
     return res.data;
   }
 
+  /** Chauffage et clim par pièce (null : base pas encore à jour). */
+  async getClimate(homeId) {
+    const [settings, zones] = await Promise.all([
+      this.db.from('climate_settings').select('*').eq('home_id', homeId).maybeSingle(),
+      this.db.from('climate_zones').select('*').eq('home_id', homeId),
+    ]);
+    if (settings.error || zones.error) return null;
+    return { settings: settings.data, zones: zones.data ?? [] };
+  }
+
+  async updateClimateZone(id, patch) {
+    check(await this.db.from('climate_zones').update(patch).eq('id', id));
+  }
+
   async insertAutomationRun(row) {
     check(await this.db.from('automation_runs').insert(row));
   }

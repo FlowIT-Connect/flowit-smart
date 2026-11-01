@@ -1,3 +1,4 @@
+import 'climate_screen.dart';
 import 'package:flutter/material.dart';
 
 import '../../core/icons.dart';
@@ -123,6 +124,7 @@ class DashboardScreen extends StatelessWidget {
           ),
         ),
       ],
+      const SliverToBoxAdapter(child: Padding(padding: EdgeInsets.fromLTRB(16, 12, 16, 0), child: ClimateHomeCard())),
       if (rooms.isNotEmpty) ...[
         SliverToBoxAdapter(
           child: SectionHeader(

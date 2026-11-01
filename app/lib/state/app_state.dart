@@ -10,6 +10,7 @@ import '../core/app_launcher.dart';
 import '../core/appearance.dart';
 import '../core/ble_lock.dart';
 import '../core/l10n.dart';
+import '../core/climate.dart';
 import '../core/home_modes.dart';
 import '../core/notifications.dart';
 import '../data/backend.dart';
@@ -103,6 +104,7 @@ class AppState extends ChangeNotifier {
 
   /// Modes Été / Hiver / Vacances du logement.
   HomeModes homeModes = HomeModes.none;
+  ClimateData climate = ClimateData.empty;
 
   /// Centre de notifications de la maison courante (plus récentes d'abord).
   List<AppNotification> notifications = const [];
@@ -343,6 +345,7 @@ class AppState extends ChangeNotifier {
     sceneRuns = const [];
     notifications = const [];
     homeModes = HomeModes.none;
+    climate = ClimateData.empty;
     plan = null;
     pending.clear();
     _photoCache.clear();
@@ -375,6 +378,7 @@ class AppState extends ChangeNotifier {
       sceneRuns = results[4] as List<SceneRun>;
       await refreshPlan(notify: false);
       await _loadHomeModes(h.id);
+      await _loadClimate(h.id);
       loadError = null;
       _setOnline(true);
     } on BackendException catch (e) {
@@ -416,6 +420,9 @@ class AppState extends ChangeNotifier {
       case 'home_modes':
         homeModes = HomeModes.fromJson(e.record);
         notifyListeners();
+      case 'climate_settings' || 'climate_zones':
+        final h = home;
+        if (h != null) unawaited(_loadClimate(h.id).then((_) => notifyListeners()));
     }
   }
 
@@ -441,6 +448,57 @@ class AppState extends ChangeNotifier {
     }
     return ok;
   }
+
+  // ---------------------------------------------------------------- Chauffage et clim
+  Future<void> _loadClimate(String homeId) async {
+    try {
+      climate = await backend.getClimate(homeId);
+    } on BackendException {
+      climate = ClimateData.empty; // base pas encore à jour
+    }
+  }
+
+  Future<void> reloadClimate() async {
+    final h = home;
+    if (h == null) return;
+    await _loadClimate(h.id);
+    notifyListeners();
+  }
+
+  Future<bool> saveClimateSettings(ClimateSettings next, {String? success}) async {
+    final h = home;
+    if (h == null) return false;
+    final ok = await run(() => backend.saveClimateSettings(h.id, next), success: success);
+    await reloadClimate();
+    return ok;
+  }
+
+  Future<bool> saveClimateZone(ClimateZone zone, {String? success}) async {
+    final h = home;
+    if (h == null) return false;
+    final ok = await run(() => backend.saveClimateZone(h.id, zone), success: success);
+    await reloadClimate();
+    return ok;
+  }
+
+  Future<bool> deleteClimateZone(ClimateZone zone, {String? success}) async {
+    if (zone.id == null) return false;
+    final ok = await run(() => backend.deleteClimateZone(zone.id!), success: success);
+    await reloadClimate();
+    return ok;
+  }
+
+  Future<bool> setClimatePreset(String? roomId, String? preset, {DateTime? until, String? success}) async {
+    final h = home;
+    if (h == null) return false;
+    final ok = await run(() => backend.setClimatePreset(h.id, roomId, preset, until), success: success);
+    await reloadClimate();
+    return ok;
+  }
+
+  /// Ambiance d'une pièce (celle écrite par la passerelle, sinon calculée ici).
+  (String, String) climatePresetFor(ClimateZone zone) =>
+      effectivePreset(zone, climate.settings, vacation: homeModes.vacationActive());
 
   // ---------------------------------------------------------------- Notifications
   Future<void> loadNotifications() async {
