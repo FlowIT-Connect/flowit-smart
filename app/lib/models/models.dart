@@ -39,13 +39,23 @@ class Home {
   final String timezone;
   final HomeRole myRole;
 
+  /// Position du logement (météo et soleil des automatisations de la passerelle).
+  final double? latitude;
+  final double? longitude;
+  final String? locationName;
+
   const Home({
     required this.id,
     required this.ownerId,
     required this.name,
     required this.timezone,
     required this.myRole,
+    this.latitude,
+    this.longitude,
+    this.locationName,
   });
+
+  bool get hasLocation => latitude != null && longitude != null;
 
   factory Home.fromJson(Map<String, dynamic> j, HomeRole role) => Home(
         id: j['id'] as String,
@@ -53,14 +63,20 @@ class Home {
         name: j['name'] as String,
         timezone: (j['timezone'] as String?) ?? 'Africa/Algiers',
         myRole: role,
+        latitude: (j['latitude'] as num?)?.toDouble() ?? double.tryParse('${j['latitude']}'),
+        longitude: (j['longitude'] as num?)?.toDouble() ?? double.tryParse('${j['longitude']}'),
+        locationName: j['location_name'] as String?,
       );
 
-  Home copyWith({String? name, HomeRole? myRole, String? ownerId}) => Home(
+  Home copyWith({String? name, HomeRole? myRole, String? ownerId, double? latitude, double? longitude, String? locationName}) => Home(
         id: id,
         ownerId: ownerId ?? this.ownerId,
         name: name ?? this.name,
         timezone: timezone,
         myRole: myRole ?? this.myRole,
+        latitude: latitude ?? this.latitude,
+        longitude: longitude ?? this.longitude,
+        locationName: locationName ?? this.locationName,
       );
 }
 
@@ -701,6 +717,15 @@ class Automation {
   final bool runLocally;
   final DateTime? lastRunAt;
 
+  /// « SAUF SI » : l'automatisation ne s'exécute pas si l'une est vraie.
+  final List<Map<String, dynamic>> exceptions;
+
+  /// « PUIS » : {after_minutes, actions, conditions, restart_on_trigger}.
+  final Map<String, dynamic>? followUp;
+
+  /// 'security' : évaluée et exécutée en premier par la passerelle.
+  final String priority;
+
   const Automation({
     required this.id,
     required this.homeId,
@@ -711,6 +736,9 @@ class Automation {
     required this.actions,
     this.runLocally = true,
     this.lastRunAt,
+    this.exceptions = const [],
+    this.followUp,
+    this.priority = 'normal',
   });
 
   factory Automation.fromJson(Map<String, dynamic> j) => Automation(
@@ -723,9 +751,14 @@ class Automation {
         actions: ((j['actions'] as List?) ?? const []).map((e) => Map<String, dynamic>.from(e as Map)).toList(),
         runLocally: (j['run_locally'] as bool?) ?? true,
         lastRunAt: _date(j['last_run_at']),
+        exceptions: ((j['exceptions'] as List?) ?? const []).map((e) => Map<String, dynamic>.from(e as Map)).toList(),
+        followUp: j['follow_up'] is Map ? Map<String, dynamic>.from(j['follow_up'] as Map) : null,
+        priority: (j['priority'] as String?) ?? 'normal',
       );
 
-  Map<String, dynamic> toJson() => {
+  /// Les colonnes ajoutées par la phase 5 ne sont envoyées que si elles servent :
+  /// une base pas encore à jour accepte ainsi toujours les automatisations simples.
+  Map<String, dynamic> toJson({bool includeAdvanced = false}) => {
         'home_id': homeId,
         'name': name,
         'enabled': enabled,
@@ -733,6 +766,9 @@ class Automation {
         'conditions': conditions,
         'actions': actions,
         'run_locally': runLocally,
+        if (includeAdvanced || exceptions.isNotEmpty) 'exceptions': exceptions,
+        if (includeAdvanced || followUp != null) 'follow_up': followUp,
+        if (includeAdvanced || priority != 'normal') 'priority': priority,
       };
 
   Automation copyWith({bool? enabled}) => Automation(
@@ -745,6 +781,43 @@ class Automation {
         actions: actions,
         runLocally: runLocally,
         lastRunAt: lastRunAt,
+        exceptions: exceptions,
+        followUp: followUp,
+        priority: priority,
+      );
+}
+
+/// Une exécution d'automatisation par la passerelle (historique).
+class AutomationRun {
+  final int id;
+  final String? automationId;
+  final String name;
+  final String phase; // main | follow_up
+  final String status; // success | partial | failed | skipped
+  final String reason;
+  final Map<String, dynamic> details;
+  final DateTime createdAt;
+
+  const AutomationRun({
+    required this.id,
+    this.automationId,
+    this.name = '',
+    this.phase = 'main',
+    required this.status,
+    this.reason = '',
+    this.details = const {},
+    required this.createdAt,
+  });
+
+  factory AutomationRun.fromJson(Map<String, dynamic> j) => AutomationRun(
+        id: (j['id'] as num).toInt(),
+        automationId: j['automation_id'] as String?,
+        name: (j['name'] as String?) ?? '',
+        phase: (j['phase'] as String?) ?? 'main',
+        status: (j['status'] as String?) ?? 'success',
+        reason: (j['reason'] as String?) ?? '',
+        details: Map<String, dynamic>.from((j['details'] as Map?) ?? const {}),
+        createdAt: _date(j['created_at']) ?? DateTime.now(),
       );
 }
 

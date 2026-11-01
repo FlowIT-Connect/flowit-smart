@@ -296,8 +296,15 @@ class AppState extends ChangeNotifier {
       final prefs = await SharedPreferences.getInstance();
       await prefs.setString('home', h.id);
       final saved = prefs.getString('weather.place.${h.id}');
-      if (saved != null) weatherPlace = WeatherPlace.fromJson(jsonDecode(saved) as Map<String, dynamic>);
+      if (saved != null) {
+        weatherPlace = WeatherPlace.fromJson(jsonDecode(saved) as Map<String, dynamic>);
+      } else if (h.hasLocation) {
+        final label = (h.locationName ?? h.name).split(', ');
+        weatherPlace = WeatherPlace(name: label.first, region: label.length > 1 ? label.sublist(1).join(', ') : null, latitude: h.latitude!, longitude: h.longitude!);
+      }
     } catch (_) {}
+    // La passerelle a besoin de la position pour la météo des automatisations.
+    if (!h.hasLocation && h.myRole.canManage) unawaited(_shareHomeLocation(weatherPlace));
     await refreshHome();
     unawaited(refreshWeather());
     unawaited(loadNotifications());
@@ -795,7 +802,32 @@ class AppState extends ChangeNotifier {
       final h = home;
       if (h != null) (await SharedPreferences.getInstance()).setString('weather.place.${h.id}', jsonEncode(place.toJson()));
     } catch (_) {}
+    if (canManage) unawaited(_shareHomeLocation(place));
     await refreshWeather(force: true);
+  }
+
+  Future<void> _shareHomeLocation(WeatherPlace place) async {
+    final h = home;
+    if (h == null) return;
+    try {
+      await backend.updateHomeLocation(h.id, place.latitude, place.longitude, place.label);
+      final updated = h.copyWith(latitude: place.latitude, longitude: place.longitude, locationName: place.label);
+      if (home?.id == h.id) home = updated;
+      homes = [for (final x in homes) x.id == h.id ? updated : x];
+    } on BackendException {
+      // Base pas encore à jour : la météo de l'accueil marche quand même.
+    }
+  }
+
+  // ---------------------------------------------------------------- Historique des automatisations
+  Future<List<AutomationRun>> automationRuns({String? automationId}) async {
+    final h = home;
+    if (h == null) return const [];
+    try {
+      return await backend.listAutomationRuns(h.id, automationId: automationId);
+    } on BackendException {
+      return const [];
+    }
   }
 
   // ---------------------------------------------------------------- Photos d'appareils

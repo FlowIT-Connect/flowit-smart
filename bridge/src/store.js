@@ -24,7 +24,12 @@ export class SupabaseStore {
   }
 
   async getHome(id) {
-    return check(await this.db.from('homes').select('id, timezone, latitude, longitude').eq('id', id).maybeSingle());
+    const res = await this.db.from('homes').select('id, timezone, latitude, longitude').eq('id', id).maybeSingle();
+    // Base pas encore à jour (pas de position) : la passerelle démarre quand même, sans météo.
+    if (res.error && /latitude|longitude|column/i.test(res.error.message ?? '')) {
+      return check(await this.db.from('homes').select('id, timezone').eq('id', id).maybeSingle());
+    }
+    return check(res);
   }
 
   async setIntegrationStatus(id, status, lastError, lastSyncAt) {

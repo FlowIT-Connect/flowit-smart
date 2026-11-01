@@ -178,6 +178,12 @@ class SupabaseBackend implements Backend {
       _guard(() => _client.from('homes').update({'name': name.trim()}).eq('id', homeId));
 
   @override
+  Future<void> updateHomeLocation(String homeId, double latitude, double longitude, String? name) => _guard(() => _client
+      .from('homes')
+      .update({'latitude': double.parse(latitude.toStringAsFixed(5)), 'longitude': double.parse(longitude.toStringAsFixed(5)), 'location_name': name})
+      .eq('id', homeId));
+
+  @override
   Future<void> deleteHome(String homeId) => _guard(() => _client.from('homes').delete().eq('id', homeId));
 
   @override
@@ -474,14 +480,26 @@ class SupabaseBackend implements Backend {
 
   @override
   Future<Automation> saveAutomation(Automation a, {bool isNew = false}) => _guard(() async {
-        final data = a.toJson();
-        final Map<String, dynamic> row;
-        if (isNew) {
-          row = await _client.from('automations').insert({...data, 'id': a.id, 'created_by': _uid}).select().single();
-        } else {
-          row = await _client.from('automations').update(data).eq('id', a.id).select().single();
+        Future<Map<String, dynamic>> write(Map<String, dynamic> data) => isNew
+            ? _client.from('automations').insert({...data, 'id': a.id, 'created_by': _uid}).select().single()
+            : _client.from('automations').update(data).eq('id', a.id).select().single();
+        Map<String, dynamic> row;
+        try {
+          row = await write(a.toJson(includeAdvanced: true));
+        } on PostgrestException catch (e) {
+          // Base pas encore à jour (colonnes SAUF SI / PUIS absentes) : automatisation simple.
+          if (e.code != 'PGRST204' && e.code != '42703') rethrow;
+          row = await write(a.toJson());
         }
         return Automation.fromJson(row);
+      });
+
+  @override
+  Future<List<AutomationRun>> listAutomationRuns(String homeId, {String? automationId, int limit = 50}) => _guard(() async {
+        var q = _client.from('automation_runs').select().eq('home_id', homeId);
+        if (automationId != null) q = q.eq('automation_id', automationId);
+        final rows = await q.order('created_at', ascending: false).limit(limit);
+        return rows.map(AutomationRun.fromJson).toList();
       });
 
   @override

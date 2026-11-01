@@ -53,6 +53,7 @@ class DemoBackend implements Backend {
   final _integrations = <Map<String, dynamic>>[];
   final _logs = <Map<String, dynamic>>[];
   final _notifications = <Map<String, dynamic>>[];
+  final _automationRuns = <Map<String, dynamic>>[];
   int _notifSeq = 0;
   final _photos = <String, Uint8List>{};
   final _accessCodes = <Map<String, dynamic>>[];
@@ -79,7 +80,7 @@ class DemoBackend implements Backend {
   // ------------------------------------------------------------------ Données
   void _seed() {
     const homeId = '10000000-0000-4000-8000-000000000001';
-    _homes[homeId] = {'id': homeId, 'owner_id': _me, 'name': 'Maison démo', 'timezone': 'Africa/Algiers'};
+    _homes[homeId] = {'id': homeId, 'owner_id': _me, 'name': 'Maison démo', 'timezone': 'Africa/Algiers', 'latitude': 36.7538, 'longitude': 3.0588, 'location_name': 'Alger, Algérie'};
     _members.addAll([
       {'home_id': homeId, 'user_id': _me, 'role': 'owner', 'permissions': {}, 'profiles': {'display_name': 'Vous'}},
       {
@@ -309,6 +310,38 @@ class DemoBackend implements Backend {
       ],
       'run_locally': true,
     };
+    final auto3 = newUuid();
+    final windRun = DateTime.now().toUtc().subtract(const Duration(hours: 2, minutes: 1));
+    _automations[auto3] = {
+      'id': auto3,
+      'home_id': homeId,
+      'name': 'Vents forts : fermer les volets',
+      'enabled': true,
+      'priority': 'security',
+      'trigger': {'type': 'weather', 'metric': 'wind_speed', 'op': 'gt', 'value': 80, 'for_minutes': 2},
+      'conditions': [],
+      'exceptions': [],
+      'actions': [
+        {'device_id': volet, 'capability_key': 'cover_position', 'value': 0},
+      ],
+      'follow_up': {
+        'after_minutes': 30,
+        'restart_on_trigger': false,
+        'conditions': [
+          {'type': 'weather', 'metric': 'wind_speed', 'op': 'lt', 'value': 50},
+        ],
+        'actions': [
+          {'device_id': volet, 'capability_key': 'cover_position', 'value': 100},
+        ],
+      },
+      'run_locally': true,
+      'last_run_at': windRun.toIso8601String(),
+    };
+    _automationRuns.addAll([
+      {'id': 3, 'home_id': homeId, 'automation_id': auto3, 'name': 'Vents forts : fermer les volets', 'phase': 'follow_up', 'status': 'success', 'reason': 'PUIS', 'details': {'actions': 1, 'total': 1}, 'created_at': windRun.add(const Duration(minutes: 47)).toIso8601String()},
+      {'id': 2, 'home_id': homeId, 'automation_id': auto3, 'name': 'Vents forts : fermer les volets', 'phase': 'main', 'status': 'success', 'reason': 'weather:wind_speed', 'details': {'actions': 1, 'total': 1, 'weather': {'wind_speed': 86, 'wind_gust': 102}}, 'created_at': windRun.toIso8601String()},
+      {'id': 1, 'home_id': homeId, 'automation_id': auto3, 'name': 'Vents forts : fermer les volets', 'phase': 'main', 'status': 'skipped', 'reason': 'SAUF SI vérifié', 'details': {}, 'created_at': windRun.subtract(const Duration(days: 4)).toIso8601String()},
+    ]);
 
     _integrations.addAll([
       {'id': newUuid(), 'home_id': homeId, 'provider': 'home_assistant', 'status': 'connected', 'label': 'Home Assistant (démo)', 'last_sync_at': _now()},
@@ -513,6 +546,13 @@ class DemoBackend implements Backend {
     _requireManager(homeId);
     _homes[homeId]!['name'] = name.trim();
     _log(homeId, 'config_changed', result: 'homes_update', details: {'name': name});
+  }
+
+  @override
+  Future<void> updateHomeLocation(String homeId, double latitude, double longitude, String? name) async {
+    await _wait();
+    _requireManager(homeId);
+    _homes[homeId]!.addAll({'latitude': latitude, 'longitude': longitude, 'location_name': name});
   }
 
   @override
@@ -1111,7 +1151,7 @@ class DemoBackend implements Backend {
   Future<Automation> saveAutomation(Automation a, {bool isNew = false}) async {
     await _wait();
     _requireManager(a.homeId);
-    _automations[a.id] = {...a.toJson(), 'id': a.id};
+    _automations[a.id] = {...a.toJson(includeAdvanced: true), 'id': a.id, 'last_run_at': _automations[a.id]?['last_run_at']};
     _log(a.homeId, 'config_changed', result: isNew ? 'automations_insert' : 'automations_update', details: {'name': a.name});
     return Automation.fromJson(_automations[a.id]!);
   }
@@ -1120,6 +1160,16 @@ class DemoBackend implements Backend {
   Future<void> deleteAutomation(String automationId) async {
     await _wait();
     _automations.remove(automationId);
+  }
+
+  @override
+  Future<List<AutomationRun>> listAutomationRuns(String homeId, {String? automationId, int limit = 50}) async {
+    await _wait();
+    return _automationRuns
+        .where((r) => r['home_id'] == homeId && (automationId == null || r['automation_id'] == automationId))
+        .take(limit)
+        .map(AutomationRun.fromJson)
+        .toList();
   }
 
   // ------------------------------------------------------------------ Intégrations

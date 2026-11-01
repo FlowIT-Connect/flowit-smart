@@ -53,6 +53,9 @@ abstract class Backend {
   Future<List<Home>> listHomes();
   Future<Home> createHome(String name, String timezone);
   Future<void> renameHome(String homeId, String name);
+
+  /// Position du logement, lue par la passerelle pour la météo et le soleil.
+  Future<void> updateHomeLocation(String homeId, double latitude, double longitude, String? name);
   Future<void> deleteHome(String homeId);
   Future<List<Member>> listMembers(String homeId);
   Future<void> updateMember(String homeId, String userId, {HomeRole? role, List<String>? allowedDevices, bool clearRestriction = false});
@@ -133,6 +136,9 @@ abstract class Backend {
   Future<List<Automation>> listAutomations(String homeId);
   Future<Automation> saveAutomation(Automation automation, {bool isNew = false});
   Future<void> deleteAutomation(String automationId);
+
+  /// Historique d'exécution écrit par la passerelle (le plus récent d'abord).
+  Future<List<AutomationRun>> listAutomationRuns(String homeId, {String? automationId, int limit = 50});
 
   // --- Intégrations
   Future<List<Integration>> listIntegrations(String homeId);
