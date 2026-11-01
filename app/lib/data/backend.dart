@@ -1,6 +1,7 @@
 import 'dart:math';
 import 'dart:typed_data';
 
+import '../core/notifications.dart';
 import '../models/models.dart';
 
 /// Erreur métier présentée à l'utilisateur (message non révélateur, §5.1).
@@ -140,6 +141,13 @@ abstract class Backend {
 
   // --- Journal (§5.10)
   Future<List<EventLog>> listEvents(String homeId, {int limit = 100});
+
+  // --- Centre de notifications
+  /// Notifications de l'utilisateur connecté pour une maison, les plus récentes d'abord.
+  Future<List<AppNotification>> listNotifications(String homeId, {int limit = 200});
+  Future<void> markNotificationRead(int id);
+  Future<void> markAllNotificationsRead(String homeId);
+  Future<void> deleteNotification(int id);
 
   // --- Caméras et photos d'appareils
   /// Images d'une caméra tant que le flux est écouté (la passerelle n'envoie rien sinon).

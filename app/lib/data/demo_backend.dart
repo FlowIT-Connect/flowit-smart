@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:math';
 import 'dart:typed_data';
 
+import '../core/notifications.dart';
 import '../models/models.dart';
 import 'backend.dart';
 import 'demo_camera.dart';
@@ -51,6 +52,8 @@ class DemoBackend implements Backend {
   final _automations = <String, Map<String, dynamic>>{};
   final _integrations = <Map<String, dynamic>>[];
   final _logs = <Map<String, dynamic>>[];
+  final _notifications = <Map<String, dynamic>>[];
+  int _notifSeq = 0;
   final _photos = <String, Uint8List>{};
   final _accessCodes = <Map<String, dynamic>>[];
   final _pairings = <String, Map<String, dynamic>>{};
@@ -315,6 +318,59 @@ class DemoBackend implements Backend {
 
     _log(homeId, 'device_unavailable', deviceId: ampoule, result: 'unavailable');
     _log(homeId, 'member_changed', result: 'insert', details: {'user_id': _amina, 'role': 'member'});
+    _seedNotifications(homeId, ampoule);
+  }
+
+  void _seedNotifications(String homeId, String ampoule) {
+    final now = DateTime.now().toUtc();
+    void add(String type, String body, Duration ago, {String? deviceId, bool read = false, Map<String, dynamic> data = const {}}) {
+      final k = NotificationKind.of(type);
+      _notifications.add({
+        'id': ++_notifSeq,
+        'home_id': homeId,
+        'user_id': _me,
+        'type': type,
+        'category': k.category,
+        'priority': k.priority,
+        'device_id': deviceId,
+        'title': type,
+        'body': body,
+        'data': data,
+        'read_at': read ? now.subtract(ago).add(const Duration(minutes: 1)).toIso8601String() : null,
+        'created_at': now.subtract(ago).toIso8601String(),
+      });
+    }
+
+    add('door_open', 'Porte d\'entrée · Entrée', const Duration(minutes: 4), data: {'device': 'Porte d\'entrée', 'room': 'Entrée'});
+    add('motion', 'Détecteur couloir · Couloir', const Duration(minutes: 12), data: {'device': 'Détecteur couloir', 'room': 'Couloir'});
+    add('high_wind', 'Vent 86 km/h · rafales 102 km/h', const Duration(hours: 2), data: {'wind': 86, 'gust': 102});
+    add('shutters_auto_closed', '3 volets fermés à cause du vent', const Duration(hours: 2, minutes: 1), read: true, data: {'count': 3});
+    add('device_offline', 'Ampoule bureau · Bureau', const Duration(hours: 5), deviceId: ampoule, read: true, data: {'device': 'Ampoule bureau', 'room': 'Bureau'});
+    add('automation_run', 'Bonne nuit', const Duration(hours: 14), read: true, data: {'automation': 'Bonne nuit'});
+    add('temperature_abnormal', 'Capteur chambre · 31.5 °C', const Duration(days: 1, hours: 3), read: true, data: {'temperature': 31.5});
+    add('water_leak', 'Capteur fuite · Salle de bain', const Duration(days: 3), read: true, data: {'device': 'Capteur fuite', 'room': 'Salle de bain'});
+    _notifications.sort((a, b) => (b['created_at'] as String).compareTo(a['created_at'] as String));
+  }
+
+  /// Ajoute une notification de démonstration (comme le ferait le serveur).
+  void demoNotify(String homeId, String type, String body, {Map<String, dynamic> data = const {}}) {
+    final k = NotificationKind.of(type);
+    final row = {
+      'id': ++_notifSeq,
+      'home_id': homeId,
+      'user_id': _me,
+      'type': type,
+      'category': k.category,
+      'priority': k.priority,
+      'device_id': null,
+      'title': type,
+      'body': body,
+      'data': data,
+      'read_at': null,
+      'created_at': _now(),
+    };
+    _notifications.insert(0, row);
+    _events.add(RealtimeEvent('notifications', 'INSERT', Map<String, dynamic>.from(row)));
   }
 
   void _log(String homeId, String type, {String? deviceId, String? requestId, String? result, Map<String, dynamic>? details}) {
@@ -1093,6 +1149,35 @@ class DemoBackend implements Backend {
   Future<List<EventLog>> listEvents(String homeId, {int limit = 100}) async {
     await _wait();
     return _logs.where((l) => l['home_id'] == homeId).take(limit).map(EventLog.fromJson).toList();
+  }
+
+  // ------------------------------------------------------------------ Notifications
+  @override
+  Future<List<AppNotification>> listNotifications(String homeId, {int limit = 200}) async {
+    await _wait();
+    return _notifications.where((n) => n['home_id'] == homeId).take(limit).map(AppNotification.fromJson).toList();
+  }
+
+  @override
+  Future<void> markNotificationRead(int id) async {
+    await _wait();
+    for (final n in _notifications) {
+      if (n['id'] == id) n['read_at'] ??= _now();
+    }
+  }
+
+  @override
+  Future<void> markAllNotificationsRead(String homeId) async {
+    await _wait();
+    for (final n in _notifications) {
+      if (n['home_id'] == homeId) n['read_at'] ??= _now();
+    }
+  }
+
+  @override
+  Future<void> deleteNotification(int id) async {
+    await _wait();
+    _notifications.removeWhere((n) => n['id'] == id);
   }
 
   // ------------------------------------------------------------------ Caméras et photos

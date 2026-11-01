@@ -9,6 +9,7 @@ import '../core/app_launcher.dart';
 import '../core/appearance.dart';
 import '../core/ble_lock.dart';
 import '../core/l10n.dart';
+import '../core/notifications.dart';
 import '../data/backend.dart';
 import '../data/weather.dart';
 import '../models/models.dart';
@@ -93,6 +94,12 @@ class AppState extends ChangeNotifier {
   List<Automation> automations = const [];
   List<SceneRun> sceneRuns = const [];
   List<Invitation> myInvitations = const [];
+
+  /// Centre de notifications de la maison courante (plus récentes d'abord).
+  List<AppNotification> notifications = const [];
+  NotificationSettings notificationSettings = NotificationSettings.defaults;
+
+  int get unreadNotifications => notifications.where((n) => !n.isRead).length;
 
   /// Offre du logement (null : base pas encore à jour, ou pas de logement).
   HomePlan? plan;
@@ -293,6 +300,7 @@ class AppState extends ChangeNotifier {
     } catch (_) {}
     await refreshHome();
     unawaited(refreshWeather());
+    unawaited(loadNotifications());
     _realtimeSub = backend.watchHome(h.id, onStatus: (connected) {
       if (realtimeConnected == connected) return;
       realtimeConnected = connected;
@@ -309,6 +317,7 @@ class AppState extends ChangeNotifier {
     scenes = const [];
     automations = const [];
     sceneRuns = const [];
+    notifications = const [];
     plan = null;
     pending.clear();
     _photoCache.clear();
@@ -376,7 +385,123 @@ class AppState extends ChangeNotifier {
         sceneRuns = [run, ...sceneRuns.where((r) => r.id != run.id)]..sort((a, b) => b.startedAt.compareTo(a.startedAt));
         if (run.finishedAt != null && previous?.finishedAt == null) _announceRun(run);
         notifyListeners();
+      case 'notifications':
+        _onNotification(e);
     }
+  }
+
+  // ---------------------------------------------------------------- Notifications
+  Future<void> loadNotifications() async {
+    final h = home;
+    if (h == null) return;
+    try {
+      final list = await backend.listNotifications(h.id);
+      if (home?.id != h.id) return;
+      notifications = list;
+      notifyListeners();
+    } on BackendException {
+      // Base pas encore à jour ou hors ligne : centre vide.
+    }
+    try {
+      final prefs = await backend.getPreferences();
+      notificationSettings = NotificationSettings.fromJson(prefs?['notifications']);
+      notifyListeners();
+    } on BackendException {
+      // Réglages par défaut.
+    }
+  }
+
+  void _onNotification(RealtimeEvent e) {
+    final id = (e.record['id'] as num?)?.toInt();
+    if (id == null) return;
+    if (e.type == 'DELETE') {
+      notifications = notifications.where((n) => n.id != id).toList();
+      notifyListeners();
+      return;
+    }
+    if (e.record['home_id'] != null && e.record['home_id'] != home?.id) return;
+    final n = AppNotification.fromJson(e.record);
+    final isNew = !notifications.any((x) => x.id == id);
+    notifications = [n, ...notifications.where((x) => x.id != id)]..sort((a, b) => b.createdAt.compareTo(a.createdAt));
+    if (isNew && !n.isRead && n.priorityRank >= 2) {
+      notify('${notificationTitle(n)} · ${notificationBody(n)}', error: n.priority == 'critical');
+    }
+    notifyListeners();
+  }
+
+  String notificationTitle(AppNotification n) {
+    final key = n.kind.labelKey;
+    final t = tr(key);
+    return t == key ? n.title : t;
+  }
+
+  String notificationBody(AppNotification n) {
+    final d = n.data;
+    String num1(Object? v) => v is num ? (v == v.roundToDouble() ? v.toInt().toString() : v.toStringAsFixed(1)) : '';
+    switch (n.type) {
+      case 'high_wind':
+        if (d['wind'] is num) {
+          return d['gust'] is num
+              ? tr('notif.body.windGust', {'wind': num1(d['wind']), 'gust': num1(d['gust'])})
+              : tr('notif.body.wind', {'wind': num1(d['wind'])});
+        }
+      case 'shutters_auto_closed':
+        if (d['count'] is num) return tr('notif.body.shutters', {'count': num1(d['count'])});
+      case 'automation_run':
+        if (d['automation'] is String) return d['automation'] as String;
+      case 'temperature_abnormal':
+        if (d['temperature'] is num) {
+          final place = [d['device'], d['room']].whereType<String>().join(' · ');
+          return [if (place.isNotEmpty) place, '${num1(d['temperature'])} °C'].join(' · ');
+        }
+    }
+    if (d['device'] is String) return [d['device'], d['room']].whereType<String>().join(' · ');
+    return n.body;
+  }
+
+  Future<void> markNotificationRead(AppNotification n) async {
+    if (n.isRead) return;
+    notifications = [for (final x in notifications) x.id == n.id ? x.markedRead() : x];
+    notifyListeners();
+    try {
+      await backend.markNotificationRead(n.id);
+    } on BackendException catch (e) {
+      notify(_errorText(e), error: true);
+    }
+  }
+
+  Future<void> markAllNotificationsRead() async {
+    final h = home;
+    if (h == null || unreadNotifications == 0) return;
+    notifications = [for (final x in notifications) x.isRead ? x : x.markedRead()];
+    notifyListeners();
+    await run(() => backend.markAllNotificationsRead(h.id));
+  }
+
+  Future<void> deleteNotification(AppNotification n) async {
+    notifications = notifications.where((x) => x.id != n.id).toList();
+    notifyListeners();
+    try {
+      await backend.deleteNotification(n.id);
+    } on BackendException catch (e) {
+      notify(_errorText(e), error: true);
+      await loadNotifications();
+    }
+  }
+
+  Future<bool> saveNotificationSettings(NotificationSettings next) async {
+    final previous = notificationSettings;
+    notificationSettings = next;
+    notifyListeners();
+    final ok = await run(() async {
+      final prefs = await backend.getPreferences() ?? <String, dynamic>{};
+      await backend.savePreferences({...prefs, 'notifications': next.toJson()});
+    });
+    if (!ok) {
+      notificationSettings = previous;
+      notifyListeners();
+    }
+    return ok;
   }
 
   void _scheduleReload() {

@@ -8,7 +8,7 @@ Future<void> openSecurity(WidgetTester tester) async {
   await tester.tap(find.text('Paramètres').last);
   await tester.pumpAndSettle();
   final entry = find.text('Sécurité et vidéo');
-  await tester.ensureVisible(entry);
+  await tester.scrollUntilVisible(entry, 200, scrollable: find.byType(Scrollable).first);
   await tester.pumpAndSettle();
   await tester.tap(entry);
   await tester.pumpAndSettle();

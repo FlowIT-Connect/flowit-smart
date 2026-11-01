@@ -3,6 +3,7 @@ import 'dart:typed_data';
 
 import 'package:supabase_flutter/supabase_flutter.dart';
 
+import '../core/notifications.dart';
 import '../models/models.dart';
 import 'backend.dart';
 
@@ -515,6 +516,29 @@ class SupabaseBackend implements Backend {
         return rows.map(EventLog.fromJson).toList();
       });
 
+  // ---------------------------------------------------------------- Notifications
+  @override
+  Future<List<AppNotification>> listNotifications(String homeId, {int limit = 200}) => _guard(() async {
+        final rows = await _client
+            .from('notifications')
+            .select()
+            .eq('home_id', homeId)
+            .order('created_at', ascending: false)
+            .limit(limit);
+        return rows.map(AppNotification.fromJson).toList();
+      });
+
+  @override
+  Future<void> markNotificationRead(int id) => _guard(() =>
+      _client.from('notifications').update({'read_at': DateTime.now().toUtc().toIso8601String()}).eq('id', id).isFilter('read_at', null));
+
+  @override
+  Future<void> markAllNotificationsRead(String homeId) =>
+      _guard(() => _client.rpc('mark_notifications_read', params: {'p_home_id': homeId}));
+
+  @override
+  Future<void> deleteNotification(int id) => _guard(() => _client.from('notifications').delete().eq('id', id));
+
   // ---------------------------------------------------------------- Caméras et photos
   /// Un seul canal temps réel « `camera:<maison>` » partagé par toutes les vues ouvertes
   /// (deux abonnements au même canal sur une connexion se couperaient l'un l'autre).
@@ -721,7 +745,8 @@ class SupabaseBackend implements Backend {
 
     final byHome = PostgresChangeFilter(type: PostgresChangeFilterType.eq, column: 'home_id', value: homeId);
     channel = _client.channel('home:$homeId');
-    for (final table in ['devices', 'device_commands', 'scene_runs']) {
+    // notifications : la RLS ne transmet que celles de l'utilisateur connecté.
+    for (final table in ['devices', 'device_commands', 'scene_runs', 'notifications']) {
       channel.onPostgresChanges(
         event: PostgresChangeEvent.all,
         schema: 'public',
