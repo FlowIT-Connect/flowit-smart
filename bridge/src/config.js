@@ -49,6 +49,10 @@ export function loadConfig(env = process.env) {
   if (ttlock && !/^[0-9a-f]{32}$/.test(ttlock.passwordMd5)) {
     throw new Error('TTLOCK_PASSWORD_MD5 doit être le MD5 du mot de passe TTLock (relancez « npm run configurer »)');
   }
+  // Robots aspirateurs yeedi (facultatif) : module séparé « Solea Yeedi » (dossier yeedi/).
+  const yeedi = env.YEEDI_URL?.trim()
+    ? { url: env.YEEDI_URL.trim(), token: required(env, 'YEEDI_TOKEN').trim(), pollMs: int(env, 'YEEDI_POLL_SECONDS', 15) * 1000 }
+    : null;
   return {
     supabaseUrl: required(env, 'SUPABASE_URL'),
     supabaseServiceKey: required(env, 'SUPABASE_SERVICE_ROLE_KEY'),
@@ -71,6 +75,7 @@ export function loadConfig(env = process.env) {
     // Caméras IP lues directement par la passerelle : "Nom=http://…/snapshot.jpg;Nom2=…"
     cameras: parseCameras(env.CAMERAS),
     ttlock,
+    yeedi,
     video: video
       ? {
           mediamtxApiUrl: env.MEDIAMTX_API_URL?.trim() || 'http://127.0.0.1:9997',

@@ -1,0 +1,117 @@
+import assert from 'node:assert/strict';
+import { EventEmitter } from 'node:events';
+import { test } from 'node:test';
+
+import { actionReached, RobotHub, robotStatus } from '../src/robots.js';
+import { yeediServer } from '../src/server.js';
+import { readForm, setEnvLines } from '../src/setup.js';
+
+/** Robot simulé : répond aux commandes comme le cloud yeedi (messages d'état après coup). */
+class FakeBot extends EventEmitter {
+  constructor() {
+    super();
+    this.sent = [];
+    this.deaf = false;
+  }
+  connect() {
+    setImmediate(() => this.emit('ready'));
+  }
+  run(cmd, ...args) {
+    this.sent.push([cmd, ...args]);
+    if (this.deaf) return;
+    const later = (ev, v) => setTimeout(() => this.emit(ev, v), 5);
+    if (cmd === 'GetBatteryState') later('BatteryInfo', 87.4);
+    if (cmd === 'GetChargeState') later('ChargeState', 'charging');
+    if (cmd === 'GetCleanState') later('CleanReport', 'idle');
+    if (cmd === 'GetCleanSpeed') later('CleanSpeed', this.speed ?? 2);
+    if (cmd === 'Clean' || cmd === 'Resume') later('CleanReport', 'auto');
+    if (cmd === 'Pause') later('CleanReport', 'pause');
+    if (cmd === 'Charge') later('ChargeState', 'returning');
+    if (cmd === 'SetCleanSpeed') {
+      this.speed = args[0];
+      later('CleanSpeed', args[0]);
+    }
+  }
+  async disconnectAsync() {}
+}
+
+async function hubWith(bot) {
+  const hub = new RobotHub({ login: async () => {}, robots: async () => [{ did: 'r1', name: 'Yeedi salon', model: 'yeedi 2 hybrid', bot }] });
+  await hub.start();
+  await new Promise((r) => setTimeout(r, 30));
+  return hub;
+}
+
+test('état Solea à partir des messages du robot', () => {
+  assert.equal(robotStatus({ cleanReport: 'auto', chargeStatus: 'idle' }), 'cleaning');
+  assert.equal(robotStatus({ cleanReport: 'spot_area' }), 'cleaning');
+  assert.equal(robotStatus({ cleanReport: 'pause' }), 'paused');
+  assert.equal(robotStatus({ cleanReport: 'idle', chargeStatus: 'returning' }), 'returning');
+  assert.equal(robotStatus({ cleanReport: 'idle', chargeStatus: 'charging' }), 'charging');
+  assert.equal(robotStatus({ cleanReport: 'idle', chargeStatus: 'idle' }), 'idle');
+  assert.equal(robotStatus({ cleanReport: 'auto', errorCode: '102' }), 'error');
+  assert.equal(robotStatus({ cleanReport: 'auto', errorCode: '100' }), 'cleaning', '100 = pas d\'erreur');
+  assert.ok(actionReached('charge', 'charging'));
+  assert.ok(!actionReached('start', 'paused'));
+});
+
+test('liste des robots : batterie, état, puissance', async () => {
+  const hub = await hubWith(new FakeBot());
+  const [r] = hub.list();
+  assert.equal(r.id, 'r1');
+  assert.equal(r.online, true);
+  assert.deepEqual(r.state, { status: 'charging', battery: 87, suction: 'standard', error: null });
+});
+
+test('commande confirmée seulement quand le robot change d\'état', async () => {
+  const bot = new FakeBot();
+  const hub = await hubWith(bot);
+  const res = await hub.command('r1', { action: 'start' }, 500);
+  assert.equal(res.status, 'confirmed');
+  assert.equal(res.robot.state.status, 'cleaning');
+  assert.deepEqual(bot.sent.at(-1)[0], 'Clean');
+  assert.equal((await hub.command('r1', { action: 'pause' }, 500)).status, 'confirmed');
+  assert.equal((await hub.command('r1', { suction: 'max' }, 500)).robot.state.suction, 'max');
+  assert.deepEqual(bot.sent.find((c) => c[0] === 'SetCleanSpeed'), ['SetCleanSpeed', 4]);
+});
+
+test('robot muet : délai dépassé ; action ou robot inconnus refusés', async () => {
+  const bot = new FakeBot();
+  const hub = await hubWith(bot);
+  bot.deaf = true;
+  assert.equal((await hub.command('r1', { action: 'start' }, 50)).status, 'timeout');
+  assert.equal((await hub.command('r1', { action: 'charge' }, 50)).status, 'confirmed', 'déjà en charge');
+  assert.equal((await hub.command('r1', { action: 'exploser' }, 50)).status, 'failed');
+  assert.equal((await hub.command('r1', { suction: 'turbo' }, 50)).status, 'failed');
+  assert.equal((await hub.command('zz', { action: 'start' }, 50)).error, 'Robot inconnu');
+  bot.emit('disconnect');
+  assert.equal(hub.list()[0].online, false);
+  assert.equal((await hub.command('r1', { action: 'start' }, 50)).error, 'Robot hors ligne');
+});
+
+test('API locale : jeton obligatoire, liste et commande', async () => {
+  const hub = await hubWith(new FakeBot());
+  const server = yeediServer(hub, { token: 'secret-123', commandTimeoutMs: 500 });
+  await new Promise((r) => server.listen(0, '127.0.0.1', r));
+  const base = `http://127.0.0.1:${server.address().port}`;
+  try {
+    assert.equal((await fetch(`${base}/robots`)).status, 401);
+    assert.equal((await fetch(`${base}/robots`, { headers: { authorization: 'Bearer faux' } })).status, 401);
+    const auth = { authorization: 'Bearer secret-123', 'content-type': 'application/json' };
+    const list = await (await fetch(`${base}/robots`, { headers: auth })).json();
+    assert.equal(list[0].name, 'Yeedi salon');
+    const res = await (await fetch(`${base}/robots/r1/command`, { method: 'POST', headers: auth, body: JSON.stringify({ action: 'charge' }) })).json();
+    assert.equal(res.status, 'confirmed');
+    assert.equal((await fetch(`${base}/robots/r1/command`, { method: 'POST', headers: auth, body: '{pas du json' })).status, 400);
+  } finally {
+    server.close();
+  }
+});
+
+test('formulaire et .env de la passerelle', () => {
+  const f = readForm('EMAIL_YEEDI= moi@exemple.dz \r\nMOT_DE_PASSE_YEEDI=abc\r\nPAYS=fr\r\n');
+  assert.deepEqual(f, { email: 'moi@exemple.dz', password: 'abc', country: 'FR', missing: [] });
+  assert.deepEqual(readForm('EMAIL_YEEDI=\nPAYS=Algérie').missing, ['EMAIL_YEEDI', 'MOT_DE_PASSE_YEEDI', 'PAYS (2 lettres)']);
+  const env = setEnvLines('# Solea\nADAPTER=tuya_cloud\nYEEDI_TOKEN=ancien\n', { YEEDI_URL: 'http://127.0.0.1:8790', YEEDI_TOKEN: 'nouveau' });
+  assert.equal(env, '# Solea\nADAPTER=tuya_cloud\nYEEDI_TOKEN=nouveau\nYEEDI_URL=http://127.0.0.1:8790\n');
+});

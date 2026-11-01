@@ -387,7 +387,11 @@ class Device {
 
   bool get isOnline => availability == Availability.available;
   List<Capability> get controls => capabilities.where((c) => c.isControl).toList();
-  List<Capability> get readings => capabilities.where((c) => !c.isControl && !c.isCamera && !c.isAccessDetail).toList();
+  List<Capability> get readings => capabilities
+      .where((c) => !c.isControl && !c.isCamera && !c.isAccessDetail)
+      // Message d'erreur d'un robot : affiché seulement quand il y en a un.
+      .where((c) => c.key != 'vacuum_error' || state['vacuum_error'] != null)
+      .toList();
 
   /// Caméra IP : image en direct dans la fiche.
   bool get isCamera => capabilities.any((c) => c.isCamera);

@@ -4,6 +4,7 @@ import 'package:flowit_smart/state/app_state.dart';
 import 'package:flowit_smart/ui/screens/add_device_screen.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:flowit_smart/models/models.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 Future<AppState> pumpApp(WidgetTester tester, {Locale locale = const Locale('fr'), Size size = const Size(400, 860)}) async {
@@ -123,6 +124,38 @@ void main() {
     final volet = state.devices.values.firstWhere((d) => d.name == 'Volet salon');
     expect(volet.state['cover_control'], 'close');
     expect(volet.state['cover_position'], 0);
+    await tester.pump(const Duration(seconds: 3));
+  });
+
+  testWidgets('robot aspirateur : Nettoyer puis Pause, retour à la base, puissance', (tester) async {
+    final state = await pumpApp(tester);
+    await signIn(tester);
+    await tester.tap(find.text('Appareils').last);
+    await tester.pumpAndSettle();
+    await tester.enterText(find.byType(TextField).first, 'robot');
+    await tester.pumpAndSettle();
+    expect(find.textContaining('En charge · 92 %'), findsOneWidget, reason: 'état et batterie sur la tuile');
+    await tester.tap(find.text('Robot aspirateur'));
+    await tester.pumpAndSettle();
+    expect(find.widgetWithText(OutlinedButton, 'Base'), findsOneWidget);
+    expect(find.widgetWithText(OutlinedButton, 'Arrêter'), findsNothing, reason: 'rien à arrêter à la base');
+    await tester.tap(find.widgetWithText(FilledButton, 'Nettoyer'));
+    await tester.pump(const Duration(milliseconds: 400));
+    await tester.pumpAndSettle();
+    Device robot() => state.devices.values.firstWhere((d) => d.name == 'Robot aspirateur');
+    expect(robot().state['vacuum_state'], 'cleaning');
+    expect(find.widgetWithText(FilledButton, 'Pause'), findsOneWidget);
+    expect(find.widgetWithText(OutlinedButton, 'Arrêter'), findsOneWidget);
+    expect(find.text('Nettoyage'), findsOneWidget);
+    await tester.tap(find.widgetWithText(OutlinedButton, 'Base'));
+    await tester.pump(const Duration(milliseconds: 400));
+    expect(robot().state['vacuum_state'], 'returning');
+    await tester.scrollUntilVisible(find.text('Maximum'), 200, scrollable: find.byType(Scrollable).last);
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Maximum'));
+    await tester.pump(const Duration(milliseconds: 400));
+    await tester.pump(const Duration(milliseconds: 400));
+    expect(robot().state['suction'], 'max');
     await tester.pump(const Duration(seconds: 3));
   });
 
