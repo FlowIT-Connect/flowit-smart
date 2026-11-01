@@ -14,6 +14,7 @@ import {
   timeTriggerDue,
   weatherTriggerHolds,
 } from './automations.js';
+import { DEFAULT_PRESETS, deviceCommands, effectivePreset, seasonMode } from './climate.js';
 import { fetchWeather } from './weather.js';
 import { CameraStreamer } from './cameras.js';
 import { log } from './log.js';
@@ -64,6 +65,8 @@ export class Bridge {
     this.modeRow = null;
     this.modes = [];
     this.simulation = null; // { day, plan: [{id, on, off, state}] }
+    /** Chauffage / clim : ambiance déjà appliquée par zone (zoneId -> signature). */
+    this.climateApplied = new Map();
     this.inflightDevices = new Set();
     this.inflightRuns = new Set();
     this.running = new Set();
@@ -122,6 +125,7 @@ export class Bridge {
         every(60_000, async () => {
           await this.evaluateModes(); // départ / retour atteint
           await this.tickPresenceSimulation();
+          await this.tickClimate();
         });
         // Météo lue par la passerelle elle-même : les règles tournent même téléphone éteint.
         if (this.config.weather !== false) {
@@ -538,6 +542,59 @@ export class Bridge {
     } catch (e) {
       log.warn('presence.simulation_failed', { error: e.message });
     }
+  }
+
+  // ------------------------------------------------------------------ Chauffage et clim par pièce
+  /**
+   * Applique l'ambiance de chaque pièce (Confort, Éco, Nuit, Absence, Hors-gel) quand elle
+   * change. Entre deux changements, un réglage fait à la main sur l'appareil est respecté.
+   */
+  async tickClimate() {
+    let data;
+    try {
+      data = await this.store.getClimate?.(this.homeId);
+    } catch {
+      data = null;
+    }
+    if (!data || data.settings?.enabled === false) return;
+    const now = this.clock();
+    const local = localTime(now, this.timezone);
+    const mode = seasonMode(this.modes);
+    const presets = data.settings?.presets ?? DEFAULT_PRESETS;
+    for (const zone of data.zones) {
+      if (!zone.enabled) continue;
+      const { preset, source } = effectivePreset(zone, data.settings, this.modes, now, local);
+      const signature = `${preset}|${source}|${mode}|${JSON.stringify(presets[preset] ?? null)}|${(zone.devices ?? []).join()}`;
+      if (this.climateApplied.get(zone.id) === signature) continue;
+      let target = null;
+      let pending = false;
+      for (const deviceId of zone.devices ?? []) {
+        const d = this.devices.get(deviceId);
+        if (!d) continue;
+        if (d.availability === 'unavailable') {
+          pending = true; // réessayé à la prochaine minute
+          continue;
+        }
+        const res = deviceCommands(d, presets, preset, mode);
+        target ??= res.target;
+        for (const [i, c] of res.commands.entries()) {
+          try {
+            await this.store.insertCommand({ home_id: this.homeId, device_id: deviceId, capability_key: c.capability_key, value: c.value, idempotency_key: `climate:${zone.id}:${local.key}:${deviceId}:${i}` });
+          } catch (e) {
+            pending = true;
+            log.warn('climate.command_failed', { zone_id: zone.id, device_id: deviceId, error: e.message });
+          }
+        }
+      }
+      if (!pending) this.climateApplied.set(zone.id, signature);
+      log.info('climate.applied', { zone_id: zone.id, preset, source, mode, target });
+      if (zone.active_preset !== preset || zone.active_source !== source || Number(zone.active_target ?? NaN) !== target) {
+        await this.store
+          .updateClimateZone(zone.id, { active_preset: preset, active_source: source, active_target: target, active_since: now.toISOString() })
+          .catch((e) => log.warn('climate.save_failed', { error: e.message }));
+      }
+    }
+    await this.processQueue();
   }
 
   #ctx() {

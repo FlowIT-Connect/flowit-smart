@@ -119,3 +119,67 @@ test('Home Assistant chauffe-eau : consigne et mode sur le domaine water_heater'
   assert.deepEqual(serviceCall(entry('preset'), 'performance').data, { operation_mode: 'performance' });
   assert.equal(serviceCall(entry('away'), true).service, 'set_away_mode');
 });
+
+// ---------------------------------------------------------------- Ambiances par pièce
+import { deviceCommands, effectivePreset, scheduledPreset, seasonMode } from '../src/climate.js';
+
+const WEEK = [
+  { days: [1, 2, 3, 4, 5], at: '06:30', preset: 'comfort' },
+  { days: [1, 2, 3, 4, 5], at: '08:30', preset: 'eco' },
+  { days: [1, 2, 3, 4, 5, 6, 7], at: '22:30', preset: 'sleep' },
+  { days: [6, 7], at: '08:00', preset: 'comfort' },
+];
+
+test('programme : dernière plage commencée, y compris la veille', () => {
+  assert.equal(scheduledPreset(WEEK, { weekday: 1, minutes: 7 * 60 }), 'comfort');
+  assert.equal(scheduledPreset(WEEK, { weekday: 1, minutes: 12 * 60 }), 'eco');
+  assert.equal(scheduledPreset(WEEK, { weekday: 1, minutes: 23 * 60 }), 'sleep');
+  assert.equal(scheduledPreset(WEEK, { weekday: 2, minutes: 3 * 60 }), 'sleep', 'nuit commencée lundi soir');
+  assert.equal(scheduledPreset(WEEK, { weekday: 6, minutes: 7 * 60 }), 'sleep', 'samedi avant 8 h');
+  assert.equal(scheduledPreset([], { weekday: 1, minutes: 0 }), null);
+});
+
+test('priorités : pièce > maison > vacances > programme, dérogations expirées ignorées', () => {
+  const now = new Date('2030-01-07T12:00:00Z');
+  const local = { weekday: 1, minutes: 13 * 60 };
+  const zone = { schedule: WEEK };
+  assert.deepEqual(effectivePreset(zone, null, [], now, local), { preset: 'eco', source: 'schedule' });
+  assert.deepEqual(effectivePreset(zone, null, ['vacation'], now, local), { preset: 'away', source: 'vacation' });
+  const home = { home_preset: 'comfort', home_preset_until: '2030-01-08T00:00:00Z' };
+  assert.deepEqual(effectivePreset(zone, home, ['vacation'], now, local), { preset: 'comfort', source: 'home' });
+  const room = { ...zone, preset_override: 'sleep', override_until: null };
+  assert.deepEqual(effectivePreset(room, home, [], now, local), { preset: 'sleep', source: 'room' });
+  const expired = { ...zone, preset_override: 'sleep', override_until: '2030-01-07T11:00:00Z' };
+  assert.equal(effectivePreset(expired, null, [], now, local).source, 'schedule');
+  assert.deepEqual(effectivePreset({ schedule: [] }, null, [], now, local), { preset: 'comfort', source: 'default' });
+  assert.equal(seasonMode(['winter']), 'heat');
+  assert.equal(seasonMode(['summer', 'vacation']), 'cool');
+  assert.equal(seasonMode([]), null);
+});
+
+const acDevice = (state) => ({
+  state,
+  caps: new Map([
+    ['target_temperature', { writable: true, metadata: { min: 16, max: 30, step: 1 } }],
+    ['hvac_mode', { writable: true, metadata: { options: ['off', 'cool', 'heat', 'dry'] } }],
+  ]),
+});
+
+test('commandes : saison, consigne bornée et arrondie, rien si déjà réglé', () => {
+  const presets = { comfort: { heat: 21.5, cool: 24 }, frost: { heat: 7, cool: null } };
+  // Hiver : clim éteinte → chauffage à 22 (21,5 arrondi au pas de 1 °C).
+  assert.deepEqual(deviceCommands(acDevice({ hvac_mode: 'off', target_temperature: 25 }), presets, 'comfort', 'heat').commands, [
+    { capability_key: 'hvac_mode', value: 'heat' },
+    { capability_key: 'target_temperature', value: 22 },
+  ]);
+  // Sans saison : la clim en froid reçoit la consigne « froid ».
+  assert.deepEqual(deviceCommands(acDevice({ hvac_mode: 'cool', target_temperature: 26 }), presets, 'comfort', null).commands, [{ capability_key: 'target_temperature', value: 24 }]);
+  // Déjà bon : aucune commande.
+  assert.deepEqual(deviceCommands(acDevice({ hvac_mode: 'cool', target_temperature: 24 }), presets, 'comfort', 'cool').commands, []);
+  // Hors-gel en été : pas de froid, la clim s'arrête.
+  assert.deepEqual(deviceCommands(acDevice({ hvac_mode: 'cool', target_temperature: 24 }), presets, 'frost', 'cool').commands, [{ capability_key: 'hvac_mode', value: 'off' }]);
+  // Hors-gel à 7 °C sur une clim limitée à 16 °C : bornée.
+  assert.equal(deviceCommands(acDevice({ hvac_mode: 'heat' }), presets, 'frost', 'heat').target, 16);
+  // Appareil sans consigne : ignoré.
+  assert.deepEqual(deviceCommands({ state: {}, caps: new Map() }, presets, 'comfort', 'heat').commands, []);
+});

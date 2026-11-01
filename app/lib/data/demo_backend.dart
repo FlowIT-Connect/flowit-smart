@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:math';
 import 'dart:typed_data';
 
+import '../core/climate.dart';
 import '../core/home_modes.dart';
 import '../core/notifications.dart';
 import '../models/models.dart';
@@ -167,7 +168,7 @@ class DemoBackend implements Backend {
           ['battery', 'sensor', false, {'unit': '%'}],
           ['vacuum_error', 'sensor', false, {'kind': 'text'}],
         ]);
-    device('Thermostat', salon, 'wifi', 'cloud',
+    final thermostat = device('Thermostat', salon, 'wifi', 'cloud',
         vendor: 'Netatmo', model: 'Smart Thermostat', state: {'target_temperature': 21.0, 'hvac_mode': 'heat', 'current_temperature': 20.4, 'preset': 'comfort', 'hvac_action': 'heating'},
         caps: [
           ['target_temperature', 'number', true, {'min': 7, 'max': 30, 'step': 0.5, 'unit': '°C'}],
@@ -227,7 +228,7 @@ class DemoBackend implements Backend {
           ['battery', 'sensor', false, {'unit': '%'}],
         ]);
     device('Télécommande IR', salon, 'other', 'cloud', vendor: 'Générique', model: 'IR blaster');
-    device('Climatiseur salon', salon, 'tuya', 'cloud',
+    final clim = device('Climatiseur salon', salon, 'tuya', 'cloud',
         vendor: 'Tuya', model: 'Split 12000 BTU', state: {'target_temperature': 24.0, 'hvac_mode': 'cool', 'current_temperature': 27.5, 'fan_mode': 'auto', 'swing': true, 'sleep': false},
         caps: [
           ['target_temperature', 'number', true, {'min': 16, 'max': 30, 'step': 1, 'unit': '°C'}],
@@ -237,6 +238,12 @@ class DemoBackend implements Backend {
           ['sleep', 'boolean', true],
           ['current_temperature', 'sensor', false, {'unit': '°C'}],
         ]);
+    // Chauffage et clim : le salon suit le programme par défaut.
+    final zoneId = newUuid();
+    _climateZones[zoneId] = {
+      'id': zoneId, 'home_id': homeId, 'room_id': salon, 'enabled': true, 'devices': [thermostat, clim],
+      'schedule': [for (final e in defaultSchedule) e.toJson()],
+    };
     final cameraEntree = device('Caméra entrée', entree, 'wifi', 'local',
         vendor: 'TP-Link', model: 'Tapo C200', state: {'camera': 'idle', 'motion': false},
         caps: [
@@ -1184,6 +1191,68 @@ class DemoBackend implements Backend {
   Future<void> deleteAutomation(String automationId) async {
     await _wait();
     _automations.remove(automationId);
+  }
+
+  // ---------------------------------------------------------------- Chauffage et clim
+  final _climateSettings = <String, Map<String, dynamic>>{};
+  final _climateZones = <String, Map<String, dynamic>>{};
+
+  void _climateEvent(String table, Map<String, dynamic> row, [String type = 'UPDATE']) =>
+      _events.add(RealtimeEvent(table, type, Map<String, dynamic>.from(row)));
+
+  @override
+  Future<ClimateData> getClimate(String homeId) async {
+    await _wait();
+    final s = _climateSettings[homeId];
+    return ClimateData(
+      s == null ? ClimateSettings.initial : ClimateSettings.fromJson(s),
+      [for (final z in _climateZones.values.where((z) => z['home_id'] == homeId)) ClimateZone.fromJson(z)],
+    );
+  }
+
+  @override
+  Future<void> saveClimateSettings(String homeId, ClimateSettings settings) async {
+    await _wait();
+    _requireManager(homeId);
+    final row = {...?_climateSettings[homeId], 'home_id': homeId, ...settings.toJson()};
+    _climateSettings[homeId] = row;
+    _climateEvent('climate_settings', row);
+  }
+
+  @override
+  Future<void> saveClimateZone(String homeId, ClimateZone zone) async {
+    await _wait();
+    _requireManager(homeId);
+    final existing = _climateZones.values.where((z) => z['room_id'] == zone.roomId).firstOrNull;
+    final id = (existing?['id'] as String?) ?? newUuid();
+    final row = {...?existing, 'id': id, 'home_id': homeId, ...zone.toJson()};
+    _climateZones[id] = row;
+    _climateEvent('climate_zones', row, existing == null ? 'INSERT' : 'UPDATE');
+  }
+
+  @override
+  Future<void> deleteClimateZone(String zoneId) async {
+    await _wait();
+    final row = _climateZones.remove(zoneId);
+    if (row != null) _climateEvent('climate_zones', row, 'DELETE');
+  }
+
+  @override
+  Future<void> setClimatePreset(String homeId, String? roomId, String? preset, DateTime? until) async {
+    await _wait();
+    if (_member(homeId) == null) throw const BackendException('denied', 'Accès refusé');
+    final u = preset == null ? null : until?.toUtc().toIso8601String();
+    if (roomId == null) {
+      final row = {...?_climateSettings[homeId], 'home_id': homeId, 'home_preset': preset, 'home_preset_until': u};
+      _climateSettings[homeId] = row;
+      _climateEvent('climate_settings', row);
+    } else {
+      final z = _climateZones.values.where((z) => z['home_id'] == homeId && z['room_id'] == roomId).firstOrNull;
+      if (z == null) throw const BackendException('invalid', 'Cette pièce n\'a pas de chauffage ni de clim réglés');
+      z['preset_override'] = preset;
+      z['override_until'] = u;
+      _climateEvent('climate_zones', z);
+    }
   }
 
   @override

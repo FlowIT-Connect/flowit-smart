@@ -1,6 +1,7 @@
 import 'dart:math';
 import 'dart:typed_data';
 
+import '../core/climate.dart';
 import '../core/home_modes.dart';
 import '../core/notifications.dart';
 import '../models/models.dart';
@@ -137,6 +138,15 @@ abstract class Backend {
   Future<List<Automation>> listAutomations(String homeId);
   Future<Automation> saveAutomation(Automation automation, {bool isNew = false});
   Future<void> deleteAutomation(String automationId);
+
+  /// Chauffage et clim par pièce.
+  Future<ClimateData> getClimate(String homeId);
+  Future<void> saveClimateSettings(String homeId, ClimateSettings settings);
+  Future<void> saveClimateZone(String homeId, ClimateZone zone);
+  Future<void> deleteClimateZone(String zoneId);
+
+  /// Ambiance pour toute la maison ([roomId] null) ou une pièce ; [preset] null = programme.
+  Future<void> setClimatePreset(String homeId, String? roomId, String? preset, DateTime? until);
 
   /// Modes Été / Hiver / Vacances (null : jamais réglés).
   Future<HomeModes?> getHomeModes(String homeId);

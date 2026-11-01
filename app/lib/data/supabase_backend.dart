@@ -3,6 +3,7 @@ import 'dart:typed_data';
 
 import 'package:supabase_flutter/supabase_flutter.dart';
 
+import '../core/climate.dart';
 import '../core/home_modes.dart';
 import '../core/notifications.dart';
 import '../models/models.dart';
@@ -496,6 +497,35 @@ class SupabaseBackend implements Backend {
       });
 
   @override
+  Future<ClimateData> getClimate(String homeId) => _guard(() async {
+        final settings = await _client.from('climate_settings').select().eq('home_id', homeId).maybeSingle();
+        final zones = await _client.from('climate_zones').select().eq('home_id', homeId);
+        return ClimateData(
+          settings == null ? ClimateSettings.initial : ClimateSettings.fromJson(settings),
+          [for (final z in zones) ClimateZone.fromJson(z)],
+        );
+      });
+
+  @override
+  Future<void> saveClimateSettings(String homeId, ClimateSettings settings) =>
+      _guard(() => _client.from('climate_settings').upsert({'home_id': homeId, ...settings.toJson()}));
+
+  @override
+  Future<void> saveClimateZone(String homeId, ClimateZone zone) =>
+      _guard(() => _client.from('climate_zones').upsert({'home_id': homeId, ...zone.toJson()}, onConflict: 'room_id'));
+
+  @override
+  Future<void> deleteClimateZone(String zoneId) => _guard(() => _client.from('climate_zones').delete().eq('id', zoneId));
+
+  @override
+  Future<void> setClimatePreset(String homeId, String? roomId, String? preset, DateTime? until) => _guard(() => _client.rpc('set_climate_preset', params: {
+        'p_home_id': homeId,
+        'p_room_id': roomId,
+        'p_preset': preset,
+        'p_until': until?.toUtc().toIso8601String(),
+      }));
+
+  @override
   Future<HomeModes?> getHomeModes(String homeId) => _guard(() async {
         final row = await _client.from('home_modes').select().eq('home_id', homeId).maybeSingle();
         return row == null ? null : HomeModes.fromJson(row);
@@ -787,7 +817,7 @@ class SupabaseBackend implements Backend {
     final byHome = PostgresChangeFilter(type: PostgresChangeFilterType.eq, column: 'home_id', value: homeId);
     channel = _client.channel('home:$homeId');
     // notifications : la RLS ne transmet que celles de l'utilisateur connecté.
-    for (final table in ['devices', 'device_commands', 'scene_runs', 'notifications', 'home_modes']) {
+    for (final table in ['devices', 'device_commands', 'scene_runs', 'notifications', 'home_modes', 'climate_settings', 'climate_zones']) {
       channel.onPostgresChanges(
         event: PostgresChangeEvent.all,
         schema: 'public',

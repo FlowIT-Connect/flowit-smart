@@ -51,3 +51,20 @@ Dans **Appareils › Ajouter un appareil › Climatisation et chauffage**, Solea
 Sécurité : Solea ne coupe jamais l'alimentation électrique d'une chaudière ; il passe toujours par l'entrée de commande prévue par le fabricant.
 
 Ajouter une marque = une ligne dans `app/lib/core/hvac_catalog.dart` : aucune intégration n'est codée marque par marque.
+
+## Ambiances par pièce (Confort, Éco, Nuit, Absence, Hors-gel)
+
+Sur l'accueil, la carte **Chauffage et clim** change l'ambiance de toute la maison en un geste
+(jusqu'à nouvel ordre, pendant 2 heures ou jusqu'à demain 7 h). Dans l'écran complet :
+
+- **Pièces** : chaque pièce a ses appareils pilotés et son programme de la semaine
+  (par défaut : Confort au lever et au retour, Éco la journée, Nuit à 22 h 30, Confort le week-end).
+- **Températures des ambiances** : en chauffage et en climatisation (21 / 24 °C en Confort, 19 / 27 en Éco,
+  18 / 26 en Nuit, 16 / 29 en Absence, 7 °C en Hors-gel par défaut).
+- Ordre de priorité : ambiance choisie pour la pièce, puis pour la maison, puis Vacances (Absence),
+  puis le programme.
+- Mode **Hiver** de l'accueil : les appareils passent en chauffage ; mode **Été** : en climatisation.
+  Sans saison, chaque appareil garde son mode.
+- La passerelle applique l'ambiance **quand elle change** : un réglage fait à la main entre-temps est respecté.
+
+Base : migration `20261110000000_solea_climate.sql` (tables `climate_settings`, `climate_zones`, fonction `set_climate_preset`).
