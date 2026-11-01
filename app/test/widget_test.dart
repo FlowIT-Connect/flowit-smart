@@ -1,3 +1,4 @@
+import 'package:flowit_smart/core/location.dart';
 import 'package:flowit_smart/app.dart';
 import 'package:flowit_smart/data/demo_backend.dart';
 import 'package:flowit_smart/state/app_state.dart';
@@ -7,12 +8,12 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:flowit_smart/models/models.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
-Future<AppState> pumpApp(WidgetTester tester, {Locale locale = const Locale('fr'), Size size = const Size(400, 860)}) async {
+Future<AppState> pumpApp(WidgetTester tester, {Locale locale = const Locale('fr'), Size size = const Size(400, 860), LocationService location = const NoLocation()}) async {
   SharedPreferences.setMockInitialValues({});
   tester.view.physicalSize = size;
   tester.view.devicePixelRatio = 1;
   addTearDown(tester.view.reset);
-  final state = AppState(DemoBackend(latency: Duration.zero, confirmDelay: const Duration(milliseconds: 300), liveSensors: false), initialLocale: locale);
+  final state = AppState(DemoBackend(latency: Duration.zero, confirmDelay: const Duration(milliseconds: 300), liveSensors: false), initialLocale: locale, location: location);
   await tester.pumpWidget(FlowItApp(state: state));
   await tester.pumpAndSettle();
   return state;

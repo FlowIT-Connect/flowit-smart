@@ -101,3 +101,17 @@ Base : migration `20261111000000_solea_climate_windows.sql` (colonnes `windows`,
 
 Base : migrations `20261112000000_solea_climate_smart.sql` (colonnes `preheat`, `preheat_max` de `climate_settings`)
 et `20261113000000_solea_climate_learning.sql` (`heat_rate`, `cool_rate` de `climate_zones`).
+
+## Absence automatique (géolocalisation, optionnelle)
+
+- Le gestionnaire l'active dans **Chauffage et clim → Températures intelligentes** (il faut la position du logement)
+  et choisit le rayon « à la maison » (200 m, 500 m, 1 km ou 2 km ; 300 m par défaut).
+- Chaque membre décide sur son téléphone : **Partager ma présence depuis ce téléphone**. Le téléphone envoie sa position
+  approximative ; le serveur (`report_presence`) ne garde que « à la maison » ou « parti » et la distance arrondie à 50 m,
+  **jamais la position**. Couper le partage efface la ligne.
+- Tous les membres qui partagent sont partis depuis 10 minutes : la passerelle met la maison en **Absence** (sauf si une
+  ambiance a été choisie à la main) et prévient. Dès que l'un d'eux revient : retour au programme (avec le préchauffage).
+- Limite actuelle : la position est envoyée quand Solea est ouverte (ou tourne encore en arrière-plan). Le suivi
+  application fermée demandera une autorisation « toujours » et sera ajouté plus tard.
+
+Base : migration `20261114000000_solea_presence.sql` (`geo_enabled`, `geo_radius`, `geo_away`, table `member_presence`, fonction `report_presence`).

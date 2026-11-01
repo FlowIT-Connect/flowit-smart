@@ -247,3 +247,26 @@ export function anticipatedPreset({ zone, settings, modes, now, localAt, presets
   }
   return current;
 }
+
+// ------------------------------------------------------------------ Absence automatique (géolocalisation)
+
+export const GEO_LEAVE_DELAY_MS = 10 * 60_000;
+
+/**
+ * Absence automatique : « leave » quand tous les membres qui partagent leur présence sont
+ * partis depuis 10 minutes (et qu'aucune ambiance n'a été choisie pour la maison),
+ * « back » dès que l'un revient (ou que la fonction est coupée) si c'est la passerelle
+ * qui avait mis l'Absence ; sinon null.
+ */
+export function geoDecision(settings, presence, nowMs) {
+  if (!settings) return null;
+  const rows = Array.isArray(presence) ? presence : [];
+  if (settings.geo_away) {
+    if (!settings.geo_enabled || rows.length === 0 || rows.some((p) => p.at_home)) return 'back';
+    return null;
+  }
+  if (!settings.geo_enabled || rows.length === 0 || rows.some((p) => p.at_home)) return null;
+  if (settings.home_preset && valid(settings.home_preset_until, new Date(nowMs))) return null; // choix fait à la main
+  const lastLeft = Math.max(...rows.map((p) => new Date(p.since).getTime() || 0));
+  return nowMs - lastLeft >= GEO_LEAVE_DELAY_MS ? 'leave' : null;
+}

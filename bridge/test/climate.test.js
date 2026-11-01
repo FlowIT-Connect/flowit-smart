@@ -279,3 +279,21 @@ test('apprentissage : minutes par degré mesurées puis lissées', async () => {
   assert.equal(anticipatedPreset({ ...base, now: new Date('2030-01-07T05:30:00Z'), rate: 8 }).source, 'preheat');
   assert.equal(anticipatedPreset({ ...base, now: new Date('2030-01-07T05:00:00Z'), rate: 8 }).source, 'schedule');
 });
+
+test('Absence automatique : tout le monde parti depuis 10 min, retour dès qu\'un membre revient', async () => {
+  const { geoDecision } = await import('../src/climate.js');
+  const now = Date.UTC(2030, 0, 7, 9);
+  const ago = (min) => new Date(now - min * 60_000).toISOString();
+  const on = { geo_enabled: true, geo_away: false, home_preset: null };
+  assert.equal(geoDecision(on, [], now), null, 'personne ne partage sa présence');
+  assert.equal(geoDecision(on, [{ at_home: false, since: ago(30) }, { at_home: true, since: ago(60) }], now), null);
+  assert.equal(geoDecision(on, [{ at_home: false, since: ago(30) }, { at_home: false, since: ago(5) }], now), null, 'dernier départ il y a 5 min');
+  assert.equal(geoDecision(on, [{ at_home: false, since: ago(30) }, { at_home: false, since: ago(12) }], now), 'leave');
+  assert.equal(geoDecision({ ...on, geo_enabled: false }, [{ at_home: false, since: ago(30) }], now), null);
+  assert.equal(geoDecision({ ...on, home_preset: 'comfort' }, [{ at_home: false, since: ago(30) }], now), null, 'choix fait à la main respecté');
+  const away = { geo_enabled: true, geo_away: true, home_preset: 'away' };
+  assert.equal(geoDecision(away, [{ at_home: false, since: ago(30) }], now), null);
+  assert.equal(geoDecision(away, [{ at_home: false, since: ago(30) }, { at_home: true, since: ago(1) }], now), 'back');
+  assert.equal(geoDecision({ ...away, geo_enabled: false }, [{ at_home: false, since: ago(30) }], now), 'back', 'fonction coupée : on rend la main');
+  assert.equal(geoDecision(null, [], now), null);
+});

@@ -145,6 +145,13 @@ abstract class Backend {
   Future<void> saveClimateZone(String homeId, ClimateZone zone);
   Future<void> deleteClimateZone(String zoneId);
 
+  /// Présence de ce membre pour l'Absence automatique : le serveur ne garde que « à la maison »
+  /// ou non (renvoyé) et la distance arrondie, jamais la position.
+  Future<bool> reportPresence(String homeId, double latitude, double longitude);
+
+  /// Arrêt du partage de présence de ce membre.
+  Future<void> clearPresence(String homeId);
+
   /// Ambiance pour toute la maison ([roomId] null) ou une pièce ; [preset] null = programme.
   Future<void> setClimatePreset(String homeId, String? roomId, String? preset, DateTime? until);
 

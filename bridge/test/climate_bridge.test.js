@@ -160,3 +160,26 @@ test('apprentissage : la vitesse de chauffe de la pièce est mesurée et enregis
   await bridge.tickClimate();
   assert.equal(store.climateZones[0].heat_rate, 12);
 });
+
+test('Absence automatique : la passerelle met la maison en Absence puis la rend au programme', async () => {
+  const thermo = store.deviceByName('Thermostat');
+  store.climateZones.push({
+    id: 'z1', home_id: 'home-1', room_id: 'r1', enabled: true, devices: [thermo.id],
+    schedule: [{ days: [1, 2, 3, 4, 5, 6, 7], at: '00:00', preset: 'comfort' }],
+  });
+  store.climateSettings.set('home-1', { home_id: 'home-1', enabled: true, preheat: false, geo_enabled: true, geo_away: false, home_preset: null });
+  clockNow = new Date('2030-01-07T09:00:00Z');
+  store.presence.push({ home_id: 'home-1', user_id: 'u1', at_home: false, since: '2030-01-07T08:40:00Z' });
+  await bridge.tickClimate();
+  assert.equal(store.climateSettings.get('home-1').home_preset, 'away');
+  assert.equal(store.climateSettings.get('home-1').geo_away, true);
+  assert.ok(await until(() => thermo.state.target_temperature === 16), `consigne ${thermo.state.target_temperature}`);
+  assert.equal(store.notifications.filter((n) => n.ref === 'climate-geo').length, 1);
+
+  store.presence[0].at_home = true;
+  clockNow = new Date('2030-01-07T09:30:00Z');
+  await bridge.tickClimate();
+  assert.equal(store.climateSettings.get('home-1').home_preset, null);
+  assert.equal(store.climateSettings.get('home-1').geo_away, false);
+  assert.ok(await until(() => thermo.state.target_temperature === 21), `consigne ${thermo.state.target_temperature}`);
+});

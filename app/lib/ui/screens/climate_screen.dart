@@ -226,10 +226,31 @@ class _ClimateScreenState extends State<ClimateScreen> {
                   const SizedBox(height: 8),
                   ClimatePresetButtons(current: home),
                   const ClimateAwayButton(),
+                  if (c.settings.geoAway)
+                    Padding(
+                      padding: const EdgeInsets.fromLTRB(8, 6, 8, 0),
+                      child: Text(context.tr('climate.geo.awayAuto'), style: Theme.of(context).textTheme.bodySmall),
+                    ),
                 ]),
               ),
             ),
             if (!c.settings.enabled) Padding(padding: const EdgeInsets.only(top: 8), child: Text(context.tr('climate.disabled'), style: TextStyle(color: f.danger))),
+            if (c.settings.geoEnabled) ...[
+              const SizedBox(height: 8),
+              Card(
+                child: SwitchListTile(
+                  key: const ValueKey('climate-presence'),
+                  secondary: Icon(Icons.share_location_rounded, color: f.brand),
+                  title: Text(context.tr('climate.presence')),
+                  subtitle: Text([
+                    context.tr('climate.presence.help'),
+                    if (state.presenceSharing && state.presenceAtHome != null) context.tr(state.presenceAtHome! ? 'climate.presence.home' : 'climate.presence.away'),
+                  ].join('\n')),
+                  value: state.presenceSharing,
+                  onChanged: (v) => state.setPresenceSharing(v),
+                ),
+              ),
+            ],
             SectionHeader(context.tr('climate.rooms')),
             if (c.zones.isEmpty) Padding(padding: const EdgeInsets.symmetric(vertical: 8), child: Text(context.tr('climate.noRooms'))),
             for (final z in c.zones) _ZoneCard(zone: z),
@@ -259,6 +280,27 @@ class _ClimateScreenState extends State<ClimateScreen> {
                       label: Text(context.tr('climate.preheat.hours', {'n': '${m ~/ 60}'})),
                       selected: c.settings.preheatMax == m,
                       onSelected: (_) => state.saveClimateSettings(c.settings.copyWith(preheatMax: m)),
+                    ),
+                ]),
+              ],
+              SwitchListTile(
+                key: const ValueKey('climate-geo'),
+                contentPadding: EdgeInsets.zero,
+                title: Text(context.tr('climate.geo')),
+                subtitle: Text(context.tr(state.home?.hasLocation ?? false ? 'climate.geo.help' : 'climate.geo.noHomeLocation')),
+                value: c.settings.geoEnabled,
+                onChanged: (state.home?.hasLocation ?? false) || c.settings.geoEnabled ? (v) => state.saveClimateSettings(c.settings.copyWith(geoEnabled: v)) : null,
+              ),
+              if (c.settings.geoEnabled) ...[
+                Text(context.tr('climate.geo.radius'), style: Theme.of(context).textTheme.bodyMedium),
+                const SizedBox(height: 4),
+                Wrap(spacing: 8, children: [
+                  for (final r in geoRadii)
+                    ChoiceChip(
+                      key: ValueKey('climate-geo-$r'),
+                      label: Text(r < 1000 ? '$r m' : '${r ~/ 1000} km'),
+                      selected: c.settings.geoRadius == r,
+                      onSelected: (_) => state.saveClimateSettings(c.settings.copyWith(geoRadius: r)),
                     ),
                 ]),
               ],

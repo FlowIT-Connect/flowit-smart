@@ -14,7 +14,7 @@ import {
   timeTriggerDue,
   weatherTriggerHolds,
 } from './automations.js';
-import { DEFAULT_PRESETS, anticipatedPreset, blendRate, presetTemperature, trackWarmup, deviceCommands, openWindow, seasonMode, windowOffCommands, windowRestoreCommands, zoneKind, zoneTemperature } from './climate.js';
+import { DEFAULT_PRESETS, anticipatedPreset, blendRate, presetTemperature, trackWarmup, deviceCommands, geoDecision, openWindow, seasonMode, windowOffCommands, windowRestoreCommands, zoneKind, zoneTemperature } from './climate.js';
 import { fetchWeather } from './weather.js';
 import { CameraStreamer } from './cameras.js';
 import { log } from './log.js';
@@ -569,6 +569,7 @@ export class Bridge {
     const local = localTime(now, this.timezone);
     const mode = seasonMode(this.modes);
     const presets = data.settings?.presets ?? DEFAULT_PRESETS;
+    await this.#climateGeo(data.settings, now);
     for (const zone of data.zones) {
       if (!zone.enabled) continue;
       if (await this.#climateWindow(zone, presets, mode, now)) {
@@ -635,6 +636,36 @@ export class Bridge {
       }
     }
     await this.processQueue();
+  }
+
+  /** Absence automatique d'après la présence des membres (géolocalisation, optionnelle). */
+  async #climateGeo(settings, now) {
+    if (!settings || (!settings.geo_enabled && !settings.geo_away)) return;
+    let presence = [];
+    try {
+      presence = (await this.store.getPresence?.(this.homeId)) ?? [];
+    } catch {
+      presence = [];
+    }
+    const decision = geoDecision(settings, presence, now.getTime());
+    if (!decision) return;
+    const patch = decision === 'leave'
+      ? { home_preset: 'away', home_preset_until: null, geo_away: true }
+      : { geo_away: false, ...(settings.home_preset === 'away' ? { home_preset: null, home_preset_until: null } : {}) };
+    try {
+      await this.store.updateClimateSettings(this.homeId, patch);
+    } catch (e) {
+      log.warn('climate.geo_failed', { error: e.message });
+      return;
+    }
+    Object.assign(settings, patch); // appliqué dès cette minute
+    log.info('climate.geo', { decision });
+    await this.#notify(
+      'automation_run',
+      decision === 'leave' ? 'Tout le monde est parti : Absence dans toute la maison' : 'Retour à la maison : chaque pièce reprend son programme',
+      { automation: 'geo', decision },
+      'climate-geo',
+    );
   }
 
   /**

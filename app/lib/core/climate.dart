@@ -59,7 +59,23 @@ class ClimateSettings {
   final bool preheat;
   final int preheatMax;
 
-  const ClimateSettings({this.enabled = true, this.presets = defaultPresetTemps, this.homePreset, this.homePresetUntil, this.preheat = true, this.preheatMax = 120});
+  /// Absence automatique quand tous les membres qui partagent leur présence sont à plus de
+  /// [geoRadius] mètres ; [geoAway] : Absence mise par la passerelle.
+  final bool geoEnabled;
+  final int geoRadius;
+  final bool geoAway;
+
+  const ClimateSettings({
+    this.enabled = true,
+    this.presets = defaultPresetTemps,
+    this.homePreset,
+    this.homePresetUntil,
+    this.preheat = true,
+    this.preheatMax = 120,
+    this.geoEnabled = false,
+    this.geoRadius = 300,
+    this.geoAway = false,
+  });
 
   static const initial = ClimateSettings();
 
@@ -72,6 +88,9 @@ class ClimateSettings {
       homePresetUntil: DateTime.tryParse(j['home_preset_until'] as String? ?? '')?.toLocal(),
       preheat: (j['preheat'] as bool?) ?? true,
       preheatMax: (j['preheat_max'] as num?)?.toInt() ?? 120,
+      geoEnabled: (j['geo_enabled'] as bool?) ?? false,
+      geoRadius: (j['geo_radius'] as num?)?.toInt() ?? 300,
+      geoAway: (j['geo_away'] as bool?) ?? false,
     );
   }
 
@@ -80,6 +99,8 @@ class ClimateSettings {
         'presets': {for (final e in presets.entries) e.key: e.value.toJson()},
         'preheat': preheat,
         'preheat_max': preheatMax,
+        'geo_enabled': geoEnabled,
+        'geo_radius': geoRadius,
       };
 
   PresetTemps temps(String preset) => presets[preset] ?? defaultPresetTemps[preset]!;
@@ -88,13 +109,16 @@ class ClimateSettings {
   String? activeHomePreset([DateTime? at]) =>
       homePreset != null && (homePresetUntil == null || homePresetUntil!.isAfter(at ?? DateTime.now())) ? homePreset : null;
 
-  ClimateSettings copyWith({bool? enabled, Map<String, PresetTemps>? presets, bool? preheat, int? preheatMax}) => ClimateSettings(
+  ClimateSettings copyWith({bool? enabled, Map<String, PresetTemps>? presets, bool? preheat, int? preheatMax, bool? geoEnabled, int? geoRadius}) => ClimateSettings(
         enabled: enabled ?? this.enabled,
         presets: presets ?? this.presets,
         homePreset: homePreset,
         homePresetUntil: homePresetUntil,
         preheat: preheat ?? this.preheat,
         preheatMax: preheatMax ?? this.preheatMax,
+        geoEnabled: geoEnabled ?? this.geoEnabled,
+        geoRadius: geoRadius ?? this.geoRadius,
+        geoAway: geoAway,
       );
 }
 
@@ -218,6 +242,9 @@ class ClimateZone {
 }
 
 double? _num(Object? v) => v is num ? v.toDouble() : v is String ? double.tryParse(v) : null;
+
+/// Rayons proposés pour l'Absence automatique (mètres).
+const geoRadii = [200, 500, 1000, 2000];
 
 /// Avances de préchauffage proposées (minutes).
 const preheatChoices = [60, 120, 180, 240];

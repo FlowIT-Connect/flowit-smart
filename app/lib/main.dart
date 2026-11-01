@@ -10,6 +10,7 @@ import 'core/ble_lock.dart';
 import 'core/config.dart';
 import 'core/device_photos.dart';
 import 'core/l10n.dart';
+import 'core/location.dart';
 import 'core/push.dart';
 import 'core/room_library.dart';
 import 'core/theme.dart';
@@ -50,5 +51,5 @@ Future<void> main() async {
   // Push seulement avec le vrai serveur : le mode démo n'a pas de jetons à servir.
   final push = AppConfig.hasSupabase ? await FirebasePush.create() : const NoPush();
 
-  runApp(FlowItApp(state: AppState(backend, initialLocale: locale, weatherService: OpenMeteoWeather(), ble: const TTLockBle(), push: push)));
+  runApp(FlowItApp(state: AppState(backend, initialLocale: locale, weatherService: OpenMeteoWeather(), ble: const TTLockBle(), push: push, location: const DeviceLocation())));
 }

@@ -12,6 +12,7 @@ import '../core/ble_lock.dart';
 import '../core/l10n.dart';
 import '../core/climate.dart';
 import '../core/home_modes.dart';
+import '../core/location.dart';
 import '../core/notifications.dart';
 import '../data/backend.dart';
 import '../data/weather.dart';
@@ -48,7 +49,8 @@ class AppState extends ChangeNotifier {
       this.ble = const NoBleLock(),
       this.launcher = const AppLauncher(),
       this.pairingPoll = const Duration(seconds: 2),
-      this.push = const NoPush()})
+      this.push = const NoPush(),
+      this.location = const NoLocation()})
       : locale = initialLocale ?? const Locale('fr') {
     _authSub = backend.authChanges.listen(_onAuth);
     _recoverySub = backend.passwordRecovery.listen((_) {
@@ -62,6 +64,16 @@ class AppState extends ChangeNotifier {
 
   /// Notifications push quand l'app est fermée (Firebase), désactivées par défaut.
   final PushService push;
+
+  /// Position du téléphone pour l'Absence automatique (seulement si le membre l'active).
+  final LocationService location;
+  StreamSubscription<LatLon>? _presenceSub;
+
+  /// Ce téléphone partage-t-il la présence de son membre pour le logement courant ?
+  bool presenceSharing = false;
+
+  /// Dernier résultat : à la maison (true), parti (false), inconnu (null).
+  bool? presenceAtHome;
   final Duration commandTimeout;
 
   /// Bluetooth TTLock (app Android) ; indisponible sur le web.
@@ -325,6 +337,7 @@ class AppState extends ChangeNotifier {
     // La passerelle a besoin de la position pour la météo des automatisations.
     if (!h.hasLocation && h.myRole.canManage) unawaited(_shareHomeLocation(weatherPlace));
     await refreshHome();
+    unawaited(_resumePresence(h.id));
     unawaited(refreshWeather());
     unawaited(loadNotifications());
     _realtimeSub = backend.watchHome(h.id, onStatus: (connected) {
@@ -336,6 +349,9 @@ class AppState extends ChangeNotifier {
   }
 
   void _clearHome() {
+    _stopPresence();
+    presenceSharing = false;
+    presenceAtHome = null;
     _realtimeSub?.cancel();
     _realtimeSub = null;
     rooms = const [];
@@ -456,6 +472,72 @@ class AppState extends ChangeNotifier {
     } on BackendException {
       climate = ClimateData.empty; // base pas encore à jour
     }
+  }
+
+  // ------------------------------------------------------------------ Présence (Absence automatique)
+
+  void _stopPresence() {
+    _presenceSub?.cancel();
+    _presenceSub = null;
+  }
+
+  /// Reprend le partage choisi sur ce téléphone pour ce logement (au chargement du logement).
+  Future<void> _resumePresence(String homeId) async {
+    try {
+      presenceSharing = (await SharedPreferences.getInstance()).getBool('presence.$homeId') ?? false;
+    } catch (_) {
+      presenceSharing = false;
+    }
+    if (presenceSharing && climate.settings.geoEnabled) {
+      if (await location.requestPermission()) {
+        _startPresence();
+      } else {
+        presenceSharing = false;
+      }
+      notifyListeners();
+    }
+  }
+
+  void _startPresence() {
+    _stopPresence();
+    unawaited(location.current().then((p) => p == null ? null : _sendPresence(p)));
+    _presenceSub = location.watch().listen((p) => _sendPresence(p));
+  }
+
+  /// Envoyée à chaque déplacement d'au moins 150 m (filtré par [LocationService.watch]).
+  Future<void> _sendPresence(LatLon p) async {
+    final h = home;
+    if (h == null || !presenceSharing) return;
+    try {
+      presenceAtHome = await backend.reportPresence(h.id, p.$1, p.$2);
+      notifyListeners();
+    } on BackendException {
+      // Base pas encore à jour ou réseau : nouvel essai au prochain déplacement.
+    }
+  }
+
+  /// Active ou coupe le partage de présence de ce téléphone pour le logement courant.
+  /// false si la localisation est refusée.
+  Future<bool> setPresenceSharing(bool on) async {
+    final h = home;
+    if (h == null) return false;
+    if (on && !await location.requestPermission()) {
+      _notices.add(Notice(tr('climate.geo.denied'), isError: true));
+      return false;
+    }
+    presenceSharing = on;
+    try {
+      await (await SharedPreferences.getInstance()).setBool('presence.${h.id}', on);
+    } catch (_) {}
+    if (on) {
+      _startPresence();
+    } else {
+      _stopPresence();
+      presenceAtHome = null;
+      await run(() => backend.clearPresence(h.id));
+    }
+    notifyListeners();
+    return true;
   }
 
   Future<void> reloadClimate() async {
@@ -1003,6 +1085,7 @@ class AppState extends ChangeNotifier {
     _authSub.cancel();
     _recoverySub.cancel();
     _realtimeSub?.cancel();
+    _presenceSub?.cancel();
     _reloadDebounce?.cancel();
     _notices.close();
     super.dispose();
