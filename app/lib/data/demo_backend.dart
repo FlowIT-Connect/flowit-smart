@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:math';
 import 'dart:typed_data';
 
+import '../core/notifications.dart';
 import '../models/models.dart';
 import 'backend.dart';
 import 'demo_camera.dart';
@@ -51,6 +52,9 @@ class DemoBackend implements Backend {
   final _automations = <String, Map<String, dynamic>>{};
   final _integrations = <Map<String, dynamic>>[];
   final _logs = <Map<String, dynamic>>[];
+  final _notifications = <Map<String, dynamic>>[];
+  final _automationRuns = <Map<String, dynamic>>[];
+  int _notifSeq = 0;
   final _photos = <String, Uint8List>{};
   final _accessCodes = <Map<String, dynamic>>[];
   final _pairings = <String, Map<String, dynamic>>{};
@@ -76,7 +80,7 @@ class DemoBackend implements Backend {
   // ------------------------------------------------------------------ Données
   void _seed() {
     const homeId = '10000000-0000-4000-8000-000000000001';
-    _homes[homeId] = {'id': homeId, 'owner_id': _me, 'name': 'Maison démo', 'timezone': 'Africa/Algiers'};
+    _homes[homeId] = {'id': homeId, 'owner_id': _me, 'name': 'Maison démo', 'timezone': 'Africa/Algiers', 'latitude': 36.7538, 'longitude': 3.0588, 'location_name': 'Alger, Algérie'};
     _members.addAll([
       {'home_id': homeId, 'user_id': _me, 'role': 'owner', 'permissions': {}, 'profiles': {'display_name': 'Vous'}},
       {
@@ -306,6 +310,38 @@ class DemoBackend implements Backend {
       ],
       'run_locally': true,
     };
+    final auto3 = newUuid();
+    final windRun = DateTime.now().toUtc().subtract(const Duration(hours: 2, minutes: 1));
+    _automations[auto3] = {
+      'id': auto3,
+      'home_id': homeId,
+      'name': 'Vents forts : fermer les volets',
+      'enabled': true,
+      'priority': 'security',
+      'trigger': {'type': 'weather', 'metric': 'wind_speed', 'op': 'gt', 'value': 80, 'for_minutes': 2},
+      'conditions': [],
+      'exceptions': [],
+      'actions': [
+        {'device_id': volet, 'capability_key': 'cover_position', 'value': 0},
+      ],
+      'follow_up': {
+        'after_minutes': 30,
+        'restart_on_trigger': false,
+        'conditions': [
+          {'type': 'weather', 'metric': 'wind_speed', 'op': 'lt', 'value': 50},
+        ],
+        'actions': [
+          {'device_id': volet, 'capability_key': 'cover_position', 'value': 100},
+        ],
+      },
+      'run_locally': true,
+      'last_run_at': windRun.toIso8601String(),
+    };
+    _automationRuns.addAll([
+      {'id': 3, 'home_id': homeId, 'automation_id': auto3, 'name': 'Vents forts : fermer les volets', 'phase': 'follow_up', 'status': 'success', 'reason': 'PUIS', 'details': {'actions': 1, 'total': 1}, 'created_at': windRun.add(const Duration(minutes: 47)).toIso8601String()},
+      {'id': 2, 'home_id': homeId, 'automation_id': auto3, 'name': 'Vents forts : fermer les volets', 'phase': 'main', 'status': 'success', 'reason': 'weather:wind_speed', 'details': {'actions': 1, 'total': 1, 'weather': {'wind_speed': 86, 'wind_gust': 102}}, 'created_at': windRun.toIso8601String()},
+      {'id': 1, 'home_id': homeId, 'automation_id': auto3, 'name': 'Vents forts : fermer les volets', 'phase': 'main', 'status': 'skipped', 'reason': 'SAUF SI vérifié', 'details': {}, 'created_at': windRun.subtract(const Duration(days: 4)).toIso8601String()},
+    ]);
 
     _integrations.addAll([
       {'id': newUuid(), 'home_id': homeId, 'provider': 'home_assistant', 'status': 'connected', 'label': 'Home Assistant (démo)', 'last_sync_at': _now()},
@@ -315,6 +351,59 @@ class DemoBackend implements Backend {
 
     _log(homeId, 'device_unavailable', deviceId: ampoule, result: 'unavailable');
     _log(homeId, 'member_changed', result: 'insert', details: {'user_id': _amina, 'role': 'member'});
+    _seedNotifications(homeId, ampoule);
+  }
+
+  void _seedNotifications(String homeId, String ampoule) {
+    final now = DateTime.now().toUtc();
+    void add(String type, String body, Duration ago, {String? deviceId, bool read = false, Map<String, dynamic> data = const {}}) {
+      final k = NotificationKind.of(type);
+      _notifications.add({
+        'id': ++_notifSeq,
+        'home_id': homeId,
+        'user_id': _me,
+        'type': type,
+        'category': k.category,
+        'priority': k.priority,
+        'device_id': deviceId,
+        'title': type,
+        'body': body,
+        'data': data,
+        'read_at': read ? now.subtract(ago).add(const Duration(minutes: 1)).toIso8601String() : null,
+        'created_at': now.subtract(ago).toIso8601String(),
+      });
+    }
+
+    add('door_open', 'Porte d\'entrée · Entrée', const Duration(minutes: 4), data: {'device': 'Porte d\'entrée', 'room': 'Entrée'});
+    add('motion', 'Détecteur couloir · Couloir', const Duration(minutes: 12), data: {'device': 'Détecteur couloir', 'room': 'Couloir'});
+    add('high_wind', 'Vent 86 km/h · rafales 102 km/h', const Duration(hours: 2), data: {'wind': 86, 'gust': 102});
+    add('shutters_auto_closed', '3 volets fermés à cause du vent', const Duration(hours: 2, minutes: 1), read: true, data: {'count': 3});
+    add('device_offline', 'Ampoule bureau · Bureau', const Duration(hours: 5), deviceId: ampoule, read: true, data: {'device': 'Ampoule bureau', 'room': 'Bureau'});
+    add('automation_run', 'Bonne nuit', const Duration(hours: 14), read: true, data: {'automation': 'Bonne nuit'});
+    add('temperature_abnormal', 'Capteur chambre · 31.5 °C', const Duration(days: 1, hours: 3), read: true, data: {'temperature': 31.5});
+    add('water_leak', 'Capteur fuite · Salle de bain', const Duration(days: 3), read: true, data: {'device': 'Capteur fuite', 'room': 'Salle de bain'});
+    _notifications.sort((a, b) => (b['created_at'] as String).compareTo(a['created_at'] as String));
+  }
+
+  /// Ajoute une notification de démonstration (comme le ferait le serveur).
+  void demoNotify(String homeId, String type, String body, {Map<String, dynamic> data = const {}}) {
+    final k = NotificationKind.of(type);
+    final row = {
+      'id': ++_notifSeq,
+      'home_id': homeId,
+      'user_id': _me,
+      'type': type,
+      'category': k.category,
+      'priority': k.priority,
+      'device_id': null,
+      'title': type,
+      'body': body,
+      'data': data,
+      'read_at': null,
+      'created_at': _now(),
+    };
+    _notifications.insert(0, row);
+    _events.add(RealtimeEvent('notifications', 'INSERT', Map<String, dynamic>.from(row)));
   }
 
   void _log(String homeId, String type, {String? deviceId, String? requestId, String? result, Map<String, dynamic>? details}) {
@@ -402,6 +491,36 @@ class DemoBackend implements Backend {
   @override
   Future<void> updateLocale(String locale) async {}
 
+  Map<String, dynamic>? _preferences;
+
+  @override
+  Future<Map<String, dynamic>?> getPreferences() async {
+    await _wait();
+    return _preferences == null ? null : Map<String, dynamic>.from(_preferences!);
+  }
+
+  @override
+  Future<void> savePreferences(Map<String, dynamic> preferences) async {
+    await _wait();
+    _preferences = Map<String, dynamic>.from(preferences);
+  }
+
+  @override
+  Future<String> uploadBackground(Uint8List bytes, String contentType) async {
+    await _wait();
+    final ext = imageExtension(contentType);
+    if (ext == null) throw const BackendException('invalid', 'Format d\'image non pris en charge (JPEG, PNG ou WebP).');
+    final path = '$_me/bg-${DateTime.now().millisecondsSinceEpoch}.$ext';
+    _photos[path] = bytes;
+    return path;
+  }
+
+  @override
+  Future<Uint8List> downloadBackground(String path) => downloadDevicePhoto(path);
+
+  @override
+  Future<void> deleteBackground(String path) async => _photos.remove(path);
+
   // ------------------------------------------------------------------ Maisons
   @override
   Future<List<Home>> listHomes() async {
@@ -427,6 +546,13 @@ class DemoBackend implements Backend {
     _requireManager(homeId);
     _homes[homeId]!['name'] = name.trim();
     _log(homeId, 'config_changed', result: 'homes_update', details: {'name': name});
+  }
+
+  @override
+  Future<void> updateHomeLocation(String homeId, double latitude, double longitude, String? name) async {
+    await _wait();
+    _requireManager(homeId);
+    _homes[homeId]!.addAll({'latitude': latitude, 'longitude': longitude, 'location_name': name});
   }
 
   @override
@@ -539,7 +665,9 @@ class DemoBackend implements Backend {
     _rooms[room.id]!
       ..['name'] = room.name
       ..['icon'] = room.icon
-      ..['sort_order'] = room.sortOrder;
+      ..['sort_order'] = room.sortOrder
+      ..['image_key'] = room.imageKey
+      ..['image_fit'] = room.imageFit.toJson();
   }
 
   @override
@@ -1023,7 +1151,7 @@ class DemoBackend implements Backend {
   Future<Automation> saveAutomation(Automation a, {bool isNew = false}) async {
     await _wait();
     _requireManager(a.homeId);
-    _automations[a.id] = {...a.toJson(), 'id': a.id};
+    _automations[a.id] = {...a.toJson(includeAdvanced: true), 'id': a.id, 'last_run_at': _automations[a.id]?['last_run_at']};
     _log(a.homeId, 'config_changed', result: isNew ? 'automations_insert' : 'automations_update', details: {'name': a.name});
     return Automation.fromJson(_automations[a.id]!);
   }
@@ -1032,6 +1160,16 @@ class DemoBackend implements Backend {
   Future<void> deleteAutomation(String automationId) async {
     await _wait();
     _automations.remove(automationId);
+  }
+
+  @override
+  Future<List<AutomationRun>> listAutomationRuns(String homeId, {String? automationId, int limit = 50}) async {
+    await _wait();
+    return _automationRuns
+        .where((r) => r['home_id'] == homeId && (automationId == null || r['automation_id'] == automationId))
+        .take(limit)
+        .map(AutomationRun.fromJson)
+        .toList();
   }
 
   // ------------------------------------------------------------------ Intégrations
@@ -1061,6 +1199,35 @@ class DemoBackend implements Backend {
   Future<List<EventLog>> listEvents(String homeId, {int limit = 100}) async {
     await _wait();
     return _logs.where((l) => l['home_id'] == homeId).take(limit).map(EventLog.fromJson).toList();
+  }
+
+  // ------------------------------------------------------------------ Notifications
+  @override
+  Future<List<AppNotification>> listNotifications(String homeId, {int limit = 200}) async {
+    await _wait();
+    return _notifications.where((n) => n['home_id'] == homeId).take(limit).map(AppNotification.fromJson).toList();
+  }
+
+  @override
+  Future<void> markNotificationRead(int id) async {
+    await _wait();
+    for (final n in _notifications) {
+      if (n['id'] == id) n['read_at'] ??= _now();
+    }
+  }
+
+  @override
+  Future<void> markAllNotificationsRead(String homeId) async {
+    await _wait();
+    for (final n in _notifications) {
+      if (n['home_id'] == homeId) n['read_at'] ??= _now();
+    }
+  }
+
+  @override
+  Future<void> deleteNotification(int id) async {
+    await _wait();
+    _notifications.removeWhere((n) => n['id'] == id);
   }
 
   // ------------------------------------------------------------------ Caméras et photos
@@ -1222,6 +1389,35 @@ class DemoBackend implements Backend {
     d['photo_path'] = path;
     d['updated_at'] = _now();
     _events.add(RealtimeEvent('devices', 'UPDATE', Map<String, dynamic>.from(d)));
+  }
+
+  @override
+  Future<Uint8List> downloadRoomPhoto(String path) => downloadDevicePhoto(path);
+
+  @override
+  Future<String> setRoomPhoto(Room room, Uint8List bytes, String contentType) async {
+    await _wait();
+    _requireManager(room.homeId);
+    final ext = imageExtension(contentType);
+    if (ext == null) throw const BackendException('invalid', 'Format d\'image non pris en charge (JPEG, PNG ou WebP).');
+    final path = '${room.homeId}/${room.id}-${DateTime.now().millisecondsSinceEpoch}.$ext';
+    _photos[path] = bytes;
+    _setRoomPhoto(room.id, path);
+    return path;
+  }
+
+  @override
+  Future<void> clearRoomPhoto(Room room) async {
+    await _wait();
+    _requireManager(room.homeId);
+    _setRoomPhoto(room.id, null);
+  }
+
+  void _setRoomPhoto(String roomId, String? path) {
+    final r = _rooms[roomId]!;
+    final old = r['photo_path'] as String?;
+    if (old != null) _photos.remove(old);
+    r['photo_path'] = path;
   }
 
   // ------------------------------------------------------------------ Temps réel

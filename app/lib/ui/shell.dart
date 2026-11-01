@@ -6,6 +6,7 @@ import '../state/app_state.dart';
 import 'screens/automations_screen.dart';
 import 'screens/dashboard_screen.dart';
 import 'screens/devices_screen.dart';
+import 'screens/notifications_screen.dart';
 import 'screens/onboarding_screen.dart';
 import 'screens/rooms_screen.dart';
 import 'screens/scenes_screen.dart';
@@ -76,6 +77,7 @@ class _ShellState extends State<Shell> {
               Text(context.tr(_labels[_index]), style: Theme.of(context).textTheme.headlineSmall),
             ]),
       actions: [
+        const Padding(padding: EdgeInsetsDirectional.only(end: 4), child: NotificationBell()),
         if (state.backend.isDemo)
           Padding(
             padding: const EdgeInsetsDirectional.only(end: 16),

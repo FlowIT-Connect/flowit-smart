@@ -24,7 +24,12 @@ export class SupabaseStore {
   }
 
   async getHome(id) {
-    return check(await this.db.from('homes').select('id, timezone').eq('id', id).maybeSingle());
+    const res = await this.db.from('homes').select('id, timezone, latitude, longitude').eq('id', id).maybeSingle();
+    // Base pas encore à jour (pas de position) : la passerelle démarre quand même, sans météo.
+    if (res.error && /latitude|longitude|column/i.test(res.error.message ?? '')) {
+      return check(await this.db.from('homes').select('id, timezone').eq('id', id).maybeSingle());
+    }
+    return check(res);
   }
 
   async setIntegrationStatus(id, status, lastError, lastSyncAt) {
@@ -331,5 +336,18 @@ export class SupabaseStore {
 
   async logEvent(row) {
     check(await this.db.from('event_logs').insert(row));
+  }
+
+  async insertAutomationRun(row) {
+    check(await this.db.from('automation_runs').insert(row));
+  }
+
+  async insertWeatherReading(row) {
+    check(await this.db.from('weather_readings').insert(row));
+  }
+
+  /** Notification à tous les membres du logement (vents forts, volets fermés…). */
+  async notifyHome(homeId, type, body, data = {}, ref = null) {
+    check(await this.db.rpc('notify_home', { p_home_id: homeId, p_type: type, p_body: body, p_data: data, p_ref: ref }));
   }
 }

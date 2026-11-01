@@ -1,7 +1,17 @@
 // Cœur de la passerelle : synchronisation de l'inventaire, exécution des commandes
 // (pending → sent → confirmed | failed | timeout | rejected) et automatisations locales.
 
-import { conditionsHold, localTime, stateTriggerFired, timeTriggerDue } from './automations.js';
+import {
+  closedCovers,
+  conditionsHold,
+  exceptionHolds,
+  localTime,
+  stateTriggerFired,
+  sunTriggerDue,
+  timeTriggerDue,
+  weatherTriggerHolds,
+} from './automations.js';
+import { fetchWeather } from './weather.js';
 import { CameraStreamer } from './cameras.js';
 import { log } from './log.js';
 import { validateValue } from './validate.js';
@@ -20,8 +30,9 @@ export class Bridge {
   /**
    * @param {{store:any, adapter:any, config:any, clock?:()=>Date}} deps
    */
-  constructor({ store, adapter, config, clock = () => new Date() }) {
+  constructor({ store, adapter, config, clock = () => new Date(), weatherFetcher = fetchWeather }) {
     this.store = store;
+    this.weatherFetcher = weatherFetcher;
     this.adapter = adapter;
     this.config = config;
     this.clock = clock;
@@ -36,6 +47,16 @@ export class Bridge {
     this.automations = [];
     this.firedTimeKeys = new Map();
     this.lastAutomationRun = new Map();
+    /** Météo du logement (null : pas de position ou pas encore lue). */
+    this.weather = null;
+    /** Déclencheurs météo : depuis quand le seuil est dépassé, et déjà exécutés. */
+    this.weatherSince = new Map();
+    this.weatherFired = new Set();
+    this.weatherConfirm = null;
+    /** « PUIS » en attente : automationId -> { timer, deadline }. */
+    this.followUps = new Map();
+    /** Exécutions récentes par automatisation (coupe-circuit anti-boucle). */
+    this.recentRuns = new Map();
     this.inflightDevices = new Set();
     this.inflightRuns = new Set();
     this.running = new Set();
@@ -89,7 +110,14 @@ export class Bridge {
       every(this.config.automationRefreshMs, () => this.refreshAutomations());
       // Boîtier vidéo à côté d'une autre passerelle : seuls les déclencheurs de SES appareils
       // (mouvement d'une caméra…) tournent ici ; les déclencheurs horaires restent à l'autre.
-      if (this.config.runTimeTriggers !== false) every(10_000, () => this.tickTimeTriggers());
+      if (this.config.runTimeTriggers !== false) {
+        every(10_000, () => this.tickTimeTriggers());
+        // Météo lue par la passerelle elle-même : les règles tournent même téléphone éteint.
+        if (this.config.weather !== false) {
+          await this.refreshWeather().catch((e) => log.warn('weather.failed', { error: e.message }));
+          every(this.config.weatherIntervalMs ?? 300_000, () => this.refreshWeather());
+        }
+      }
     }
     if (this.store.subscribeCameraWatch) {
       this.cameras = new CameraStreamer({
@@ -107,6 +135,9 @@ export class Bridge {
   async stop() {
     this.stopped = true;
     for (const t of this.timers) clearInterval(t);
+    for (const f of this.followUps.values()) clearTimeout(f.timer);
+    this.followUps.clear();
+    clearTimeout(this.weatherConfirm);
     this.unsubscribe?.();
     await this.cameras?.stop();
     this.adapter.stop();
@@ -416,17 +447,83 @@ export class Bridge {
 
   // ------------------------------------------------------------------ Automatisations (exécution locale, §5.9)
   async refreshAutomations() {
-    this.automations = await this.store.listAutomations(this.homeId);
+    const list = await this.store.listAutomations(this.homeId);
+    // Règles de sécurité d'abord (vent fort, fuite…).
+    this.automations = [...list].sort((a, b) => (b.priority === 'security') - (a.priority === 'security'));
     const integ = await this.store.getIntegration(this.config.integrationId);
     this.enabled = integ?.status !== 'disabled';
+  }
+
+  #ctx() {
+    return { weather: this.weather, date: this.clock(), modes: this.modes ?? [] };
   }
 
   async tickTimeTriggers() {
     const now = localTime(this.clock(), this.timezone);
     for (const a of this.automations) {
-      if (!timeTriggerDue(a.trigger, now) || this.firedTimeKeys.get(a.id) === now.key) continue;
+      const due = timeTriggerDue(a.trigger, now) || sunTriggerDue(a.trigger, now, this.weather, this.timezone);
+      if (!due || this.firedTimeKeys.get(a.id) === now.key) continue;
       this.firedTimeKeys.set(a.id, now.key);
-      await this.runAutomation(a, now, `time:${now.key}`);
+      await this.runAutomation(a, now, `${a.trigger.type}:${now.key}`);
+    }
+  }
+
+  // ------------------------------------------------------------------ Météo
+  async refreshWeather() {
+    const home = await this.store.getHome(this.homeId);
+    const lat = home?.latitude == null ? null : Number(home.latitude);
+    const lon = home?.longitude == null ? null : Number(home.longitude);
+    if (!Number.isFinite(lat) || !Number.isFinite(lon)) return null; // position pas encore choisie dans l'app
+    const w = await this.weatherFetcher({ latitude: lat, longitude: lon, apiKey: this.config.weatherApiKey ?? null });
+    this.weather = w;
+    try {
+      await this.store.insertWeatherReading({
+        home_id: this.homeId,
+        observed_at: (w.observed_at ?? this.clock()).toISOString(),
+        wind_speed: w.wind_speed,
+        wind_gust: w.wind_gust,
+        precipitation: w.precipitation,
+        temperature: w.temperature,
+        is_day: w.is_day,
+        sunrise: w.sunrise?.toISOString() ?? null,
+        sunset: w.sunset?.toISOString() ?? null,
+        source: w.source ?? 'open-meteo',
+      });
+    } catch (e) {
+      log.warn('weather.store_failed', { error: e.message }); // base pas encore à jour
+    }
+    await this.evaluateWeatherTriggers();
+    return w;
+  }
+
+  /** Seuil dépassé pendant `for_minutes` (délai de confirmation) → une exécution, réarmée quand ça retombe. */
+  async evaluateWeatherTriggers() {
+    const nowMs = this.clock().getTime();
+    const now = localTime(this.clock(), this.timezone);
+    for (const a of this.automations) {
+      if (a.trigger?.type !== 'weather') continue;
+      if (!weatherTriggerHolds(a.trigger, this.weather)) {
+        this.weatherSince.delete(a.id);
+        this.weatherFired.delete(a.id);
+        continue;
+      }
+      if (this.weatherFired.has(a.id)) continue;
+      const waitMs = Math.max(0, Number(a.trigger.for_minutes) || 0) * 60_000;
+      if (!this.weatherSince.has(a.id)) {
+        this.weatherSince.set(a.id, nowMs);
+        if (waitMs > 0) {
+          // Nouvelle lecture à la fin du délai pour confirmer.
+          clearTimeout(this.weatherConfirm);
+          this.weatherConfirm = setTimeout(
+            () => this.refreshWeather().catch((e) => log.warn('weather.failed', { error: e.message })),
+            waitMs + 1_000,
+          );
+          continue;
+        }
+      }
+      if (nowMs - this.weatherSince.get(a.id) < waitMs) continue;
+      this.weatherFired.add(a.id);
+      await this.runAutomation(a, now, `weather:${a.trigger.metric}:${nowMs}`);
     }
   }
 
@@ -439,21 +536,9 @@ export class Bridge {
     }
   }
 
-  async runAutomation(a, now, reason) {
-    // Anti-boucle : une exécution au plus toutes les 10 s par automatisation.
-    const last = this.lastAutomationRun.get(a.id) ?? 0;
-    if (this.clock().getTime() - last < 10_000) {
-      log.warn('automation.throttled', { automation_id: a.id });
-      return;
-    }
-    const states = await this.store.listDeviceStates(this.homeId);
-    if (!conditionsHold(a.conditions, states, now)) {
-      log.debug('automation.conditions_false', { automation_id: a.id });
-      return;
-    }
-    this.lastAutomationRun.set(a.id, this.clock().getTime());
+  async #issue(a, actions, keyPrefix) {
     let issued = 0;
-    for (const [i, act] of (a.actions ?? []).entries()) {
+    for (const [i, act] of (actions ?? []).entries()) {
       try {
         if (act.scene_id) {
           await this.store.executeScene(act.scene_id, a.id);
@@ -463,7 +548,7 @@ export class Bridge {
             device_id: act.device_id,
             capability_key: act.capability_key,
             value: act.value,
-            idempotency_key: `auto:${a.id}:${reason}:${i}`,
+            idempotency_key: `${keyPrefix}:${i}`,
             automation_id: a.id,
           });
         }
@@ -472,9 +557,117 @@ export class Bridge {
         log.error('automation.action_failed', { automation_id: a.id, error: e.message });
       }
     }
+    return issued;
+  }
+
+  async #recordRun(a, phase, status, reason, details = {}) {
+    try {
+      await this.store.insertAutomationRun({ home_id: this.homeId, automation_id: a.id, name: a.name ?? '', phase, status, reason: String(reason).slice(0, 200), details });
+    } catch (e) {
+      log.warn('automation.history_failed', { error: e.message }); // base pas encore à jour
+    }
+  }
+
+  async #notify(type, body, data, ref) {
+    try {
+      await this.store.notifyHome(this.homeId, type, body, data, ref);
+    } catch (e) {
+      log.warn('notify.failed', { type, error: e.message });
+    }
+  }
+
+  async runAutomation(a, now, reason) {
+    // Anti-boucle : une exécution au plus toutes les 10 s par automatisation…
+    const nowMs = this.clock().getTime();
+    const last = this.lastAutomationRun.get(a.id) ?? 0;
+    if (nowMs - last < 10_000) {
+      log.warn('automation.throttled', { automation_id: a.id });
+      return;
+    }
+    // … et 30 par heure au plus (deux règles qui se relancent l'une l'autre).
+    const recent = (this.recentRuns.get(a.id) ?? []).filter((t) => nowMs - t < 3_600_000);
+    if (recent.length >= 30) {
+      log.warn('automation.loop_blocked', { automation_id: a.id });
+      if (recent.length === 30) await this.#recordRun(a, 'main', 'skipped', 'Boucle détectée : 30 exécutions en une heure');
+      recent.push(nowMs);
+      this.recentRuns.set(a.id, recent);
+      return;
+    }
+    const states = await this.store.listDeviceStates(this.homeId);
+    const ctx = this.#ctx();
+    if (!conditionsHold(a.conditions, states, now, ctx)) {
+      log.debug('automation.conditions_false', { automation_id: a.id });
+      return;
+    }
+    if (exceptionHolds(a.exceptions, states, now, ctx)) {
+      log.info('automation.exception', { automation_id: a.id });
+      await this.#recordRun(a, 'main', 'skipped', 'SAUF SI vérifié', { trigger: reason });
+      return;
+    }
+    this.lastAutomationRun.set(a.id, nowMs);
+    recent.push(nowMs);
+    this.recentRuns.set(a.id, recent);
+    const actions = a.actions ?? [];
+    const issued = await this.#issue(a, actions, `auto:${a.id}:${reason}`);
     await this.store.markAutomationRun(a.id, this.clock().toISOString());
     await this.store.logEvent({ home_id: this.homeId, event_type: 'automation_run', result: issued ? 'success' : 'failed', details: { automation_id: a.id, name: a.name, actions: issued } });
+    const status = issued === actions.length ? 'success' : issued ? 'partial' : 'failed';
+    const weather = a.trigger?.type === 'weather' && this.weather
+      ? { wind_speed: this.weather.wind_speed, wind_gust: this.weather.wind_gust, temperature: this.weather.temperature, precipitation: this.weather.precipitation }
+      : undefined;
+    await this.#recordRun(a, 'main', status, reason, { actions: issued, total: actions.length, ...(weather ? { weather } : {}) });
+    if (a.trigger?.type === 'weather' && ['wind_speed', 'wind_gust'].includes(a.trigger.metric) && weather) {
+      const wind = Math.round(weather.wind_speed ?? 0);
+      const gust = weather.wind_gust == null ? null : Math.round(weather.wind_gust);
+      await this.#notify('high_wind', `Vent ${wind} km/h${gust == null ? '' : ` · rafales ${gust} km/h`}`, { wind, ...(gust == null ? {} : { gust }) }, a.id);
+    }
+    const covers = closedCovers(actions);
+    if (covers && issued) await this.#notify('shutters_auto_closed', `${covers} volet(s) fermé(s) : ${a.name ?? ''}`, { count: covers, automation: a.name ?? '' }, a.id);
     log.info('automation.run', { automation_id: a.id, reason, actions: issued });
+    this.#scheduleFollowUp(a);
+    await this.processQueue();
+  }
+
+  // ------------------------------------------------------------------ « PUIS » (actions différées)
+  #scheduleFollowUp(a) {
+    const f = a.follow_up;
+    if (!f || !Array.isArray(f.actions) || !f.actions.length) return;
+    const existing = this.followUps.get(a.id);
+    if (existing) {
+      if (f.restart_on_trigger === false) return; // garde le premier délai
+      clearTimeout(existing.timer);
+    }
+    const delayMs = Math.max(0, Number(f.after_minutes) || 0) * 60_000;
+    const deadline = this.clock().getTime() + delayMs + 24 * 3_600_000;
+    const entry = { deadline, timer: null };
+    entry.timer = setTimeout(() => this.runFollowUp(a.id).catch((e) => log.error('automation.follow_up_failed', { error: e.message })), delayMs);
+    this.followUps.set(a.id, entry);
+  }
+
+  /** Exécute le « PUIS » si ses conditions sont vraies ; sinon réessaie chaque minute (24 h au plus). */
+  async runFollowUp(automationId) {
+    const entry = this.followUps.get(automationId);
+    const a = this.automations.find((x) => x.id === automationId);
+    if (!entry || !a?.follow_up || this.stopped) {
+      this.followUps.delete(automationId);
+      return;
+    }
+    const now = localTime(this.clock(), this.timezone);
+    const states = await this.store.listDeviceStates(this.homeId);
+    if (!conditionsHold(a.follow_up.conditions, states, now, this.#ctx())) {
+      if (this.clock().getTime() >= entry.deadline) {
+        this.followUps.delete(automationId);
+        await this.#recordRun(a, 'follow_up', 'skipped', 'Conditions du PUIS jamais réunies en 24 h');
+        return;
+      }
+      entry.timer = setTimeout(() => this.runFollowUp(automationId).catch((e) => log.error('automation.follow_up_failed', { error: e.message })), this.config.followUpRetryMs ?? 60_000);
+      return;
+    }
+    this.followUps.delete(automationId);
+    const actions = a.follow_up.actions;
+    const issued = await this.#issue(a, actions, `follow:${a.id}:${this.clock().getTime()}`);
+    await this.#recordRun(a, 'follow_up', issued === actions.length ? 'success' : issued ? 'partial' : 'failed', 'PUIS', { actions: issued, total: actions.length });
+    log.info('automation.follow_up', { automation_id: a.id, actions: issued });
     await this.processQueue();
   }
 }

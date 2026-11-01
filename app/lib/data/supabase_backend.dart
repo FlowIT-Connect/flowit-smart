@@ -3,6 +3,7 @@ import 'dart:typed_data';
 
 import 'package:supabase_flutter/supabase_flutter.dart';
 
+import '../core/notifications.dart';
 import '../models/models.dart';
 import 'backend.dart';
 
@@ -118,6 +119,42 @@ class SupabaseBackend implements Backend {
   Future<void> updateLocale(String locale) =>
       _guard(() => _client.from('profiles').update({'locale': locale}).eq('id', _uid));
 
+  @override
+  Future<Map<String, dynamic>?> getPreferences() => _guard(() async {
+        final row = await _client.from('profiles').select('preferences').eq('id', _uid).maybeSingle();
+        final p = row?['preferences'];
+        return p is Map ? Map<String, dynamic>.from(p) : null;
+      });
+
+  @override
+  Future<void> savePreferences(Map<String, dynamic> preferences) =>
+      _guard(() => _client.from('profiles').update({'preferences': preferences}).eq('id', _uid));
+
+  @override
+  Future<String> uploadBackground(Uint8List bytes, String contentType) => _guard(() async {
+        final ext = imageExtension(contentType);
+        if (ext == null) throw const BackendException('invalid', 'Format d\'image non pris en charge (JPEG, PNG ou WebP).');
+        final path = '$_uid/bg-${DateTime.now().millisecondsSinceEpoch}.$ext';
+        await _client.storage.from('backgrounds').uploadBinary(
+              path,
+              bytes,
+              fileOptions: FileOptions(contentType: contentType, cacheControl: '31536000'),
+            );
+        return path;
+      });
+
+  @override
+  Future<Uint8List> downloadBackground(String path) => _guard(() => _client.storage.from('backgrounds').download(path));
+
+  @override
+  Future<void> deleteBackground(String path) async {
+    try {
+      await _client.storage.from('backgrounds').remove([path]);
+    } catch (_) {
+      // Ancienne photo orpheline : sans conséquence.
+    }
+  }
+
   // ---------------------------------------------------------------- Maisons
   @override
   Future<List<Home>> listHomes() => _guard(() async {
@@ -139,6 +176,12 @@ class SupabaseBackend implements Backend {
   @override
   Future<void> renameHome(String homeId, String name) =>
       _guard(() => _client.from('homes').update({'name': name.trim()}).eq('id', homeId));
+
+  @override
+  Future<void> updateHomeLocation(String homeId, double latitude, double longitude, String? name) => _guard(() => _client
+      .from('homes')
+      .update({'latitude': double.parse(latitude.toStringAsFixed(5)), 'longitude': double.parse(longitude.toStringAsFixed(5)), 'location_name': name})
+      .eq('id', homeId));
 
   @override
   Future<void> deleteHome(String homeId) => _guard(() => _client.from('homes').delete().eq('id', homeId));
@@ -232,7 +275,13 @@ class SupabaseBackend implements Backend {
   @override
   Future<void> updateRoom(Room room) => _guard(() => _client
       .from('rooms')
-      .update({'name': room.name, 'icon': room.icon, 'sort_order': room.sortOrder}).eq('id', room.id));
+      .update({
+        'name': room.name,
+        'icon': room.icon,
+        'sort_order': room.sortOrder,
+        'image_key': room.imageKey,
+        'image_fit': room.imageFit.toJson(),
+      }).eq('id', room.id));
 
   @override
   Future<void> deleteRoom(String roomId) => _guard(() => _client.from('rooms').delete().eq('id', roomId));
@@ -431,14 +480,26 @@ class SupabaseBackend implements Backend {
 
   @override
   Future<Automation> saveAutomation(Automation a, {bool isNew = false}) => _guard(() async {
-        final data = a.toJson();
-        final Map<String, dynamic> row;
-        if (isNew) {
-          row = await _client.from('automations').insert({...data, 'id': a.id, 'created_by': _uid}).select().single();
-        } else {
-          row = await _client.from('automations').update(data).eq('id', a.id).select().single();
+        Future<Map<String, dynamic>> write(Map<String, dynamic> data) => isNew
+            ? _client.from('automations').insert({...data, 'id': a.id, 'created_by': _uid}).select().single()
+            : _client.from('automations').update(data).eq('id', a.id).select().single();
+        Map<String, dynamic> row;
+        try {
+          row = await write(a.toJson(includeAdvanced: true));
+        } on PostgrestException catch (e) {
+          // Base pas encore à jour (colonnes SAUF SI / PUIS absentes) : automatisation simple.
+          if (e.code != 'PGRST204' && e.code != '42703') rethrow;
+          row = await write(a.toJson());
         }
         return Automation.fromJson(row);
+      });
+
+  @override
+  Future<List<AutomationRun>> listAutomationRuns(String homeId, {String? automationId, int limit = 50}) => _guard(() async {
+        var q = _client.from('automation_runs').select().eq('home_id', homeId);
+        if (automationId != null) q = q.eq('automation_id', automationId);
+        final rows = await q.order('created_at', ascending: false).limit(limit);
+        return rows.map(AutomationRun.fromJson).toList();
       });
 
   @override
@@ -472,6 +533,29 @@ class SupabaseBackend implements Backend {
             .limit(limit);
         return rows.map(EventLog.fromJson).toList();
       });
+
+  // ---------------------------------------------------------------- Notifications
+  @override
+  Future<List<AppNotification>> listNotifications(String homeId, {int limit = 200}) => _guard(() async {
+        final rows = await _client
+            .from('notifications')
+            .select()
+            .eq('home_id', homeId)
+            .order('created_at', ascending: false)
+            .limit(limit);
+        return rows.map(AppNotification.fromJson).toList();
+      });
+
+  @override
+  Future<void> markNotificationRead(int id) => _guard(() =>
+      _client.from('notifications').update({'read_at': DateTime.now().toUtc().toIso8601String()}).eq('id', id).isFilter('read_at', null));
+
+  @override
+  Future<void> markAllNotificationsRead(String homeId) =>
+      _guard(() => _client.rpc('mark_notifications_read', params: {'p_home_id': homeId}));
+
+  @override
+  Future<void> deleteNotification(int id) => _guard(() => _client.from('notifications').delete().eq('id', id));
 
   // ---------------------------------------------------------------- Caméras et photos
   /// Un seul canal temps réel « `camera:<maison>` » partagé par toutes les vues ouvertes
@@ -633,10 +717,34 @@ class SupabaseBackend implements Backend {
         await _removePhoto(device.photoPath);
       });
 
-  Future<void> _removePhoto(String? path) async {
+  @override
+  Future<Uint8List> downloadRoomPhoto(String path) => _guard(() => _client.storage.from('room-photos').download(path));
+
+  @override
+  Future<String> setRoomPhoto(Room room, Uint8List bytes, String contentType) => _guard(() async {
+        final ext = imageExtension(contentType);
+        if (ext == null) throw const BackendException('invalid', 'Format d\'image non pris en charge (JPEG, PNG ou WebP).');
+        final path = '${room.homeId}/${room.id}-${DateTime.now().millisecondsSinceEpoch}.$ext';
+        await _client.storage.from('room-photos').uploadBinary(
+              path,
+              bytes,
+              fileOptions: FileOptions(contentType: contentType, cacheControl: '31536000'),
+            );
+        await _client.from('rooms').update({'photo_path': path}).eq('id', room.id);
+        await _removePhoto(room.photoPath, bucket: 'room-photos');
+        return path;
+      });
+
+  @override
+  Future<void> clearRoomPhoto(Room room) => _guard(() async {
+        await _client.from('rooms').update({'photo_path': null}).eq('id', room.id);
+        await _removePhoto(room.photoPath, bucket: 'room-photos');
+      });
+
+  Future<void> _removePhoto(String? path, {String bucket = 'device-photos'}) async {
     if (path == null) return;
     try {
-      await _client.storage.from('device-photos').remove([path]);
+      await _client.storage.from(bucket).remove([path]);
     } catch (_) {
       // Ancienne photo orpheline : sans conséquence pour l'affichage.
     }
@@ -655,7 +763,8 @@ class SupabaseBackend implements Backend {
 
     final byHome = PostgresChangeFilter(type: PostgresChangeFilterType.eq, column: 'home_id', value: homeId);
     channel = _client.channel('home:$homeId');
-    for (final table in ['devices', 'device_commands', 'scene_runs']) {
+    // notifications : la RLS ne transmet que celles de l'utilisateur connecté.
+    for (final table in ['devices', 'device_commands', 'scene_runs', 'notifications']) {
       channel.onPostgresChanges(
         event: PostgresChangeEvent.all,
         schema: 'public',
