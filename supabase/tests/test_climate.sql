@@ -87,3 +87,28 @@ select pg_temp.check((select preheat and preheat_max = 120 from public.climate_s
 update public.climate_settings set preheat = false, preheat_max = 60 where home_id = 'ca000000-0000-0000-0000-000000000001';
 select pg_temp.check((select not preheat and preheat_max = 60 from public.climate_settings where home_id = 'ca000000-0000-0000-0000-000000000001'), 'préchauffage réglé');
 select pg_temp.check(pg_temp.fails($$update public.climate_settings set preheat_max = 600$$), 'avance hors limites refusée');
+
+-- Préchauffage qui apprend (migration 20261113000000_solea_climate_learning.sql)
+update public.climate_zones set heat_rate = 11.4 where room_id = 'ca200000-0000-0000-0000-000000000001';
+select pg_temp.check((select heat_rate = 11.4 and cool_rate is null from public.climate_zones where room_id = 'ca200000-0000-0000-0000-000000000001'), 'vitesse de chauffe enregistrée');
+select pg_temp.check(pg_temp.fails($$update public.climate_zones set cool_rate = 500$$), 'vitesse hors limites refusée');
+
+-- Absence automatique par géolocalisation (migration 20261114000000_solea_presence.sql)
+reset role;
+select pg_temp.as_user('00000000-0000-0000-0000-0000000000cb');
+select pg_temp.check(pg_temp.fails($$select public.report_presence('ca000000-0000-0000-0000-000000000001', 36.75, 3.06)$$), 'position du logement requise');
+reset role;
+update public.homes set latitude = 36.75, longitude = 3.06 where id = 'ca000000-0000-0000-0000-000000000001';
+select pg_temp.as_user('00000000-0000-0000-0000-0000000000cb');
+select pg_temp.check(public.report_presence('ca000000-0000-0000-0000-000000000001', 36.751, 3.0605), 'membre à 120 m : à la maison');
+select pg_temp.check((select at_home and distance_m between 100 and 150 from public.member_presence), 'présence enregistrée sans la position');
+select pg_temp.check(not public.report_presence('ca000000-0000-0000-0000-000000000001', 36.80, 3.06), 'membre à 5,5 km : parti');
+select pg_temp.check((select not at_home and distance_m between 5500 and 5600 from public.member_presence), 'départ enregistré');
+select pg_temp.check(pg_temp.fails($$insert into public.member_presence (home_id, user_id, at_home, distance_m) values ('ca000000-0000-0000-0000-000000000001', '00000000-0000-0000-0000-0000000000cb', true, 0)$$), 'écriture directe refusée');
+select pg_temp.check(pg_temp.fails($$select public.report_presence('ca000000-0000-0000-0000-000000000001', 120, 3)$$), 'position invalide refusée');
+delete from public.member_presence;
+select pg_temp.check((select count(*) = 0 from public.member_presence), 'arrêt du partage');
+select pg_temp.as_user('00000000-0000-0000-0000-0000000000cc');
+select pg_temp.check(pg_temp.fails($$select public.report_presence('ca000000-0000-0000-0000-000000000001', 36.75, 3.06)$$), 'étranger : présence refusée');
+reset role;
+select pg_temp.check(pg_temp.fails($$update public.climate_settings set geo_radius = 20$$), 'rayon hors limites refusé');

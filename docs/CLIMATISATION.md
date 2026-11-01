@@ -92,9 +92,26 @@ Base : migration `20261111000000_solea_climate_windows.sql` (colonnes `windows`,
   le prochain changement d'ambiance (programme, fin d'une Absence, retour annoncé). S'il demande plus de chaud
   (ou plus de frais en clim) et que la pièce mettra au moins ce temps à y arriver, elle l'applique dès maintenant
   (la pièce affiche « préchauffage pour l'heure prévue »). Une fois commencé, le préchauffage continue jusqu'à l'heure prévue.
-- Temps de montée estimé : 15 min par degré en chauffage, 10 en clim, d'après la température mesurée dans la pièce ;
+- Temps de montée : 15 min par degré en chauffage, 10 en clim au départ, puis **appris pour chaque pièce** :
+  à chaque montée d'au moins 1 °C jusqu'à la consigne, la passerelle mesure les minutes par degré (hors marge météo)
+  et les lisse (30 % pour la nouvelle mesure). L'écran de la pièce affiche la vitesse apprise ;
   **météo** : +25 % sous 8 °C dehors, +50 % sous 0 °C (en clim : au-dessus de 32 et 38 °C).
 - Pas de préchauffage vers une ambiance plus fraîche (Nuit), ni sans température mesurée dans la pièce.
 - Géolocalisation (départ et retour détectés par le téléphone) : prévue plus tard, en option.
 
-Base : migration `20261112000000_solea_climate_smart.sql` (colonnes `preheat`, `preheat_max` de `climate_settings`).
+Base : migrations `20261112000000_solea_climate_smart.sql` (colonnes `preheat`, `preheat_max` de `climate_settings`)
+et `20261113000000_solea_climate_learning.sql` (`heat_rate`, `cool_rate` de `climate_zones`).
+
+## Absence automatique (géolocalisation, optionnelle)
+
+- Le gestionnaire l'active dans **Chauffage et clim → Températures intelligentes** (il faut la position du logement)
+  et choisit le rayon « à la maison » (200 m, 500 m, 1 km ou 2 km ; 300 m par défaut).
+- Chaque membre décide sur son téléphone : **Partager ma présence depuis ce téléphone**. Le téléphone envoie sa position
+  approximative ; le serveur (`report_presence`) ne garde que « à la maison » ou « parti » et la distance arrondie à 50 m,
+  **jamais la position**. Couper le partage efface la ligne.
+- Tous les membres qui partagent sont partis depuis 10 minutes : la passerelle met la maison en **Absence** (sauf si une
+  ambiance a été choisie à la main) et prévient. Dès que l'un d'eux revient : retour au programme (avec le préchauffage).
+- Limite actuelle : la position est envoyée quand Solea est ouverte (ou tourne encore en arrière-plan). Le suivi
+  application fermée demandera une autorisation « toujours » et sera ajouté plus tard.
+
+Base : migration `20261114000000_solea_presence.sql` (`geo_enabled`, `geo_radius`, `geo_away`, table `member_presence`, fonction `report_presence`).

@@ -518,6 +518,14 @@ class SupabaseBackend implements Backend {
   Future<void> deleteClimateZone(String zoneId) => _guard(() => _client.from('climate_zones').delete().eq('id', zoneId));
 
   @override
+  Future<bool> reportPresence(String homeId, double latitude, double longitude) => _guard(() async =>
+      await _client.rpc('report_presence', params: {'p_home_id': homeId, 'p_lat': latitude, 'p_lon': longitude}) == true);
+
+  @override
+  Future<void> clearPresence(String homeId) =>
+      _guard(() => _client.from('member_presence').delete().eq('home_id', homeId).eq('user_id', _client.auth.currentUser!.id));
+
+  @override
   Future<void> setClimatePreset(String homeId, String? roomId, String? preset, DateTime? until) => _guard(() => _client.rpc('set_climate_preset', params: {
         'p_home_id': homeId,
         'p_room_id': roomId,

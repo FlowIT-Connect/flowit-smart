@@ -355,6 +355,16 @@ export class SupabaseStore {
     return { settings: settings.data, zones: zones.data ?? [] };
   }
 
+  /** Présence des membres qui la partagent (Absence automatique), vide si la table manque. */
+  async getPresence(homeId) {
+    const { data, error } = await this.db.from('member_presence').select('user_id, at_home, since, updated_at').eq('home_id', homeId);
+    return error ? [] : data ?? [];
+  }
+
+  async updateClimateSettings(homeId, patch) {
+    check(await this.db.from('climate_settings').update(patch).eq('home_id', homeId));
+  }
+
   async updateClimateZone(id, patch) {
     check(await this.db.from('climate_zones').update(patch).eq('id', id));
   }

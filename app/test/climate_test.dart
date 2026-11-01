@@ -1,9 +1,25 @@
+import 'dart:async';
+
 import 'package:flowit_smart/core/climate.dart';
+import 'package:flowit_smart/core/location.dart';
 import 'package:flowit_smart/ui/screens/climate_screen.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'widget_test.dart' show pumpApp, signIn;
+
+class FakeLocation implements LocationService {
+  FakeLocation(this.position);
+  LatLon position;
+  bool allowed = true;
+  final moves = StreamController<LatLon>.broadcast();
+  @override
+  Future<bool> requestPermission() async => allowed;
+  @override
+  Future<LatLon?> current() async => position;
+  @override
+  Stream<LatLon> watch() => moves.stream;
+}
 
 void main() {
   group('ambiances', () {
@@ -45,6 +61,11 @@ void main() {
       expect(next.toJson()['window_delay'], 1);
       expect(next.toJson().containsKey('active_window'), isFalse, reason: 'écrit par la passerelle');
       expect(const ClimateZone(roomId: 'r').windowDelay, 2);
+      final learned = ClimateZone.fromJson({'room_id': 'r', 'heat_rate': '11.5', 'cool_rate': 8});
+      expect(learned.heatRate, 11.5);
+      expect(learned.coolRate, 8);
+      expect(learned.copyWith(enabled: false).heatRate, 11.5);
+      expect(learned.toJson().containsKey('heat_rate'), isFalse, reason: 'appris par la passerelle');
     });
 
     test('températures intelligentes : préchauffage et heure de retour', () {
@@ -145,6 +166,56 @@ void main() {
     await tester.tap(find.text('Enregistrer'));
     await tester.pumpAndSettle();
     expect(state.climate.zones.single.schedule.length, defaultSchedule.length + 1);
+    await tester.pump(const Duration(seconds: 4));
+  });
+
+  testWidgets('Absence automatique : activée par le gestionnaire, présence partagée depuis le téléphone', (tester) async {
+    final gps = FakeLocation((36.7540, 3.0590)); // à 30 m du logement de démonstration
+    final state = await pumpApp(tester, location: gps);
+    await signIn(tester);
+    await tester.pumpAndSettle();
+    final nav = Navigator.of(tester.element(find.byType(Scaffold).first));
+    nav.push(MaterialPageRoute(builder: (_) => const ClimateScreen()));
+    await tester.pumpAndSettle();
+    final geo = find.byKey(const ValueKey('climate-geo'));
+    await tester.scrollUntilVisible(geo, 200, scrollable: find.byType(Scrollable).last);
+    await tester.pumpAndSettle();
+    await tester.tap(geo);
+    await tester.pumpAndSettle();
+    expect(state.climate.settings.geoEnabled, isTrue);
+
+    final share = find.byKey(const ValueKey('climate-presence'));
+    await tester.scrollUntilVisible(share, -200, scrollable: find.byType(Scrollable).last);
+    await tester.pumpAndSettle();
+    await tester.tap(share);
+    await tester.pumpAndSettle();
+    expect(state.presenceSharing, isTrue);
+    expect(state.presenceAtHome, isTrue);
+    expect(find.textContaining('Vous êtes à la maison'), findsOneWidget);
+
+    gps.moves.add((36.80, 3.06)); // 5 km plus loin
+    await tester.pumpAndSettle();
+    expect(state.presenceAtHome, isFalse);
+
+    await tester.tap(share);
+    await tester.pumpAndSettle();
+    expect(state.presenceSharing, isFalse);
+    expect(state.presenceAtHome, isNull);
+    await tester.pump(const Duration(seconds: 4));
+  });
+
+  testWidgets('Absence automatique : localisation refusée', (tester) async {
+    final gps = FakeLocation((36.7540, 3.0590))..allowed = false;
+    final state = await pumpApp(tester, location: gps);
+    await signIn(tester);
+    await tester.pumpAndSettle();
+    final saved = state.saveClimateSettings(state.climate.settings.copyWith(geoEnabled: true));
+    await tester.pumpAndSettle();
+    await saved;
+    final shared = state.setPresenceSharing(true);
+    await tester.pumpAndSettle();
+    expect(await shared, isFalse);
+    expect(state.presenceSharing, isFalse);
     await tester.pump(const Duration(seconds: 4));
   });
 }

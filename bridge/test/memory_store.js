@@ -29,6 +29,7 @@ export class MemoryStore {
     this.homeModes = new Map();
     this.climateSettings = new Map();
     this.climateZones = [];
+    this.presence = [];
     this.weatherReadings = [];
     this.notifications = [];
   }
@@ -50,6 +51,8 @@ export class MemoryStore {
   async getClimate(homeId) {
     return { settings: this.climateSettings.get(homeId) ?? null, zones: this.climateZones.filter((z) => z.home_id === homeId).map((z) => ({ ...z })) };
   }
+  async getPresence(homeId) { return this.presence.filter((p) => p.home_id === homeId).map((p) => ({ ...p })); }
+  async updateClimateSettings(homeId, patch) { Object.assign(this.climateSettings.get(homeId) ?? {}, patch); }
   async updateClimateZone(id, patch) { Object.assign(this.climateZones.find((z) => z.id === id) ?? {}, patch); }
   async insertAutomationRun(row) { this.automationRuns.push({ ...row, created_at: new Date().toISOString() }); }
   async insertWeatherReading(row) { this.weatherReadings.push(row); }

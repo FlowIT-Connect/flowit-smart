@@ -1237,6 +1237,30 @@ class DemoBackend implements Backend {
     if (row != null) _climateEvent('climate_zones', row, 'DELETE');
   }
 
+  /// Présence en démonstration : distance calculée ici, rien n'est envoyé.
+  final presence = <String, bool>{};
+
+  @override
+  Future<bool> reportPresence(String homeId, double latitude, double longitude) async {
+    await _wait();
+    if (_member(homeId) == null) throw const BackendException('denied', 'Accès refusé');
+    final h = _homes[homeId]!;
+    final lat = h['latitude'] as double?;
+    final lon = h['longitude'] as double?;
+    if (lat == null || lon == null) throw const BackendException('invalid', 'Position du logement inconnue');
+    double rad(double d) => d * pi / 180;
+    final a = pow(sin(rad(latitude - lat) / 2), 2) + cos(rad(lat)) * cos(rad(latitude)) * pow(sin(rad(longitude - lon) / 2), 2);
+    final dist = 2 * 6371000 * asin(sqrt(a));
+    final radius = ((_climateSettings[homeId]?['geo_radius']) as num?) ?? 300;
+    return presence[homeId] = dist <= radius;
+  }
+
+  @override
+  Future<void> clearPresence(String homeId) async {
+    await _wait();
+    presence.remove(homeId);
+  }
+
   @override
   Future<void> setClimatePreset(String homeId, String? roomId, String? preset, DateTime? until) async {
     await _wait();

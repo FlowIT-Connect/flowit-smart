@@ -171,20 +171,56 @@ export function zoneKind(zone, devices, season) {
   return (zone.devices ?? []).some((id) => devices.get(id)?.state?.hvac_mode === 'cool') ? 'cool' : 'heat';
 }
 
+/** Marge météo : plus long quand il gèle dehors (ou fait très chaud en clim). */
+export function weatherFactor(kind, outdoor) {
+  if (typeof outdoor !== 'number') return 1;
+  if (kind === 'cool') return outdoor >= 38 ? 1.5 : outdoor >= 32 ? 1.25 : 1;
+  return outdoor < 0 ? 1.5 : outdoor < 8 ? 1.25 : 1;
+}
+
+export const DEFAULT_RATES = { heat: 15, cool: 10 };
+
 /**
- * Minutes pour amener la pièce de measured à target : 15 min par degré en chauffage,
- * 10 en clim, plus quand il gèle (ou fait très chaud) dehors.
+ * Minutes pour amener la pièce de measured à target. [rate] : minutes par degré apprises
+ * pour la pièce (sinon 15 en chauffage, 10 en clim), puis la marge météo.
  */
-export function warmupMinutes(measured, target, kind, outdoor) {
+export function warmupMinutes(measured, target, kind, outdoor, rate = null) {
   if (measured == null || target == null) return 0;
   const gap = kind === 'cool' ? measured - target : target - measured;
   if (!(gap > 0)) return 0;
-  let rate = kind === 'cool' ? 10 : 15;
-  if (typeof outdoor === 'number') {
-    if (kind === 'cool') rate *= outdoor >= 38 ? 1.5 : outdoor >= 32 ? 1.25 : 1;
-    else rate *= outdoor < 0 ? 1.5 : outdoor < 8 ? 1.25 : 1;
+  const base = typeof rate === 'number' && rate > 0 ? rate : DEFAULT_RATES[kind === 'cool' ? 'cool' : 'heat'];
+  return Math.ceil(gap * base * weatherFactor(kind, outdoor));
+}
+
+const MAX_TRACK_MS = 8 * 3_600_000;
+
+/**
+ * Apprentissage : suit une montée en température (au moins 1 °C d'écart) jusqu'à la consigne
+ * et en déduit les minutes par degré de la pièce, hors marge météo.
+ * @returns {{track: object|null, rate?: number}}
+ */
+export function trackWarmup(track, { target, measured, kind, nowMs, outdoor }) {
+  if (target == null || measured == null) return { track: null };
+  const gap = kind === 'cool' ? measured - target : target - measured;
+  let t = track && track.target === target && track.kind === kind ? track : null;
+  if (!t) {
+    return gap >= 1 ? { track: { target, kind, startMs: nowMs, startGap: gap, factor: weatherFactor(kind, outdoor) } } : { track: null };
   }
-  return Math.ceil(gap * rate);
+  const minutes = (nowMs - t.startMs) / 60_000;
+  if (gap <= 0.2) {
+    const degrees = t.startGap - Math.max(gap, 0);
+    if (minutes < 5 || degrees < 0.8) return { track: null };
+    const rate = minutes / degrees / t.factor;
+    return { track: null, rate: Math.round(Math.min(60, Math.max(2, rate)) * 10) / 10 };
+  }
+  if (nowMs - t.startMs > MAX_TRACK_MS) return { track: null };
+  return { track: t };
+}
+
+/** Moyenne glissante : la nouvelle mesure compte pour 30 %. */
+export function blendRate(previous, measured) {
+  const p = Number(previous);
+  return Number.isFinite(p) && p > 0 ? Math.round((p * 0.7 + measured * 0.3) * 10) / 10 : measured;
 }
 
 const PREHEAT_STEP = 5;
@@ -195,7 +231,7 @@ const PREHEAT_STEP = 5;
  * ce temps à y arriver, on l'applique dès maintenant (source « preheat »). Un préchauffage
  * commencé ([ongoing]) continue jusqu'au changement, même si l'écart se réduit.
  */
-export function anticipatedPreset({ zone, settings, modes, now, localAt, presets, kind, measured, outdoor, maxMinutes, ongoing = null }) {
+export function anticipatedPreset({ zone, settings, modes, now, localAt, presets, kind, measured, outdoor, maxMinutes, ongoing = null, rate = null }) {
   const current = effectivePreset(zone, settings, modes, now, localAt(now));
   if (!(maxMinutes > 0) || (measured == null && !ongoing)) return current;
   const curT = presetTemperature(presets, current.preset, kind);
@@ -206,8 +242,31 @@ export function anticipatedPreset({ zone, settings, modes, now, localAt, presets
     const t = presetTemperature(presets, next.preset, kind);
     const warmer = t != null && (curT == null || (kind === 'cool' ? t < curT : t > curT));
     if (!warmer) return current;
-    if (ongoing === next.preset || warmupMinutes(measured, t, kind, outdoor) >= m) return { preset: next.preset, source: 'preheat' };
+    if (ongoing === next.preset || warmupMinutes(measured, t, kind, outdoor, rate) >= m) return { preset: next.preset, source: 'preheat' };
     return current;
   }
   return current;
+}
+
+// ------------------------------------------------------------------ Absence automatique (géolocalisation)
+
+export const GEO_LEAVE_DELAY_MS = 10 * 60_000;
+
+/**
+ * Absence automatique : « leave » quand tous les membres qui partagent leur présence sont
+ * partis depuis 10 minutes (et qu'aucune ambiance n'a été choisie pour la maison),
+ * « back » dès que l'un revient (ou que la fonction est coupée) si c'est la passerelle
+ * qui avait mis l'Absence ; sinon null.
+ */
+export function geoDecision(settings, presence, nowMs) {
+  if (!settings) return null;
+  const rows = Array.isArray(presence) ? presence : [];
+  if (settings.geo_away) {
+    if (!settings.geo_enabled || rows.length === 0 || rows.some((p) => p.at_home)) return 'back';
+    return null;
+  }
+  if (!settings.geo_enabled || rows.length === 0 || rows.some((p) => p.at_home)) return null;
+  if (settings.home_preset && valid(settings.home_preset_until, new Date(nowMs))) return null; // choix fait à la main
+  const lastLeft = Math.max(...rows.map((p) => new Date(p.since).getTime() || 0));
+  return nowMs - lastLeft >= GEO_LEAVE_DELAY_MS ? 'leave' : null;
 }
