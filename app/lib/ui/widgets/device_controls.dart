@@ -344,6 +344,16 @@ IconData _modeIcon(String o) => switch (o) {
       'auto' || 'heat_cool' => Icons.autorenew_rounded,
       'dry' => Icons.water_drop_rounded,
       'fan_only' => Icons.air_rounded,
+      'comfort' => Icons.weekend_rounded,
+      'eco' => Icons.eco_rounded,
+      'sleep' => Icons.bedtime_rounded,
+      'away' => Icons.flight_takeoff_rounded,
+      'frost' => Icons.severe_cold_rounded,
+      'boost' => Icons.rocket_launch_rounded,
+      'schedule' => Icons.schedule_rounded,
+      'manual' => Icons.pan_tool_alt_rounded,
+      'home' => Icons.home_rounded,
+      'none' => Icons.block_rounded,
       _ => Icons.tune_rounded,
     };
 
@@ -552,6 +562,14 @@ class _CapabilityControlState extends State<_CapabilityControl> {
         );
       case CapabilityType.enumeration:
         if (cap.key == 'vacuum_action') return _vacuumButtons(context, d, cap, title, indicator, pending, enabled, send);
+        if (!cap.writable) {
+          // État rapporté par l'appareil (ex. chauffe en cours) : affiché, jamais modifiable.
+          return ListTile(
+            leading: TileIcon(capabilityIcon(cap.key)),
+            title: title,
+            trailing: Text(formatValue(context, cap, cap.key, current)),
+          );
+        }
         if (cap.key == 'cover_control') {
           // Actions ponctuelles : chaque bouton reste disponible, même pour répéter la dernière.
           return Padding(
@@ -585,8 +603,8 @@ class _CapabilityControlState extends State<_CapabilityControl> {
             ]),
           );
         }
-        if (cap.key == 'hvac_mode') {
-          // Modes en gros boutons ronds, le mode actif rempli d'orange.
+        if (cap.key == 'hvac_mode' || cap.key == 'preset') {
+          // Modes et ambiances en gros boutons ronds, le mode actif rempli d'orange.
           return Padding(
             padding: const EdgeInsets.fromLTRB(16, 10, 16, 12),
             child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [

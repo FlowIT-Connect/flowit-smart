@@ -138,6 +138,15 @@ IconData capabilityIcon(String key) => switch (key) {
       'contact' => Icons.sensor_door_rounded,
       'motion' => Icons.directions_walk_rounded,
       'illuminance' => Icons.light_mode_rounded,
+      'preset' => Icons.spa_rounded,
+      'fan_mode' => Icons.air_rounded,
+      'swing' || 'swing_mode' => Icons.swap_vert_rounded,
+      'eco' => Icons.eco_rounded,
+      'sleep' => Icons.bedtime_rounded,
+      'away' => Icons.flight_takeoff_rounded,
+      'window_detection' || 'window_open' => Icons.window_rounded,
+      'child_lock' => Icons.child_care_rounded,
+      'hvac_action' => Icons.local_fire_department_rounded,
       _ => Icons.tune_rounded,
     };
 

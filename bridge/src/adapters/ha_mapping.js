@@ -126,6 +126,39 @@ export function entityCapabilities(stateObj) {
       if (a.current_temperature != null) {
         caps.push({ key: 'current_temperature', type: 'sensor', writable: false, metadata: { unit: '°C' }, read: (s) => num(s.attributes?.current_temperature) });
       }
+      if (Array.isArray(a.preset_modes) && a.preset_modes.length) {
+        caps.push({ key: 'preset', type: 'enum', writable: true, metadata: { options: a.preset_modes }, read: (s) => s.attributes?.preset_mode ?? null });
+      }
+      if (Array.isArray(a.fan_modes) && a.fan_modes.length) {
+        caps.push({ key: 'fan_mode', type: 'enum', writable: true, metadata: { options: a.fan_modes }, read: (s) => s.attributes?.fan_mode ?? null });
+      }
+      if (Array.isArray(a.swing_modes) && a.swing_modes.length) {
+        caps.push({ key: 'swing_mode', type: 'enum', writable: true, metadata: { options: a.swing_modes }, read: (s) => s.attributes?.swing_mode ?? null });
+      }
+      if ('hvac_action' in a) {
+        caps.push({ key: 'hvac_action', type: 'enum', writable: false, metadata: {}, read: (s) => s.attributes?.hvac_action ?? null });
+      }
+      if (a.current_humidity != null) {
+        caps.push({ key: 'humidity', type: 'sensor', writable: false, metadata: { unit: '%' }, read: (s) => num(s.attributes?.current_humidity) });
+      }
+      break;
+    }
+    case 'water_heater': {
+      // Chauffe-eau / chaudière : consigne, mode de fonctionnement, température de l'eau.
+      caps.push({
+        key: 'target_temperature', type: 'number', writable: true,
+        metadata: { min: a.min_temp ?? 30, max: a.max_temp ?? 75, step: a.target_temp_step ?? 1, unit: '°C' },
+        read: (s) => num(s.attributes?.temperature),
+      });
+      if (Array.isArray(a.operation_list) && a.operation_list.length) {
+        caps.push({ key: 'preset', type: 'enum', writable: true, metadata: { options: a.operation_list }, read: (s) => s.attributes?.operation_mode ?? s.state });
+      }
+      if (a.current_temperature != null) {
+        caps.push({ key: 'current_temperature', type: 'sensor', writable: false, metadata: { unit: '°C' }, read: (s) => num(s.attributes?.current_temperature) });
+      }
+      if ('away_mode' in a) {
+        caps.push({ key: 'away', type: 'boolean', writable: true, metadata: {}, read: (s) => (s.attributes?.away_mode === 'on' ? true : s.attributes?.away_mode === 'off' ? false : null) });
+      }
       break;
     }
     case 'lock':
@@ -252,9 +285,19 @@ export function serviceCall(entry, value) {
       if (value <= 0) return { domain: 'cover', service: 'close_cover', target, data: {} };
       return { domain: 'cover', service: 'set_cover_position', target, data: { position: value } };
     case 'target_temperature':
-      return { domain: 'climate', service: 'set_temperature', target, data: { temperature: value } };
+      return { domain: domain === 'water_heater' ? 'water_heater' : 'climate', service: 'set_temperature', target, data: { temperature: value } };
     case 'hvac_mode':
       return { domain: 'climate', service: 'set_hvac_mode', target, data: { hvac_mode: value } };
+    case 'preset':
+      return domain === 'water_heater'
+        ? { domain, service: 'set_operation_mode', target, data: { operation_mode: value } }
+        : { domain: 'climate', service: 'set_preset_mode', target, data: { preset_mode: value } };
+    case 'fan_mode':
+      return { domain: 'climate', service: 'set_fan_mode', target, data: { fan_mode: value } };
+    case 'swing_mode':
+      return { domain: 'climate', service: 'set_swing_mode', target, data: { swing_mode: value } };
+    case 'away':
+      return { domain: 'water_heater', service: 'set_away_mode', target, data: { away_mode: value } };
     default:
       return null; // lock et autres : jamais pilotés par la passerelle sans validation dédiée
   }

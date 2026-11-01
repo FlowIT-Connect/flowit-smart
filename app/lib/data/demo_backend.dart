@@ -168,10 +168,12 @@ class DemoBackend implements Backend {
           ['vacuum_error', 'sensor', false, {'kind': 'text'}],
         ]);
     device('Thermostat', salon, 'wifi', 'cloud',
-        vendor: 'Netatmo', model: 'Smart Thermostat', state: {'target_temperature': 21.0, 'hvac_mode': 'heat', 'current_temperature': 20.4},
+        vendor: 'Netatmo', model: 'Smart Thermostat', state: {'target_temperature': 21.0, 'hvac_mode': 'heat', 'current_temperature': 20.4, 'preset': 'comfort', 'hvac_action': 'heating'},
         caps: [
           ['target_temperature', 'number', true, {'min': 7, 'max': 30, 'step': 0.5, 'unit': '°C'}],
           ['hvac_mode', 'enum', true, {'options': ['off', 'heat', 'auto']}],
+          ['preset', 'enum', true, {'options': ['comfort', 'eco', 'sleep', 'away', 'frost']}],
+          ['hvac_action', 'enum', false, {}],
           ['current_temperature', 'sensor', false, {'unit': '°C'}],
         ]);
     device('Capteur chambre', chambre, 'zigbee', 'gateway',
@@ -226,10 +228,13 @@ class DemoBackend implements Backend {
         ]);
     device('Télécommande IR', salon, 'other', 'cloud', vendor: 'Générique', model: 'IR blaster');
     device('Climatiseur salon', salon, 'tuya', 'cloud',
-        vendor: 'Tuya', model: 'Split 12000 BTU', state: {'target_temperature': 24.0, 'hvac_mode': 'cool', 'current_temperature': 27.5},
+        vendor: 'Tuya', model: 'Split 12000 BTU', state: {'target_temperature': 24.0, 'hvac_mode': 'cool', 'current_temperature': 27.5, 'fan_mode': 'auto', 'swing': true, 'sleep': false},
         caps: [
           ['target_temperature', 'number', true, {'min': 16, 'max': 30, 'step': 1, 'unit': '°C'}],
-          ['hvac_mode', 'enum', true, {'options': ['off', 'cool', 'heat', 'dry', 'fan_only']}],
+          ['hvac_mode', 'enum', true, {'options': ['off', 'auto', 'cool', 'heat', 'dry', 'fan_only']}],
+          ['fan_mode', 'enum', true, {'options': ['auto', 'low', 'medium', 'high']}],
+          ['swing', 'boolean', true],
+          ['sleep', 'boolean', true],
           ['current_temperature', 'sensor', false, {'unit': '°C'}],
         ]);
     final cameraEntree = device('Caméra entrée', entree, 'wifi', 'local',
