@@ -14,7 +14,7 @@ import {
   timeTriggerDue,
   weatherTriggerHolds,
 } from './automations.js';
-import { DEFAULT_PRESETS, deviceCommands, effectivePreset, seasonMode } from './climate.js';
+import { DEFAULT_PRESETS, deviceCommands, effectivePreset, openWindow, seasonMode, windowOffCommands, windowRestoreCommands } from './climate.js';
 import { fetchWeather } from './weather.js';
 import { CameraStreamer } from './cameras.js';
 import { log } from './log.js';
@@ -67,6 +67,9 @@ export class Bridge {
     this.simulation = null; // { day, plan: [{id, on, off, state}] }
     /** Chauffage / clim : ambiance déjà appliquée par zone (zoneId -> signature). */
     this.climateApplied = new Map();
+    /** Fenêtre ouverte : zone -> ouverte depuis (ms), et coupures en cours (modes à remettre). */
+    this.windowOpenSince = new Map();
+    this.windowCuts = new Map();
     this.inflightDevices = new Set();
     this.inflightRuns = new Set();
     this.running = new Set();
@@ -220,6 +223,7 @@ export class Bridge {
       }
       this.devices.set(deviceId, {
         externalId: desc.externalId,
+        name: desc.name,
         caps: new Map(desc.capabilities.map((c) => [c.capability_key, c])),
         isSensitive: desc.isSensitive || prev?.isSensitive || false,
         bleKey,
@@ -563,6 +567,7 @@ export class Bridge {
     const presets = data.settings?.presets ?? DEFAULT_PRESETS;
     for (const zone of data.zones) {
       if (!zone.enabled) continue;
+      if (await this.#climateWindow(zone, presets, mode, now)) continue;
       const { preset, source } = effectivePreset(zone, data.settings, this.modes, now, local);
       const signature = `${preset}|${source}|${mode}|${JSON.stringify(presets[preset] ?? null)}|${(zone.devices ?? []).join()}`;
       if (this.climateApplied.get(zone.id) === signature) continue;
@@ -595,6 +600,61 @@ export class Bridge {
       }
     }
     await this.processQueue();
+  }
+
+  /**
+   * Fenêtre ouverte plus de window_delay minutes : coupe la clim ou le chauffage de la pièce
+   * (par le mode de l'appareil, jamais par l'alimentation) et prévient. Fermée : remet le mode
+   * d'avant puis l'ambiance. Renvoie true tant que la pièce reste coupée.
+   */
+  async #climateWindow(zone, presets, season, now) {
+    const nowMs = now.getTime();
+    const opener = openWindow(zone, this.devices);
+    let cut = this.windowCuts.get(zone.id);
+    const send = async (deviceId, commands, tag) => {
+      for (const [i, c] of commands.entries()) {
+        await this.store
+          .insertCommand({ home_id: this.homeId, device_id: deviceId, capability_key: c.capability_key, value: c.value, idempotency_key: `climate-window:${zone.id}:${tag}:${deviceId}:${i}` })
+          .catch((e) => log.warn('climate.window_command_failed', { zone_id: zone.id, device_id: deviceId, error: e.message }));
+      }
+    };
+    if (opener) {
+      const since = this.windowOpenSince.get(zone.id) ?? nowMs;
+      this.windowOpenSince.set(zone.id, since);
+      // Après un redémarrage, une pièce déjà coupée le reste sans attendre de nouveau.
+      if (!cut && !zone.active_window && nowMs - since < Math.max(0, zone.window_delay ?? 2) * 60_000) return false;
+      if (!cut) {
+        cut = { since, modes: new Map() };
+        this.windowCuts.set(zone.id, cut);
+        if (!zone.active_window) {
+          const name = this.devices.get(opener)?.name;
+          await this.#notify('window_open', `Fenêtre ouverte${name ? ` (${name})` : ''} : chauffage et clim coupés dans la pièce`, { zone_id: zone.id, room_id: zone.room_id, device_id: opener }, zone.id);
+          await this.store.updateClimateZone(zone.id, { active_window: true }).catch((e) => log.warn('climate.save_failed', { error: e.message }));
+        }
+        log.info('climate.window_open', { zone_id: zone.id, device_id: opener });
+      }
+      for (const deviceId of zone.devices ?? []) {
+        const d = this.devices.get(deviceId);
+        if (!d || d.availability === 'unavailable') continue;
+        if (!cut.modes.has(deviceId)) cut.modes.set(deviceId, d.state?.hvac_mode ?? null);
+        await send(deviceId, windowOffCommands(d, presets), `${cut.since}:off`);
+      }
+      return true;
+    }
+    this.windowOpenSince.delete(zone.id);
+    if (!cut && !zone.active_window) return false;
+    const tag = `${cut?.since ?? nowMs}:on`;
+    for (const deviceId of zone.devices ?? []) {
+      const d = this.devices.get(deviceId);
+      if (!d) continue;
+      if (d.availability === 'unavailable') return true; // réessayé à la prochaine minute
+      await send(deviceId, windowRestoreCommands(d, cut?.modes.get(deviceId), season), tag);
+    }
+    this.windowCuts.delete(zone.id);
+    this.climateApplied.delete(zone.id); // l'ambiance est remise juste après
+    await this.store.updateClimateZone(zone.id, { active_window: false }).catch((e) => log.warn('climate.save_failed', { error: e.message }));
+    log.info('climate.window_closed', { zone_id: zone.id });
+    return false;
   }
 
   #ctx() {

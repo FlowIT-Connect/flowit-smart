@@ -292,12 +292,15 @@ class _ZoneCard extends StatelessWidget {
     return Card(
       child: ListTile(
         contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
-        leading: TileIcon(presetIcon(preset), color: context.flow.orange),
+        leading: zone.activeWindow
+            ? TileIcon(Icons.window_rounded, color: context.flow.blue)
+            : TileIcon(presetIcon(preset), color: context.flow.orange),
         title: Text(room?.name ?? '—'),
         subtitle: Text([
           '${optionLabel(context, preset)} · ${_fmtTemp(target)}',
           [_sourceLabel(context, source), if (measured != null) context.tr('climate.measured', {'t': _fmtTemp(measured)})].join(' · '),
           if (!zone.enabled) context.tr('climate.zoneOff'),
+          if (zone.activeWindow) context.tr('climate.window.cut'),
         ].join('\n')),
         isThreeLine: true,
         trailing: const ForwardChevron(),
@@ -333,6 +336,8 @@ class _ClimateZoneScreenState extends State<ClimateZoneScreen> {
     final dirty = _draft != null;
     final candidates = state.devices.values.where((d) => d.capability('target_temperature')?.writable ?? false).toList()
       ..sort((a, b) => (a.roomId == z.roomId ? 0 : 1).compareTo(b.roomId == z.roomId ? 0 : 1));
+    final sensors = state.devices.values.where((d) => d.capability('contact') != null || d.capability('window_open') != null).toList()
+      ..sort((a, b) => (a.roomId == z.roomId ? 0 : 1).compareTo(b.roomId == z.roomId ? 0 : 1));
     final (preset, source) = state.climatePresetFor(saved);
     final entries = [...z.schedule]..sort((a, b) {
         final da = a.days.isEmpty ? 8 : a.days.reduce((x, y) => x < y ? x : y);
@@ -362,6 +367,16 @@ class _ClimateZoneScreenState extends State<ClimateZoneScreen> {
           constraints: const BoxConstraints(maxWidth: 720),
           child: ListView(padding: const EdgeInsets.fromLTRB(16, 8, 16, 32), children: [
             Text('${optionLabel(context, preset)} · ${_sourceLabel(context, source)}', style: Theme.of(context).textTheme.titleMedium),
+            if (saved.activeWindow) ...[
+              const SizedBox(height: 8),
+              Card(
+                child: ListTile(
+                  leading: TileIcon(Icons.window_rounded, color: context.flow.blue),
+                  title: Text(context.tr('climate.window.cut')),
+                  subtitle: Text(context.tr('climate.window.cutHelp')),
+                ),
+              ),
+            ],
             const SizedBox(height: 8),
             Card(child: Padding(padding: const EdgeInsets.all(8), child: ClimatePresetButtons(current: saved.activeOverride(), roomId: saved.roomId, compact: true))),
             if (manage) ...[
@@ -381,6 +396,30 @@ class _ClimateZoneScreenState extends State<ClimateZoneScreen> {
                   subtitle: Text(state.roomById(d.roomId)?.name ?? context.tr('room.none')),
                   onChanged: (v) => edit(z.copyWith(devices: v == true ? [...z.devices, d.id] : z.devices.where((x) => x != d.id).toList())),
                 ),
+              SectionHeader(context.tr('climate.windows')),
+              Text(context.tr('climate.windows.help'), style: Theme.of(context).textTheme.bodySmall),
+              if (sensors.isEmpty) Text(context.tr('climate.windows.none')),
+              for (final d in sensors)
+                CheckboxListTile(
+                  key: ValueKey('climate-window-${d.id}'),
+                  contentPadding: EdgeInsets.zero,
+                  value: z.windows.contains(d.id),
+                  title: Text(d.name),
+                  subtitle: Text(state.roomById(d.roomId)?.name ?? context.tr('room.none')),
+                  onChanged: (v) => edit(z.copyWith(windows: v == true ? [...z.windows, d.id] : z.windows.where((x) => x != d.id).toList())),
+                ),
+              const SizedBox(height: 4),
+              Text(context.tr('climate.windows.delay'), style: Theme.of(context).textTheme.bodyMedium),
+              const SizedBox(height: 4),
+              Wrap(spacing: 8, children: [
+                for (final m in windowDelays)
+                  ChoiceChip(
+                    key: ValueKey('climate-window-delay-$m'),
+                    label: Text(context.tr('climate.windows.minutes', {'n': '$m'})),
+                    selected: z.windowDelay == m,
+                    onSelected: (_) => edit(z.copyWith(windowDelay: m)),
+                  ),
+              ]),
               SectionHeader(context.tr('climate.schedule')),
               Text(context.tr('climate.schedule.help'), style: Theme.of(context).textTheme.bodySmall),
               for (final e in entries)

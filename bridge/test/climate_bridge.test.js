@@ -74,3 +74,39 @@ test('ambiance par pièce : programme appliqué une fois, Absence pour la maison
   await bridge.tickClimate();
   assert.equal(store.commands.length, before);
 });
+
+test('fenêtre ouverte : coupure après le délai, une notification, reprise du mode et de l\'ambiance', async () => {
+  const thermo = store.deviceByName('Thermostat');
+  const porte = store.deviceByName('Porte d\'entrée');
+  store.climateZones.push({
+    id: 'z1', home_id: 'home-1', room_id: 'r1', enabled: true, devices: [thermo.id], windows: [porte.id], window_delay: 2,
+    schedule: [{ days: [1, 2, 3, 4, 5, 6, 7], at: '06:00', preset: 'comfort' }],
+  });
+  clockNow = new Date('2030-01-07T10:00:00Z');
+  await bridge.tickClimate();
+  assert.ok(await until(() => thermo.state.target_temperature === 21));
+
+  fake.setState('binary_sensor.porte_entree', 'on', { friendly_name: 'Porte d\'entrée', device_class: 'door' });
+  assert.ok(await until(() => bridge.devices.get(porte.id).state.contact === false));
+  await bridge.tickClimate();
+  await sleep(100);
+  assert.equal(thermo.state.hvac_mode, 'heat', 'pas encore coupé avant 2 minutes');
+  assert.equal(store.notifications.filter((n) => n.type === 'window_open').length, 0);
+
+  clockNow = new Date('2030-01-07T10:02:00Z');
+  await bridge.tickClimate();
+  assert.ok(await until(() => thermo.state.hvac_mode === 'off'), `mode ${thermo.state.hvac_mode}`);
+  assert.equal(store.climateZones[0].active_window, true);
+  assert.equal(store.notifications.filter((n) => n.type === 'window_open').length, 1);
+  clockNow = new Date('2030-01-07T10:03:00Z');
+  await bridge.tickClimate();
+  assert.equal(store.notifications.filter((n) => n.type === 'window_open').length, 1, 'une seule notification');
+
+  fake.setState('binary_sensor.porte_entree', 'off', { friendly_name: 'Porte d\'entrée', device_class: 'door' });
+  assert.ok(await until(() => bridge.devices.get(porte.id).state.contact === true));
+  clockNow = new Date('2030-01-07T10:04:00Z');
+  await bridge.tickClimate();
+  assert.ok(await until(() => thermo.state.hvac_mode === 'heat'), `mode ${thermo.state.hvac_mode}`);
+  assert.equal(store.climateZones[0].active_window, false);
+  assert.equal(thermo.state.target_temperature, 21);
+});

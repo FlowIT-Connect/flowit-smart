@@ -105,3 +105,50 @@ export function deviceCommands(device, presets, preset, mode) {
   if (device.state?.target_temperature !== target) commands.push({ capability_key: 'target_temperature', value: target });
   return { commands, target };
 }
+
+// ------------------------------------------------------------------ Fenêtre ouverte (phase 3)
+
+/**
+ * Une fenêtre de la pièce est-elle ouverte ? Capteurs d'ouverture associés (contact false =
+ * ouvert) ou tête thermostatique qui le détecte elle-même (window_open true).
+ * @returns {string|null} l'appareil qui signale l'ouverture, sinon null
+ */
+export function openWindow(zone, devices) {
+  for (const id of zone.windows ?? []) {
+    const s = devices.get(id)?.state;
+    if (s?.contact === false || s?.window_open === true) return id;
+  }
+  for (const id of zone.devices ?? []) {
+    if (devices.get(id)?.state?.window_open === true) return id;
+  }
+  return null;
+}
+
+/**
+ * Commandes qui coupent un appareil pendant que la fenêtre est ouverte : arrêt par son mode
+ * (jamais par l'alimentation électrique), sinon consigne Hors-gel.
+ */
+export function windowOffCommands(device, presets) {
+  const modeCap = device.caps.get('hvac_mode');
+  const options = modeCap?.writable ? modeCap.metadata?.options ?? [] : [];
+  if (options.includes('off')) {
+    return device.state?.hvac_mode === 'off' ? [] : [{ capability_key: 'hvac_mode', value: 'off' }];
+  }
+  const tempCap = device.caps.get('target_temperature');
+  const frost = presetTemperature(presets, 'frost', 'heat') ?? DEFAULT_PRESETS.frost.heat;
+  if (!tempCap?.writable) return [];
+  const target = clampToCap(frost, tempCap);
+  return device.state?.target_temperature === target ? [] : [{ capability_key: 'target_temperature', value: target }];
+}
+
+/**
+ * Remet en marche un appareil coupé pour fenêtre ouverte, dans le mode qu'il avait
+ * (ou celui de la saison s'il n'est plus connu). La consigne est remise par l'ambiance.
+ */
+export function windowRestoreCommands(device, savedMode, season) {
+  const modeCap = device.caps.get('hvac_mode');
+  const options = modeCap?.writable ? modeCap.metadata?.options ?? [] : [];
+  if (device.state?.hvac_mode !== 'off') return [];
+  const mode = savedMode && savedMode !== 'off' ? savedMode : season;
+  return mode && options.includes(mode) ? [{ capability_key: 'hvac_mode', value: mode }] : [];
+}

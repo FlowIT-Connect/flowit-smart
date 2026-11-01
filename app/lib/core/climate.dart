@@ -126,6 +126,12 @@ class ClimateZone {
   final double? activeTarget;
   final String? activeSource;
 
+  /// Capteurs d'ouverture de la pièce : fenêtre ouverte plus de [windowDelay] minutes,
+  /// la passerelle coupe la clim ou le chauffage ([activeWindow]) puis les remet.
+  final List<String> windows;
+  final int windowDelay;
+  final bool activeWindow;
+
   const ClimateZone({
     this.id,
     required this.roomId,
@@ -137,6 +143,9 @@ class ClimateZone {
     this.activePreset,
     this.activeTarget,
     this.activeSource,
+    this.windows = const [],
+    this.windowDelay = 2,
+    this.activeWindow = false,
   });
 
   factory ClimateZone.fromJson(Map<String, dynamic> j) => ClimateZone(
@@ -150,6 +159,9 @@ class ClimateZone {
         activePreset: j['active_preset'] as String?,
         activeTarget: (j['active_target'] as num?)?.toDouble(),
         activeSource: j['active_source'] as String?,
+        windows: [for (final d in (j['windows'] as List?) ?? const []) '$d'],
+        windowDelay: (j['window_delay'] as num?)?.toInt() ?? 2,
+        activeWindow: (j['active_window'] as bool?) ?? false,
       );
 
   /// Champs réglés depuis l'app (l'état actif est écrit par la passerelle).
@@ -158,11 +170,13 @@ class ClimateZone {
         'enabled': enabled,
         'devices': devices,
         'schedule': [for (final e in schedule) e.toJson()],
+        'windows': windows,
+        'window_delay': windowDelay,
       };
 
   String? activeOverride([DateTime? at]) => override != null && (overrideUntil == null || overrideUntil!.isAfter(at ?? DateTime.now())) ? override : null;
 
-  ClimateZone copyWith({bool? enabled, List<String>? devices, List<ScheduleEntry>? schedule}) => ClimateZone(
+  ClimateZone copyWith({bool? enabled, List<String>? devices, List<ScheduleEntry>? schedule, List<String>? windows, int? windowDelay}) => ClimateZone(
         id: id,
         roomId: roomId,
         enabled: enabled ?? this.enabled,
@@ -173,8 +187,14 @@ class ClimateZone {
         activePreset: activePreset,
         activeTarget: activeTarget,
         activeSource: activeSource,
+        windows: windows ?? this.windows,
+        windowDelay: windowDelay ?? this.windowDelay,
+        activeWindow: activeWindow,
       );
 }
+
+/// Délais proposés avant de couper (minutes).
+const windowDelays = [1, 2, 5, 10];
 
 @immutable
 class ClimateData {

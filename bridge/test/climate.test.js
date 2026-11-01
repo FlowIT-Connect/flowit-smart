@@ -183,3 +183,31 @@ test('commandes : saison, consigne bornée et arrondie, rien si déjà réglé',
   // Appareil sans consigne : ignoré.
   assert.deepEqual(deviceCommands({ state: {}, caps: new Map() }, presets, 'comfort', 'heat').commands, []);
 });
+
+test('fenêtre ouverte : détection, coupure par le mode ou en Hors-gel, reprise', async () => {
+  const { openWindow, windowOffCommands, windowRestoreCommands } = await import('../src/climate.js');
+  const devices = new Map([
+    ['w1', { state: { contact: true } }],
+    ['w2', { state: { contact: false } }],
+    ['t1', { state: { window_open: true } }],
+  ]);
+  assert.equal(openWindow({ windows: ['w1'], devices: [] }, devices), null);
+  assert.equal(openWindow({ windows: ['w1', 'w2'], devices: [] }, devices), 'w2');
+  assert.equal(openWindow({ windows: [], devices: ['t1'] }, devices), 't1');
+  assert.equal(openWindow({ devices: ['inconnu'] }, devices), null);
+
+  const caps = (withMode) => new Map([
+    ['target_temperature', { writable: true, metadata: { min: 5, max: 30, step: 0.5 } }],
+    ...(withMode ? [['hvac_mode', { writable: true, metadata: { options: ['off', 'heat', 'cool'] } }]] : []),
+  ]);
+  assert.deepEqual(windowOffCommands({ caps: caps(true), state: { hvac_mode: 'cool' } }, null), [{ capability_key: 'hvac_mode', value: 'off' }]);
+  assert.deepEqual(windowOffCommands({ caps: caps(true), state: { hvac_mode: 'off' } }, null), []);
+  // Radiateur sans mode : consigne Hors-gel (jamais de coupure d'alimentation).
+  assert.deepEqual(windowOffCommands({ caps: caps(false), state: { target_temperature: 20 } }, { frost: { heat: 8 } }), [{ capability_key: 'target_temperature', value: 8 }]);
+  assert.deepEqual(windowOffCommands({ caps: new Map(), state: {} }, null), []);
+
+  assert.deepEqual(windowRestoreCommands({ caps: caps(true), state: { hvac_mode: 'off' } }, 'cool', null), [{ capability_key: 'hvac_mode', value: 'cool' }]);
+  assert.deepEqual(windowRestoreCommands({ caps: caps(true), state: { hvac_mode: 'off' } }, 'off', 'heat'), [{ capability_key: 'hvac_mode', value: 'heat' }]);
+  assert.deepEqual(windowRestoreCommands({ caps: caps(true), state: { hvac_mode: 'heat' } }, 'cool', null), [], 'déjà remis à la main');
+  assert.deepEqual(windowRestoreCommands({ caps: caps(true), state: { hvac_mode: 'off' } }, null, null), []);
+});
