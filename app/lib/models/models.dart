@@ -2,7 +2,9 @@
 
 import 'dart:typed_data';
 
+import '../core/room_library.dart';
 import 'video.dart';
+export '../core/room_library.dart' show RoomImageFit;
 
 export 'video.dart';
 
@@ -136,7 +138,25 @@ class Room {
   final String? icon;
   final int sortOrder;
 
-  const Room({required this.id, required this.homeId, required this.name, this.icon, this.sortOrder = 0});
+  /// Image choisie dans la bibliothèque Solea (`salon_moderne_2`), ou null.
+  final String? imageKey;
+
+  /// Photo personnelle (bucket room-photos), prioritaire sur la bibliothèque.
+  final String? photoPath;
+
+  /// Cadrage de l'image affichée.
+  final RoomImageFit imageFit;
+
+  const Room({
+    required this.id,
+    required this.homeId,
+    required this.name,
+    this.icon,
+    this.sortOrder = 0,
+    this.imageKey,
+    this.photoPath,
+    this.imageFit = RoomImageFit.centered,
+  });
 
   factory Room.fromJson(Map<String, dynamic> j) => Room(
         id: j['id'] as String,
@@ -144,14 +164,36 @@ class Room {
         name: j['name'] as String,
         icon: j['icon'] as String?,
         sortOrder: (j['sort_order'] as num?)?.toInt() ?? 0,
+        imageKey: j['image_key'] as String?,
+        photoPath: j['photo_path'] as String?,
+        imageFit: RoomImageFit.fromJson(j['image_fit']),
       );
 
-  Room copyWith({String? name, String? icon, int? sortOrder}) => Room(
+  /// Image de la bibliothèque réellement affichée (choisie ou par défaut selon l'icône).
+  String get libraryImage => RoomLibrary.isValidKey(imageKey) ? imageKey! : RoomLibrary.defaultImageFor(icon);
+
+  /// Vrai si l'image affichée n'est pas celle par défaut.
+  bool get hasCustomImage => photoPath != null || imageKey != null;
+
+  Room copyWith({
+    String? name,
+    String? icon,
+    int? sortOrder,
+    String? imageKey,
+    bool clearImageKey = false,
+    String? photoPath,
+    bool clearPhoto = false,
+    RoomImageFit? imageFit,
+  }) =>
+      Room(
         id: id,
         homeId: homeId,
         name: name ?? this.name,
         icon: icon ?? this.icon,
         sortOrder: sortOrder ?? this.sortOrder,
+        imageKey: clearImageKey ? null : (imageKey ?? this.imageKey),
+        photoPath: clearPhoto ? null : (photoPath ?? this.photoPath),
+        imageFit: imageFit ?? this.imageFit,
       );
 }
 

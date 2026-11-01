@@ -9,6 +9,7 @@ import 'core/ble_lock.dart';
 import 'core/config.dart';
 import 'core/device_photos.dart';
 import 'core/l10n.dart';
+import 'core/room_library.dart';
 import 'core/theme.dart';
 import 'data/backend.dart';
 import 'data/demo_backend.dart';
@@ -25,6 +26,7 @@ Future<void> main() async {
   });
   await ThemeController.instance.load();
   await DevicePhotoCatalog.load();
+  await RoomLibrary.load();
 
   final Backend backend;
   if (AppConfig.hasSupabase) {

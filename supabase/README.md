@@ -18,6 +18,16 @@ Schéma initial dérivé du cahier des charges v1.0 (§4, §5, §7, §9).
 | `automations` | Déclencheur, conditions et actions (JSON validé) |
 | `event_logs` | Journal en lecture seule, alimenté par triggers et backend |
 
+## Images des pièces (`20261104000000_solea_room_images.sql`)
+
+| Élément | Rôle |
+|---|---|
+| `rooms.image_key` | Image choisie dans la bibliothèque livrée avec l'app (`salon_moderne_2`) ; null = image par défaut selon l'icône |
+| `rooms.photo_path` | Photo personnelle, bucket privé `room-photos` (`<home_id>/<room_id>-<horodatage>.<ext>`) |
+| `rooms.image_fit` | Cadrage `{x, y, zoom}` choisi dans l'éditeur |
+
+Lecture par tous les membres du logement, écriture par le propriétaire et les administrateurs.
+
 ## Sécurité et vidéo (`20261103000000_solea_video.sql`)
 
 | Table | Rôle |

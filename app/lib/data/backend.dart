@@ -165,6 +165,16 @@ abstract class Backend {
   /// Revient à la photo automatique (produit ou type d'appareil).
   Future<void> clearDevicePhoto(Device device);
 
+  // --- Images des pièces
+  /// Photo personnelle d'une pièce (bucket privé room-photos).
+  Future<Uint8List> downloadRoomPhoto(String path);
+
+  /// Enregistre la photo d'une pièce et renvoie son chemin (photo_path).
+  Future<String> setRoomPhoto(Room room, Uint8List bytes, String contentType);
+
+  /// Retire la photo personnelle (la pièce revient à son image de bibliothèque).
+  Future<void> clearRoomPhoto(Room room);
+
   // --- Temps réel (§10)
   /// Flux des changements de la maison : devices, device_commands, scene_runs…
   /// [onStatus] reçoit `true` quand la connexion temps réel est active.

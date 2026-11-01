@@ -10,6 +10,7 @@ import '../widgets/device_controls.dart';
 import '../widgets/device_visual.dart';
 import '../widgets/weather_widgets.dart';
 import 'device_detail.dart';
+import '../widgets/room_visual.dart';
 import 'rooms_screen.dart';
 
 /// Accueil : synthèse de la maison, scènes rapides, pièces, favoris, appareils à surveiller.
@@ -114,22 +115,13 @@ class DashboardScreen extends StatelessWidget {
       if (rooms.isNotEmpty) ...[
         SliverToBoxAdapter(
           child: SectionHeader(
-            context.tr('nav.rooms'),
+            context.tr('dashboard.myRooms'),
             trailing: TextButton(onPressed: () => onNavigate(1), child: Text(context.tr('common.seeAll'))),
           ),
         ),
-        SliverToBoxAdapter(
-          child: SizedBox(
-            height: 92,
-            child: ListView.separated(
-              scrollDirection: Axis.horizontal,
-              padding: const EdgeInsets.symmetric(horizontal: 16),
-              itemCount: rooms.length,
-              separatorBuilder: (_, _) => const SizedBox(width: 12),
-              itemBuilder: (context, i) => _RoomShortcut(room: rooms[i]),
-            ),
-          ),
-        ),
+        RoomCardGrid(children: [
+          for (final r in rooms) RoomPhotoCard(key: ValueKey('home-room-${r.id}'), room: r, devices: state.devicesInRoom(r.id), onTap: () => openRoom(context, r.id)),
+        ]),
       ],
       const SliverToBoxAdapter(child: SizedBox(height: 32)),
     ]);
@@ -353,44 +345,3 @@ class _SceneShortcut extends StatelessWidget {
 }
 
 /// Raccourci de pièce : icône, nom, appareils allumés.
-class _RoomShortcut extends StatelessWidget {
-  const _RoomShortcut({required this.room});
-
-  final Room room;
-
-  @override
-  Widget build(BuildContext context) {
-    final state = AppScope.of(context);
-    final f = context.flow;
-    final devices = state.devicesInRoom(room.id);
-    final on = devices.where((d) => d.isOnline && d.isOn == true).length;
-    return SizedBox(
-      width: 168,
-      child: Card(
-        clipBehavior: Clip.antiAlias,
-        child: InkWell(
-          onTap: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => RoomPage(roomId: room.id))),
-          child: Padding(
-            padding: const EdgeInsets.all(14),
-            child: Row(children: [
-              IconBubble(icon: roomIcon(room.icon), color: on > 0 ? f.amber : f.brand, size: 42, filled: on > 0, glow: on > 0),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Column(mainAxisAlignment: MainAxisAlignment.center, crossAxisAlignment: CrossAxisAlignment.start, children: [
-                  Text(room.name, maxLines: 1, overflow: TextOverflow.ellipsis, style: Theme.of(context).textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w800)),
-                  const SizedBox(height: 2),
-                  Text(
-                    on > 0 ? context.tr('room.onCount', {'n': on}) : context.tr('room.deviceCount', {'n': devices.length}),
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: Theme.of(context).textTheme.bodySmall?.copyWith(color: on > 0 ? f.warning : f.inkSoft, fontWeight: FontWeight.w700),
-                  ),
-                ]),
-              ),
-            ]),
-          ),
-        ),
-      ),
-    );
-  }
-}

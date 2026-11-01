@@ -654,6 +654,43 @@ class AppState extends ChangeNotifier {
         notifyListeners();
       });
 
+  // ---------------------------------------------------------------- Images des pièces
+  /// Photo personnelle d'une pièce (mise en cache ; null si illisible).
+  Future<Uint8List?> roomPhoto(String path) => _photoCache.putIfAbsent(path, () async {
+        try {
+          return await backend.downloadRoomPhoto(path);
+        } on BackendException catch (_) {
+          return null;
+        }
+      });
+
+  /// Enregistre le nom, l'icône et l'image d'une pièce en une fois.
+  /// [photo] remplace la photo personnelle ; [removePhoto] la retire.
+  Future<bool> saveRoom(
+    Room room, {
+    required String name,
+    required String? icon,
+    required String? imageKey,
+    required RoomImageFit fit,
+    Uint8List? photo,
+    String? photoType,
+    bool removePhoto = false,
+  }) =>
+      run(() async {
+        var updated = room.copyWith(name: name.trim(), icon: icon, imageKey: imageKey, clearImageKey: imageKey == null, imageFit: fit);
+        if (photo != null && photoType != null) {
+          final path = await backend.setRoomPhoto(room, photo, photoType);
+          _photoCache[path] = Future.value(photo);
+          updated = updated.copyWith(photoPath: path);
+        } else if (removePhoto && room.photoPath != null) {
+          await backend.clearRoomPhoto(room);
+          updated = updated.copyWith(clearPhoto: true);
+        }
+        await backend.updateRoom(updated);
+        rooms = [for (final r in rooms) r.id == room.id ? updated : r];
+        notifyListeners();
+      }, success: tr('room.saved'));
+
   @override
   void dispose() {
     _authSub.cancel();

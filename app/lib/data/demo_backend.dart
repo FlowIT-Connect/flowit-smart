@@ -539,7 +539,9 @@ class DemoBackend implements Backend {
     _rooms[room.id]!
       ..['name'] = room.name
       ..['icon'] = room.icon
-      ..['sort_order'] = room.sortOrder;
+      ..['sort_order'] = room.sortOrder
+      ..['image_key'] = room.imageKey
+      ..['image_fit'] = room.imageFit.toJson();
   }
 
   @override
@@ -1222,6 +1224,35 @@ class DemoBackend implements Backend {
     d['photo_path'] = path;
     d['updated_at'] = _now();
     _events.add(RealtimeEvent('devices', 'UPDATE', Map<String, dynamic>.from(d)));
+  }
+
+  @override
+  Future<Uint8List> downloadRoomPhoto(String path) => downloadDevicePhoto(path);
+
+  @override
+  Future<String> setRoomPhoto(Room room, Uint8List bytes, String contentType) async {
+    await _wait();
+    _requireManager(room.homeId);
+    final ext = imageExtension(contentType);
+    if (ext == null) throw const BackendException('invalid', 'Format d\'image non pris en charge (JPEG, PNG ou WebP).');
+    final path = '${room.homeId}/${room.id}-${DateTime.now().millisecondsSinceEpoch}.$ext';
+    _photos[path] = bytes;
+    _setRoomPhoto(room.id, path);
+    return path;
+  }
+
+  @override
+  Future<void> clearRoomPhoto(Room room) async {
+    await _wait();
+    _requireManager(room.homeId);
+    _setRoomPhoto(room.id, null);
+  }
+
+  void _setRoomPhoto(String roomId, String? path) {
+    final r = _rooms[roomId]!;
+    final old = r['photo_path'] as String?;
+    if (old != null) _photos.remove(old);
+    r['photo_path'] = path;
   }
 
   // ------------------------------------------------------------------ Temps réel

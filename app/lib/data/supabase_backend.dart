@@ -232,7 +232,13 @@ class SupabaseBackend implements Backend {
   @override
   Future<void> updateRoom(Room room) => _guard(() => _client
       .from('rooms')
-      .update({'name': room.name, 'icon': room.icon, 'sort_order': room.sortOrder}).eq('id', room.id));
+      .update({
+        'name': room.name,
+        'icon': room.icon,
+        'sort_order': room.sortOrder,
+        'image_key': room.imageKey,
+        'image_fit': room.imageFit.toJson(),
+      }).eq('id', room.id));
 
   @override
   Future<void> deleteRoom(String roomId) => _guard(() => _client.from('rooms').delete().eq('id', roomId));
@@ -633,10 +639,34 @@ class SupabaseBackend implements Backend {
         await _removePhoto(device.photoPath);
       });
 
-  Future<void> _removePhoto(String? path) async {
+  @override
+  Future<Uint8List> downloadRoomPhoto(String path) => _guard(() => _client.storage.from('room-photos').download(path));
+
+  @override
+  Future<String> setRoomPhoto(Room room, Uint8List bytes, String contentType) => _guard(() async {
+        final ext = imageExtension(contentType);
+        if (ext == null) throw const BackendException('invalid', 'Format d\'image non pris en charge (JPEG, PNG ou WebP).');
+        final path = '${room.homeId}/${room.id}-${DateTime.now().millisecondsSinceEpoch}.$ext';
+        await _client.storage.from('room-photos').uploadBinary(
+              path,
+              bytes,
+              fileOptions: FileOptions(contentType: contentType, cacheControl: '31536000'),
+            );
+        await _client.from('rooms').update({'photo_path': path}).eq('id', room.id);
+        await _removePhoto(room.photoPath, bucket: 'room-photos');
+        return path;
+      });
+
+  @override
+  Future<void> clearRoomPhoto(Room room) => _guard(() async {
+        await _client.from('rooms').update({'photo_path': null}).eq('id', room.id);
+        await _removePhoto(room.photoPath, bucket: 'room-photos');
+      });
+
+  Future<void> _removePhoto(String? path, {String bucket = 'device-photos'}) async {
     if (path == null) return;
     try {
-      await _client.storage.from('device-photos').remove([path]);
+      await _client.storage.from(bucket).remove([path]);
     } catch (_) {
       // Ancienne photo orpheline : sans conséquence pour l'affichage.
     }

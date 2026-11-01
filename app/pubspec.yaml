@@ -101,6 +101,8 @@ flutter:
     - assets/fonts/OFL-IBMPlexSansArabic.txt
     # Photos par type d'appareil (voir assets/devices/LISEZMOI.md)
     - assets/devices/
+    # Bibliothèque d'images des pièces (voir assets/rooms/LISEZMOI.md)
+    - assets/rooms/
   fonts:
     - family: Manrope
       fonts:
