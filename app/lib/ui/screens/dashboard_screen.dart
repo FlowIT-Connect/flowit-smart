@@ -10,6 +10,7 @@ import '../widgets/device_controls.dart';
 import '../widgets/device_visual.dart';
 import '../widgets/weather_widgets.dart';
 import 'device_detail.dart';
+import '../widgets/home_summary_panel.dart';
 import '../widgets/room_visual.dart';
 import 'rooms_screen.dart';
 
@@ -47,7 +48,13 @@ class DashboardScreen extends StatelessWidget {
       SliverToBoxAdapter(
         child: Padding(
           padding: const EdgeInsets.fromLTRB(16, 4, 16, 0),
-          child: _HomeHero(devices: all, onShowDevices: () => onNavigate(2)),
+          child: HomeSummaryPanel(devices: all, onShowDevices: () => onNavigate(2)),
+        ),
+      ),
+      SliverToBoxAdapter(
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
+          child: _StatusPills(devices: all, onShowDevices: () => onNavigate(2)),
         ),
       ),
       SliverToBoxAdapter(child: SectionHeader(context.tr('dashboard.favorites'))),
@@ -128,130 +135,34 @@ class DashboardScreen extends StatelessWidget {
   }
 }
 
-/// Carte d'accueil en verre dépoli : appareils allumés, réseau, alertes, climat, puissance.
-class _HomeHero extends StatelessWidget {
-  const _HomeHero({required this.devices, required this.onShowDevices});
+/// Pastilles sous le tableau : météo extérieure, appareils à vérifier, puissance.
+class _StatusPills extends StatelessWidget {
+  const _StatusPills({required this.devices, required this.onShowDevices});
 
   final List<Device> devices;
   final VoidCallback onShowDevices;
 
   @override
   Widget build(BuildContext context) {
-    final f = context.flow;
-    final theme = Theme.of(context);
     final weather = AppScope.of(context).weather;
-    final online = devices.where((d) => d.isOnline).length;
-    final active = devices.where((d) => d.isOnline && d.isOn == true).length;
     final unavailable = devices.where((d) => d.availability == Availability.unavailable).length;
-    final temps = [
-      for (final d in devices)
-        if (d.isOnline && d.state['temperature'] is num) (d.state['temperature'] as num).toDouble(),
-    ];
-    final avgTemp = temps.isEmpty ? null : temps.reduce((a, b) => a + b) / temps.length;
     final power = devices.where((d) => d.isOnline && d.state['power'] is num).fold<double>(0, (sum, d) => sum + (d.state['power'] as num));
-    final hour = DateTime.now().hour;
-    final greeting = context.tr(hour < 5 || hour >= 18 ? 'greeting.evening' : (hour < 12 ? 'greeting.morning' : 'greeting.afternoon'));
-    final ratio = devices.isEmpty ? 0.0 : online / devices.length;
-    final ink = f.ink;
-    final inkSoft = f.inkSoft;
-
-    return GlassPanel(
-      radius: 30,
-      child: Stack(children: [
-        // Halo solaire dans l'angle.
-        Positioned(
-          right: -70,
-          top: -90,
-          child: IgnorePointer(
-            child: Container(
-              width: 230,
-              height: 230,
-              decoration: BoxDecoration(
-                shape: BoxShape.circle,
-                gradient: RadialGradient(colors: [f.brand.withValues(alpha: .22), f.brand.withValues(alpha: 0)]),
-              ),
-            ),
-          ),
+    return Wrap(spacing: 8, runSpacing: 8, children: [
+      if (weather != null)
+        _HeroPill(
+          icon: weatherIcon(weather),
+          label: '${context.tr('weather.outside')} ${formatDegrees(weather.temperature)}',
+          onTap: () => showWeatherSheet(context),
         ),
-        Padding(
-          padding: const EdgeInsets.fromLTRB(20, 18, 20, 16),
-          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            Row(children: [
-              Container(
-                width: 52,
-                height: 52,
-                decoration: BoxDecoration(
-                  gradient: f.brandGradient,
-                  shape: BoxShape.circle,
-                  boxShadow: [BoxShadow(color: f.brand.withValues(alpha: .45), blurRadius: 22, spreadRadius: -2)],
-                ),
-                child: const Icon(Icons.wb_sunny_rounded, color: Colors.white, size: 26),
-              ),
-              const SizedBox(width: 14),
-              Expanded(
-                child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                  Text(greeting, maxLines: 1, overflow: TextOverflow.ellipsis, style: theme.textTheme.labelLarge?.copyWith(color: inkSoft)),
-                  Row(crossAxisAlignment: CrossAxisAlignment.baseline, textBaseline: TextBaseline.alphabetic, children: [
-                    Text('$active', style: theme.textTheme.displaySmall?.copyWith(color: ink, fontWeight: FontWeight.w300, height: 1.1)),
-                    const SizedBox(width: 8),
-                    Flexible(
-                      child: Text(
-                        context.tr('dashboard.active').toLowerCase(),
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: theme.textTheme.titleMedium?.copyWith(color: ink, fontWeight: FontWeight.w600),
-                      ),
-                    ),
-                  ]),
-                ]),
-              ),
-              const SizedBox(width: 10),
-              SizedBox(
-                width: 58,
-                height: 58,
-                child: Stack(alignment: Alignment.center, children: [
-                  SizedBox.expand(
-                    child: CircularProgressIndicator(
-                      value: ratio,
-                      strokeWidth: 5,
-                      strokeCap: StrokeCap.round,
-                      color: f.brand,
-                      backgroundColor: f.glassBorder,
-                    ),
-                  ),
-                  Text('${(ratio * 100).round()}%', style: theme.textTheme.labelLarge?.copyWith(color: ink, fontWeight: FontWeight.w800)),
-                ]),
-              ),
-            ]),
-            const SizedBox(height: 6),
-            Text(
-              context.tr('dashboard.onlineOf', {'n': online, 'total': devices.length}),
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: theme.textTheme.bodyMedium?.copyWith(color: inkSoft),
-            ),
-            const SizedBox(height: 14),
-            Wrap(spacing: 8, runSpacing: 8, children: [
-              if (weather != null)
-                _HeroPill(
-                  icon: weatherIcon(weather),
-                  label: '${context.tr('weather.outside')} ${formatDegrees(weather.temperature)}',
-                  onTap: () => showWeatherSheet(context),
-                ),
-              _HeroPill(
-                icon: unavailable > 0 ? Icons.error_outline_rounded : Icons.check_circle_rounded,
-                label: unavailable > 0 ? context.tr('dashboard.unavailableCount', {'n': unavailable}) : context.tr('dashboard.allGood'),
-                onTap: unavailable > 0 ? onShowDevices : null,
-                strong: unavailable > 0,
-              ),
-              if (avgTemp != null) _HeroPill(icon: Icons.home_rounded, label: '${avgTemp.toStringAsFixed(1)} °C'),
-              if (power > 0)
-                _HeroPill(icon: Icons.bolt_rounded, label: power >= 1000 ? '${(power / 1000).toStringAsFixed(1)} kW' : '${power.round()} W'),
-            ]),
-          ]),
-        ),
-      ]),
-    );
+      _HeroPill(
+        icon: unavailable > 0 ? Icons.error_outline_rounded : Icons.check_circle_rounded,
+        label: unavailable > 0 ? context.tr('dashboard.unavailableCount', {'n': unavailable}) : context.tr('dashboard.allGood'),
+        onTap: unavailable > 0 ? onShowDevices : null,
+        strong: unavailable > 0,
+      ),
+      if (power > 0)
+        _HeroPill(icon: Icons.bolt_rounded, label: power >= 1000 ? '${(power / 1000).toStringAsFixed(1)} kW' : '${power.round()} W'),
+    ]);
   }
 }
 

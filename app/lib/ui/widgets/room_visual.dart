@@ -10,6 +10,7 @@ import '../../core/room_library.dart';
 import '../../core/theme.dart';
 import '../../models/models.dart';
 import '../../state/app_state.dart';
+import 'device_controls.dart';
 
 /// Image d'une pièce : photo personnelle > image de la bibliothèque (photo livrée
 /// ou illustration de secours), avec le cadrage choisi.
@@ -263,7 +264,7 @@ class RoomStatusPill extends StatelessWidget {
 }
 
 /// Familles d'appareils d'une pièce : icône, nombre, et s'il y en a d'allumés.
-List<({DeviceKind kind, IconData icon, int count, bool lit})> deviceGroups(List<Device> devices) {
+List<({DeviceKind kind, IconData icon, int count, bool lit, List<Device> devices})> deviceGroups(List<Device> devices) {
   final byKind = <DeviceKind, List<Device>>{};
   for (final d in devices) {
     byKind.putIfAbsent(deviceKind(d), () => []).add(d);
@@ -275,6 +276,7 @@ List<({DeviceKind kind, IconData icon, int count, bool lit})> deviceGroups(List<
         icon: deviceIcon(e.value.first),
         count: e.value.length,
         lit: e.value.any((d) => d.isOnline && d.isOn == true),
+        devices: e.value,
       ),
   ];
   groups.sort((a, b) => b.count.compareTo(a.count));
@@ -327,11 +329,17 @@ class _GlassBand extends StatelessWidget {
                     : ClipRect(
                         child: Wrap(spacing: 10, runSpacing: 4, clipBehavior: Clip.hardEdge, children: [
                           for (final g in groups.take(3))
-                            Row(mainAxisSize: MainAxisSize.min, children: [
-                              Icon(g.icon, size: 17, color: g.lit ? f.amber : white.withValues(alpha: .9), shadows: g.lit ? [Shadow(color: f.amber, blurRadius: 10)] : null),
-                              const SizedBox(width: 3),
-                              Text('${g.count}', style: const TextStyle(color: white, fontSize: 13, fontWeight: FontWeight.w700)),
-                            ]),
+                            GestureDetector(
+                              key: ValueKey('group-$name-${g.kind.name}'),
+                              behavior: HitTestBehavior.opaque,
+                              onTap: () => showDeviceGroupSheet(context, '$name · ${context.tr('kind.${g.kind.name}')}', g.devices),
+                              onLongPress: () => toggleGroup(context, g.devices),
+                              child: Row(mainAxisSize: MainAxisSize.min, children: [
+                                Icon(g.icon, size: 17, color: g.lit ? f.amber : white.withValues(alpha: .9), shadows: g.lit ? [Shadow(color: f.amber, blurRadius: 10)] : null),
+                                const SizedBox(width: 3),
+                                Text('${g.count}', style: const TextStyle(color: white, fontSize: 13, fontWeight: FontWeight.w700)),
+                              ]),
+                            ),
                         ]),
                       ),
               ),
@@ -346,6 +354,50 @@ class _GlassBand extends StatelessWidget {
         ),
       ),
     );
+  }
+}
+
+/// Appareils d'une famille dans une pièce, avec leurs commandes (allumer,
+/// consigne, volets…) ; un appui sur une tuile ouvre les commandes avancées.
+void showDeviceGroupSheet(BuildContext context, String title, List<Device> devices) => showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      showDragHandle: true,
+      builder: (ctx) => DraggableScrollableSheet(
+        expand: false,
+        initialChildSize: .5,
+        maxChildSize: .92,
+        builder: (ctx, scroll) => CustomScrollView(controller: scroll, slivers: [
+          SliverPadding(
+            padding: const EdgeInsets.fromLTRB(20, 0, 20, 12),
+            sliver: SliverToBoxAdapter(child: Text(title, style: Theme.of(ctx).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w800))),
+          ),
+          // Toujours l'état à jour (temps réel) : on relit les appareils par leur id.
+          Builder(builder: (ctx) {
+            final state = AppScope.of(ctx);
+            final live = [for (final d in devices) state.devices[d.id] ?? d];
+            return DeviceGrid(live, showRoom: false);
+          }),
+          const SliverToBoxAdapter(child: SizedBox(height: 24)),
+        ]),
+      ),
+    );
+
+/// Appui long sur une famille : éteint tout si quelque chose est allumé, sinon
+/// allume tout. Seuls les appareils en ligne et commandables sont concernés.
+Future<void> toggleGroup(BuildContext context, List<Device> devices) async {
+  final state = AppScope.read(context);
+  final targets = [
+    for (final d in devices)
+      if ((state.devices[d.id] ?? d) case final cur when cur.isOnline && !cur.isBlocked && (cur.capability('switch')?.writable ?? false)) cur,
+  ];
+  if (targets.isEmpty) {
+    state.notify(state.tr('room.groupNotSwitchable'), error: true);
+    return;
+  }
+  final turnOn = !targets.any((d) => d.isOn == true);
+  for (final d in targets) {
+    if (d.isOn != turnOn) await state.sendCommand(d, 'switch', turnOn);
   }
 }
 
