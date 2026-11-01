@@ -73,3 +73,11 @@ reset role;
 delete from public.devices where id = 'ca100000-0000-0000-0000-000000000001';
 update public.climate_zones set active_preset = 'comfort', active_target = 21 where room_id = 'ca200000-0000-0000-0000-000000000001';
 select pg_temp.check((select active_preset = 'comfort' from public.climate_zones), 'passerelle : ambiance en cours enregistrée malgré un appareil supprimé');
+
+-- Fenêtre ouverte (migration 20261111000000_solea_climate_windows.sql)
+insert into public.devices (id, home_id, room_id, name, protocol, availability, state) values
+ ('ca100000-0000-0000-0000-000000000003','ca000000-0000-0000-0000-000000000001','ca200000-0000-0000-0000-000000000001','Fenêtre salon','zigbee','available','{"contact":true}');
+update public.climate_zones set devices = '[]', windows = '["ca100000-0000-0000-0000-000000000003"]', window_delay = 5 where room_id = 'ca200000-0000-0000-0000-000000000001';
+select pg_temp.check((select window_delay = 5 and jsonb_array_length(windows) = 1 and not active_window from public.climate_zones), 'capteur de fenêtre associé à la pièce');
+select pg_temp.check(pg_temp.fails($$update public.climate_zones set windows = '["ca100000-0000-0000-0000-000000000002"]'$$), 'capteur d''un autre logement refusé');
+select pg_temp.check(pg_temp.fails($$update public.climate_zones set window_delay = 90$$), 'délai hors limites refusé');

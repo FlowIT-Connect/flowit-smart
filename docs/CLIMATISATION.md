@@ -68,3 +68,18 @@ Sur l'accueil, la carte **Chauffage et clim** change l'ambiance de toute la mais
 - La passerelle applique l'ambiance **quand elle change** : un réglage fait à la main entre-temps est respecté.
 
 Base : migration `20261110000000_solea_climate.sql` (tables `climate_settings`, `climate_zones`, fonction `set_climate_preset`).
+
+## Fenêtre ouverte
+
+Dans le réglage d'une pièce, la section **Fenêtre ouverte** associe les capteurs d'ouverture
+(fenêtres, porte-fenêtre, Aqara, Zigbee, Tuya…) et le délai avant coupure (1, 2, 5 ou 10 minutes ; 2 par défaut).
+
+- Une fenêtre reste ouverte plus longtemps que le délai : la passerelle **coupe la clim ou le chauffage** de la pièce
+  et prévient les membres du logement (notification « Fenêtre ouverte »). La carte de la pièce l'affiche.
+- La coupure passe **toujours par l'appareil** (mode Arrêt, ou consigne Hors-gel s'il n'a pas de mode) :
+  jamais par une prise ou un disjoncteur, surtout pas pour une chaudière.
+- Fenêtre fermée : chaque appareil reprend le mode qu'il avait (ou celui de la saison), puis l'ambiance du moment.
+- Les têtes thermostatiques qui détectent elles-mêmes une fenêtre ouverte (`window_open`) déclenchent aussi la coupure.
+- Redémarrage de la passerelle pendant une coupure : la pièce reste coupée, et à la fermeture le mode de la saison est remis.
+
+Base : migration `20261111000000_solea_climate_windows.sql` (colonnes `windows`, `window_delay`, `active_window`).

@@ -1,4 +1,5 @@
 import 'package:flowit_smart/core/climate.dart';
+import 'package:flowit_smart/ui/screens/climate_screen.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -33,6 +34,48 @@ void main() {
       expect(s.temps('frost'), const PresetTemps(7, null));
       expect(s.activeHomePreset(), 'away');
     });
+
+    test('fenêtre ouverte : capteurs, délai et état lus et renvoyés', () {
+      final z = ClimateZone.fromJson({'room_id': 'r', 'windows': ['w1'], 'window_delay': 5, 'active_window': true});
+      expect(z.windows, ['w1']);
+      expect(z.windowDelay, 5);
+      expect(z.activeWindow, isTrue);
+      final next = z.copyWith(windows: ['w1', 'w2'], windowDelay: 1);
+      expect(next.toJson()['windows'], ['w1', 'w2']);
+      expect(next.toJson()['window_delay'], 1);
+      expect(next.toJson().containsKey('active_window'), isFalse, reason: 'écrit par la passerelle');
+      expect(const ClimateZone(roomId: 'r').windowDelay, 2);
+    });
+  });
+
+  testWidgets('pièce : associer un capteur de fenêtre et choisir le délai', (tester) async {
+    final state = await pumpApp(tester);
+    await signIn(tester);
+    await tester.pumpAndSettle();
+    final zone = state.climate.zones.single;
+    final porte = state.devices.values.firstWhere((d) => d.name == 'Porte d\'entrée');
+    final nav = Navigator.of(tester.element(find.byType(Scaffold).first));
+    nav.push(MaterialPageRoute(builder: (_) => ClimateZoneScreen(roomId: zone.roomId)));
+    await tester.pumpAndSettle();
+    final box = find.byKey(ValueKey('climate-window-${porte.id}'));
+    await tester.scrollUntilVisible(box, 200, scrollable: find.byType(Scrollable).last);
+    await tester.pumpAndSettle();
+    await tester.tap(box);
+    await tester.pumpAndSettle();
+    final delay = find.byKey(const ValueKey('climate-window-delay-5'));
+    await tester.ensureVisible(delay);
+    await tester.pumpAndSettle();
+    await tester.tap(delay);
+    await tester.pumpAndSettle();
+    await tester.scrollUntilVisible(find.text('Enregistrer'), 200, scrollable: find.byType(Scrollable).last);
+    await tester.ensureVisible(find.text('Enregistrer'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Enregistrer'));
+    await tester.pumpAndSettle();
+    final saved = state.climate.zones.single;
+    expect(saved.windows, [porte.id]);
+    expect(saved.windowDelay, 5);
+    await tester.pump(const Duration(seconds: 4));
   });
 
   testWidgets('accueil : Absence pour toute la maison, puis réglage du salon', (tester) async {
