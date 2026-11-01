@@ -210,7 +210,7 @@ void main() {
     Navigator.of(tester.element(find.byType(AddDeviceScreen))).pop();
     await tester.pumpAndSettle();
 
-    await tester.tap(find.text('Paramètres').last);
+    await tester.tap(find.text('Réglages').last);
     await tester.pumpAndSettle();
     await tester.scrollUntilVisible(find.text('Paiements'), 200, scrollable: find.byType(Scrollable).last);
     await tester.drag(find.byType(Scrollable).last, const Offset(0, -200));
@@ -229,7 +229,7 @@ void main() {
   testWidgets('exploitant : appareil du compte installateur rangé dans un logement', (tester) async {
     final state = await pumpApp(tester);
     await signIn(tester);
-    await tester.tap(find.text('Paramètres').last);
+    await tester.tap(find.text('Réglages').last);
     await tester.pumpAndSettle();
     await tester.scrollUntilVisible(find.text('Appareils à attribuer'), 200, scrollable: find.byType(Scrollable).last);
     await tester.drag(find.byType(Scrollable).last, const Offset(0, -200));

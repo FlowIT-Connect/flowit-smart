@@ -135,7 +135,7 @@ class _ShellState extends State<Shell> {
                         icon: Icon(_icons[i].$1),
                         selectedIcon: Icon(_icons[i].$2),
                         // Libellé court sous l'icône, nom complet dans l'infobulle.
-                        label: context.tr(i == 4 ? 'nav.automationsShort' : _labels[i]),
+                        label: context.tr(i == 4 ? 'nav.automationsShort' : i == 5 ? 'nav.settingsShort' : _labels[i]),
                         tooltip: context.tr(_labels[i]),
                       ),
                   ],

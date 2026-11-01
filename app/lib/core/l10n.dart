@@ -117,6 +117,7 @@ const _fr = <String, String>{
   'nav.automations': 'Automatisations',
   'nav.automationsShort': 'Routines',
   'nav.settings': 'Paramètres',
+  'nav.settingsShort': 'Réglages',
 
   // Commun
   'common.cancel': 'Annuler',
@@ -1033,6 +1034,7 @@ const _en = <String, String>{
   'nav.automations': 'Automations',
   'nav.automationsShort': 'Routines',
   'nav.settings': 'Settings',
+  'nav.settingsShort': 'Settings',
   'common.cancel': 'Cancel',
   'common.close': 'Close',
   'common.confirm': 'Confirm',
@@ -1923,6 +1925,7 @@ const _ar = <String, String>{
   'nav.automations': 'الأتمتة',
   'nav.automationsShort': 'الأتمتة',
   'nav.settings': 'الإعدادات',
+  'nav.settingsShort': 'الإعدادات',
   'common.cancel': 'إلغاء',
   'common.close': 'إغلاق',
   'common.confirm': 'تأكيد',
