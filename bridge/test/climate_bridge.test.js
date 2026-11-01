@@ -110,3 +110,36 @@ test('fenêtre ouverte : coupure après le délai, une notification, reprise du 
   assert.equal(store.climateZones[0].active_window, false);
   assert.equal(thermo.state.target_temperature, 21);
 });
+
+test('préchauffage : la pièce est chauffée avant l\'heure prévue, puis le programme reprend', async () => {
+  const thermo = store.deviceByName('Thermostat');
+  store.climateZones.push({
+    id: 'z1', home_id: 'home-1', room_id: 'r1', enabled: true, devices: [thermo.id],
+    schedule: [{ days: [1, 2, 3, 4, 5, 6, 7], at: '07:00', preset: 'comfort' }, { days: [1, 2, 3, 4, 5, 6, 7], at: '22:00', preset: 'sleep' }],
+  });
+  fake.setState('climate.thermostat', 'heat', { current_temperature: 16 });
+  assert.ok(await until(() => bridge.devices.get(thermo.id).state.current_temperature === 16));
+  clockNow = new Date('2030-01-07T04:00:00Z'); // 5 h : Nuit
+  await bridge.tickClimate();
+  assert.ok(await until(() => thermo.state.target_temperature === 18), `consigne ${thermo.state.target_temperature}`);
+  clockNow = new Date('2030-01-07T05:00:00Z'); // 6 h : 5 °C d'écart, on commence
+  await bridge.tickClimate();
+  assert.ok(await until(() => thermo.state.target_temperature === 21), `consigne ${thermo.state.target_temperature}`);
+  assert.equal(store.climateZones[0].active_source, 'preheat');
+  fake.setState('climate.thermostat', 'heat', { current_temperature: 20.5 });
+  assert.ok(await until(() => bridge.devices.get(thermo.id).state.current_temperature === 20.5));
+  clockNow = new Date('2030-01-07T05:40:00Z');
+  await bridge.tickClimate();
+  assert.equal(store.climateZones[0].active_source, 'preheat', 'le préchauffage continue');
+  clockNow = new Date('2030-01-07T06:01:00Z');
+  await bridge.tickClimate();
+  assert.equal(store.climateZones[0].active_source, 'schedule');
+  assert.equal(thermo.state.target_temperature, 21);
+
+  // Préchauffage désactivé : rien avant l'heure.
+  store.climateSettings.set('home-1', { home_id: 'home-1', enabled: true, preheat: false });
+  fake.setState('climate.thermostat', 'heat', { current_temperature: 16 });
+  clockNow = new Date('2030-01-08T05:00:00Z');
+  await bridge.tickClimate();
+  assert.equal(store.climateZones[0].active_preset, 'sleep');
+});

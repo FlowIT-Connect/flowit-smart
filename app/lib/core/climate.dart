@@ -55,7 +55,11 @@ class ClimateSettings {
   final String? homePreset;
   final DateTime? homePresetUntil;
 
-  const ClimateSettings({this.enabled = true, this.presets = defaultPresetTemps, this.homePreset, this.homePresetUntil});
+  /// Préchauffage : la passerelle anticipe le prochain changement d'ambiance, jusqu'à [preheatMax] minutes.
+  final bool preheat;
+  final int preheatMax;
+
+  const ClimateSettings({this.enabled = true, this.presets = defaultPresetTemps, this.homePreset, this.homePresetUntil, this.preheat = true, this.preheatMax = 120});
 
   static const initial = ClimateSettings();
 
@@ -66,12 +70,16 @@ class ClimateSettings {
       presets: {for (final p in climatePresets) p: raw.containsKey(p) ? PresetTemps.fromJson(raw[p]) : defaultPresetTemps[p]!},
       homePreset: j['home_preset'] as String?,
       homePresetUntil: DateTime.tryParse(j['home_preset_until'] as String? ?? '')?.toLocal(),
+      preheat: (j['preheat'] as bool?) ?? true,
+      preheatMax: (j['preheat_max'] as num?)?.toInt() ?? 120,
     );
   }
 
   Map<String, dynamic> toJson() => {
         'enabled': enabled,
         'presets': {for (final e in presets.entries) e.key: e.value.toJson()},
+        'preheat': preheat,
+        'preheat_max': preheatMax,
       };
 
   PresetTemps temps(String preset) => presets[preset] ?? defaultPresetTemps[preset]!;
@@ -80,8 +88,14 @@ class ClimateSettings {
   String? activeHomePreset([DateTime? at]) =>
       homePreset != null && (homePresetUntil == null || homePresetUntil!.isAfter(at ?? DateTime.now())) ? homePreset : null;
 
-  ClimateSettings copyWith({bool? enabled, Map<String, PresetTemps>? presets}) =>
-      ClimateSettings(enabled: enabled ?? this.enabled, presets: presets ?? this.presets, homePreset: homePreset, homePresetUntil: homePresetUntil);
+  ClimateSettings copyWith({bool? enabled, Map<String, PresetTemps>? presets, bool? preheat, int? preheatMax}) => ClimateSettings(
+        enabled: enabled ?? this.enabled,
+        presets: presets ?? this.presets,
+        homePreset: homePreset,
+        homePresetUntil: homePresetUntil,
+        preheat: preheat ?? this.preheat,
+        preheatMax: preheatMax ?? this.preheatMax,
+      );
 }
 
 /// Plage du programme : à partir de [at] les jours [days] (1 = lundi), ambiance [preset].
@@ -191,6 +205,15 @@ class ClimateZone {
         windowDelay: windowDelay ?? this.windowDelay,
         activeWindow: activeWindow,
       );
+}
+
+/// Avances de préchauffage proposées (minutes).
+const preheatChoices = [60, 120, 180, 240];
+
+/// Heure de retour annoncée (« Je rentre à 18 h ») : aujourd'hui, ou demain si l'heure est passée.
+DateTime returnTime(TimeOfDay t, DateTime now) {
+  final today = DateTime(now.year, now.month, now.day, t.hour, t.minute);
+  return today.isAfter(now) ? today : DateTime(now.year, now.month, now.day + 1, t.hour, t.minute);
 }
 
 /// Délais proposés avant de couper (minutes).

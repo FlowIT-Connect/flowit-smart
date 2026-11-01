@@ -30,6 +30,60 @@ Future<(bool, DateTime?)?> _askDuration(BuildContext context, String preset) {
   );
 }
 
+/// « Je pars » : Absence dans toute la maison, jusqu'au retour ou jusqu'à une heure annoncée
+/// (la passerelle préchauffe pour l'heure du retour). « Je rentre » : retour au programme.
+class ClimateAwayButton extends StatelessWidget {
+  const ClimateAwayButton({super.key});
+
+  Future<void> _leave(BuildContext context, AppState state) async {
+    final choice = await showModalBottomSheet<String>(
+      context: context,
+      showDragHandle: true,
+      builder: (ctx) => SafeArea(
+        child: Column(mainAxisSize: MainAxisSize.min, children: [
+          ListTile(leading: const Icon(Icons.directions_walk_rounded), title: Text(ctx.tr('climate.leave'), style: Theme.of(ctx).textTheme.titleMedium)),
+          ListTile(leading: const Icon(Icons.all_inclusive_rounded), title: Text(ctx.tr('climate.leave.untilBack')), onTap: () => Navigator.pop(ctx, 'open')),
+          ListTile(leading: const Icon(Icons.schedule_rounded), title: Text(ctx.tr('climate.leave.backAt')), subtitle: Text(ctx.tr('climate.leave.backAtHelp')), onTap: () => Navigator.pop(ctx, 'time')),
+          const SizedBox(height: 8),
+        ]),
+      ),
+    );
+    if (choice == null || !context.mounted) return;
+    DateTime? until;
+    if (choice == 'time') {
+      final t = await showTimePicker(context: context, initialTime: const TimeOfDay(hour: 18, minute: 0));
+      if (t == null || !context.mounted) return;
+      until = returnTime(t, DateTime.now());
+    }
+    await state.setClimatePreset(null, 'away', until: until, success: context.tr('climate.leave.done'));
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final state = AppScope.of(context);
+    final away = state.climate.settings.activeHomePreset() == 'away';
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(4, 6, 4, 2),
+      child: SizedBox(
+        width: double.infinity,
+        child: away
+            ? FilledButton.tonalIcon(
+                key: const ValueKey('climate-back'),
+                onPressed: () => state.setClimatePreset(null, null, success: context.tr('climate.back.done')),
+                icon: const Icon(Icons.home_rounded),
+                label: Text(context.tr('climate.back')),
+              )
+            : OutlinedButton.icon(
+                key: const ValueKey('climate-leave'),
+                onPressed: () => _leave(context, state),
+                icon: const Icon(Icons.directions_walk_rounded),
+                label: Text(context.tr('climate.leave')),
+              ),
+      ),
+    );
+  }
+}
+
 /// Boutons d'ambiance (Programme, Confort, Éco, Nuit, Absence) pour la maison ou une pièce.
 class ClimatePresetButtons extends StatelessWidget {
   const ClimatePresetButtons({super.key, required this.current, this.roomId, this.compact = false});
@@ -170,6 +224,7 @@ class _ClimateScreenState extends State<ClimateScreen> {
                   ),
                   const SizedBox(height: 8),
                   ClimatePresetButtons(current: home),
+                  const ClimateAwayButton(),
                 ]),
               ),
             ),
@@ -184,6 +239,28 @@ class _ClimateScreenState extends State<ClimateScreen> {
               Text(context.tr('climate.presets.help'), style: Theme.of(context).textTheme.bodySmall),
               const SizedBox(height: 8),
               ..._presetEditor(context, state),
+              SectionHeader(context.tr('climate.smart')),
+              SwitchListTile(
+                key: const ValueKey('climate-preheat'),
+                contentPadding: EdgeInsets.zero,
+                title: Text(context.tr('climate.preheat')),
+                subtitle: Text(context.tr('climate.preheat.help')),
+                value: c.settings.preheat,
+                onChanged: (v) => state.saveClimateSettings(c.settings.copyWith(preheat: v)),
+              ),
+              if (c.settings.preheat) ...[
+                Text(context.tr('climate.preheat.max'), style: Theme.of(context).textTheme.bodyMedium),
+                const SizedBox(height: 4),
+                Wrap(spacing: 8, children: [
+                  for (final m in preheatChoices)
+                    ChoiceChip(
+                      key: ValueKey('climate-preheat-$m'),
+                      label: Text(context.tr('climate.preheat.hours', {'n': '${m ~/ 60}'})),
+                      selected: c.settings.preheatMax == m,
+                      onSelected: (_) => state.saveClimateSettings(c.settings.copyWith(preheatMax: m)),
+                    ),
+                ]),
+              ],
               const SizedBox(height: 12),
               SwitchListTile(
                 title: Text(context.tr('climate.enabled')),
@@ -542,7 +619,7 @@ class ClimateHomeCard extends StatelessWidget {
             trailing: const ForwardChevron(),
             onTap: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => const ClimateScreen())),
           ),
-          if (c.zones.isNotEmpty) ClimatePresetButtons(current: home, compact: true),
+          if (c.zones.isNotEmpty) ...[ClimatePresetButtons(current: home, compact: true), const ClimateAwayButton()],
         ]),
       ),
     );

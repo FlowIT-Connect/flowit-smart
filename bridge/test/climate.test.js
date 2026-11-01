@@ -211,3 +211,38 @@ test('fenêtre ouverte : détection, coupure par le mode ou en Hors-gel, reprise
   assert.deepEqual(windowRestoreCommands({ caps: caps(true), state: { hvac_mode: 'heat' } }, 'cool', null), [], 'déjà remis à la main');
   assert.deepEqual(windowRestoreCommands({ caps: caps(true), state: { hvac_mode: 'off' } }, null, null), []);
 });
+
+test('températures intelligentes : temps de montée et préchauffage anticipé', async () => {
+  const { anticipatedPreset, warmupMinutes, zoneKind, zoneTemperature } = await import('../src/climate.js');
+  const { localTime } = await import('../src/automations.js');
+  assert.equal(warmupMinutes(18, 21, 'heat', 12), 45);
+  assert.equal(warmupMinutes(18, 21, 'heat', -3), 68, 'gel dehors : 50 % de marge');
+  assert.equal(warmupMinutes(28, 24, 'cool', 40), 60);
+  assert.equal(warmupMinutes(22, 21, 'heat', null), 0);
+  assert.equal(warmupMinutes(null, 21, 'heat', null), 0);
+
+  const devices = new Map([['t', { state: { current_temperature: 17, hvac_mode: 'heat' } }], ['c', { state: { hvac_mode: 'cool' } }]]);
+  assert.equal(zoneTemperature({ devices: ['x', 't'] }, devices), 17);
+  assert.equal(zoneKind({ devices: ['t', 'c'] }, devices, null), 'cool');
+  assert.equal(zoneKind({ devices: ['t'] }, devices, 'cool'), 'cool');
+
+  // Lundi 7 janvier 2030 à Alger : Nuit jusqu'à 7 h, puis Confort.
+  const zone = { schedule: [{ days: [1, 2, 3, 4, 5, 6, 7], at: '07:00', preset: 'comfort' }, { days: [1, 2, 3, 4, 5, 6, 7], at: '22:00', preset: 'sleep' }] };
+  const base = { zone, settings: null, modes: [], localAt: (d) => localTime(d, 'Africa/Algiers'), presets: null, kind: 'heat', outdoor: 10, maxMinutes: 120 };
+  const at = (iso) => new Date(iso);
+  // 6 h : 21 - 17 = 4 °C → 60 min, il reste 60 min : on commence.
+  assert.deepEqual(anticipatedPreset({ ...base, now: at('2030-01-07T05:00:00Z'), measured: 17 }), { preset: 'comfort', source: 'preheat' });
+  // 5 h 30 : trop tôt.
+  assert.deepEqual(anticipatedPreset({ ...base, now: at('2030-01-07T04:30:00Z'), measured: 17 }), { preset: 'sleep', source: 'schedule' });
+  // Commencé : continue même si la pièce s'est déjà réchauffée.
+  assert.deepEqual(anticipatedPreset({ ...base, now: at('2030-01-07T05:40:00Z'), measured: 20.8, ongoing: 'comfort' }), { preset: 'comfort', source: 'preheat' });
+  // Désactivé, ou passage vers plus froid (Nuit à 22 h) : rien d'anticipé.
+  assert.equal(anticipatedPreset({ ...base, now: at('2030-01-07T05:00:00Z'), measured: 17, maxMinutes: 0 }).source, 'schedule');
+  assert.equal(anticipatedPreset({ ...base, now: at('2030-01-07T20:30:00Z'), measured: 15 }).preset, 'comfort');
+  // « Je rentre à 18 h » : Absence pour la maison jusqu'à 18 h, puis le programme.
+  const away = { home_preset: 'away', home_preset_until: '2030-01-07T17:00:00Z' };
+  assert.deepEqual(anticipatedPreset({ ...base, settings: away, now: at('2030-01-07T16:00:00Z'), measured: 16 }), { preset: 'comfort', source: 'preheat' });
+  assert.deepEqual(anticipatedPreset({ ...base, settings: away, now: at('2030-01-07T14:00:00Z'), measured: 16 }), { preset: 'away', source: 'home' });
+  // Clim : Confort à 24 °C, pièce à 30 °C, 6 × 10 = 60 min.
+  assert.deepEqual(anticipatedPreset({ ...base, kind: 'cool', outdoor: 30, now: at('2030-01-07T05:00:00Z'), measured: 30 }), { preset: 'comfort', source: 'preheat' });
+});
