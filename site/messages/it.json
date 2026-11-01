@@ -559,6 +559,7 @@
       "Titolare: FlowIT, editore di Solea. Contatto: contact@solea-dz.com.",
       "Dati raccolti: solo quelli che inserisci (nome, e-mail, telefono, paese, lingua, messaggio).",
       "Finalità: rispondere alla tua richiesta, avvisarti del lancio di Solea Gateway se lo hai chiesto e inviarti informazioni commerciali solo con il tuo consenso.",
+      "Fornitori: il sito è ospitato da Netlify, che ci inoltra anche ogni richiesta via e-mail; le richieste sono salvate in un database Supabase.",
       "Conservazione: fino a tre anni dopo il nostro ultimo contatto, poi cancellazione.",
       "I tuoi diritti: accesso, rettifica, cancellazione e revoca del consenso in qualsiasi momento, via e-mail a support@solea-dz.com.",
       "Cookie: il sito salva solo le tue preferenze di lingua, paese e valuta. Nessun cookie pubblicitario."

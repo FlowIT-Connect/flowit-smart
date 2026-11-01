@@ -559,6 +559,7 @@
       "Controller: FlowIT, publisher of Solea. Contact: contact@solea-dz.com.",
       "Data collected: only what you enter (name, email, phone, country, language, message).",
       "Purpose: to answer your request, to notify you of the Solea Gateway launch if you asked for it, and to send you marketing information only if you agreed to it.",
+      "Service providers: the site is hosted by Netlify, which also forwards each request to us by email; requests are stored in a Supabase database.",
       "Retention: up to three years after our last exchange, then deletion.",
       "Your rights: access, correction, deletion and withdrawal of consent at any time, by email to support@solea-dz.com.",
       "Cookies: the site only stores your language, country and currency preferences. No advertising cookies."
