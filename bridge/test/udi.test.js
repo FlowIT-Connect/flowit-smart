@@ -576,6 +576,33 @@ describe('Dahua : ajout par QR code', () => {
     assert.equal(moved.located().host, '192.168.1.77');
   });
 
+  test('pilote : adresse Dahua standard coupée, flux trouvé par ONVIF', async () => {
+    const onvifUrl = 'rtsp://192.168.1.45:554/cam/realmonitor?channel=1&subtype=0&unicast=true&proto=Onvif';
+    const probe = async (url) => (url === onvifUrl ? { ok: true, status: 200, video: { codec: 'H264' } } : { ok: false, error: 'La caméra coupe le flux RTSP dès la première demande' });
+    let asked = null;
+    const d = new DahuaDriver(
+      { id: 'q5', serial: 'S1', host: '192.168.1.45', password: 'TEST1234' },
+      {
+        probe,
+        fetchImpl: async () => new Response('', { status: 404 }),
+        onvif: (src) => {
+          asked = src;
+          return { connect: async () => {}, rtspCheck: { ok: true, status: 200, video: { codec: 'H264' } }, streams: () => ({ main: onvifUrl, sub: null }) };
+        },
+      },
+    );
+    await d.connect();
+    assert.deepEqual([asked.host, asked.port, asked.username, asked.password], ['192.168.1.45', 80, 'admin', 'TEST1234']);
+    assert.equal(d.streams().main, onvifUrl);
+    assert.equal(d.capabilities().video_stream, true);
+
+    const both = new DahuaDriver(
+      { id: 'q6', serial: 'S1', host: '192.168.1.45', password: 'x' },
+      { probe, onvif: () => ({ connect: async () => { throw new Error('Identifiants refusés par l\'appareil'); } }) },
+    );
+    await assert.rejects(both.connect(), (e) => /Essai ONVIF : Identifiants refusés/.test(e.message));
+  });
+
   test('boîtier : adresse trouvée enregistrée, recherche réseau avec les caméras Dahua', async () => {
     const store = new MemoryStore();
     store.videoSources = [{ id: 'qr-1', home_id: 'home-1', name: 'Salon', category: 'camera', driver: 'dahua', serial: '9K00AB1CDEF2345', host: null, username: 'admin', password: 'TEST1234' }];
