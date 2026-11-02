@@ -25,6 +25,13 @@ export class MemoryStore {
     this.videoSessions = [];
     this.videoScans = [];
     this.mediaGateways = new Map();
+    this.automationRuns = [];
+    this.homeModes = new Map();
+    this.climateSettings = new Map();
+    this.climateZones = [];
+    this.presence = [];
+    this.weatherReadings = [];
+    this.notifications = [];
   }
 
   // Équipements vidéo (UDI)
@@ -40,6 +47,16 @@ export class MemoryStore {
 
   async getIntegration(id) { return this.integrations.get(id) ?? null; }
   async getHome(id) { return this.homes.get(id) ?? null; }
+  async getHomeModes(homeId) { return this.homeModes.get(homeId) ?? null; }
+  async getClimate(homeId) {
+    return { settings: this.climateSettings.get(homeId) ?? null, zones: this.climateZones.filter((z) => z.home_id === homeId).map((z) => ({ ...z })) };
+  }
+  async getPresence(homeId) { return this.presence.filter((p) => p.home_id === homeId).map((p) => ({ ...p })); }
+  async updateClimateSettings(homeId, patch) { Object.assign(this.climateSettings.get(homeId) ?? {}, patch); }
+  async updateClimateZone(id, patch) { Object.assign(this.climateZones.find((z) => z.id === id) ?? {}, patch); }
+  async insertAutomationRun(row) { this.automationRuns.push({ ...row, created_at: new Date().toISOString() }); }
+  async insertWeatherReading(row) { this.weatherReadings.push(row); }
+  async notifyHome(homeId, type, body, data = {}, ref = null) { this.notifications.push({ homeId, type, body, data, ref }); }
   async setIntegrationStatus(id, status, lastError, lastSyncAt) {
     const i = this.integrations.get(id);
     if (i.status === 'disabled') return;

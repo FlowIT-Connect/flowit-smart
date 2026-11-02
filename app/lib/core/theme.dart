@@ -19,6 +19,9 @@ class AppTheme {
 
   static ThemeData dark() => _build(FlowColors.dark, Brightness.dark);
 
+  /// Thème Material construit sur des couleurs Solea (thèmes de l'apparence).
+  static ThemeData from(FlowColors c, Brightness brightness) => _build(c, brightness);
+
   static ThemeData _build(FlowColors c, Brightness brightness) {
     final base = ColorScheme.fromSeed(seedColor: seed, brightness: brightness);
     final scheme = base.copyWith(
@@ -443,6 +446,100 @@ class FlowColors extends ThemeExtension<FlowColors> {
         end: Alignment.bottomRight,
         colors: [glassStrong, glass],
       );
+
+  /// Variante d'un thème : couleur d'accent, fond et verre différents.
+  FlowColors variant({Color? accent, Color? backdrop, List<Color>? blobs, Color? glass, Color? glassStrong}) => FlowColors(
+        background: background,
+        surface: surface,
+        surfaceAlt: surfaceAlt,
+        sheet: sheet,
+        field: field,
+        chip: chip,
+        line: line,
+        cardBorder: cardBorder,
+        ink: ink,
+        inkSoft: inkSoft,
+        inkFaint: inkFaint,
+        brand: accent ?? brand,
+        brandStrong: accent == null ? brandStrong : Color.lerp(accent, Colors.white, .2)!,
+        brandDeep: accent == null ? brandDeep : Color.lerp(accent, Colors.black, .15)!,
+        brandSoft: accent == null ? brandSoft : Color.lerp(accent, const Color(0xFF111111), .78)!,
+        brandInk: accent == null ? brandInk : Color.lerp(accent, Colors.white, .45)!,
+        onBrand: onBrand,
+        tileOff: tileOff,
+        tileOn: accent == null ? tileOn : accent.withValues(alpha: .4),
+        tileOnInk: tileOnInk,
+        tileOnInkSoft: tileOnInkSoft,
+        navBar: navBar,
+        glowA: glowA,
+        glowB: glowB,
+        amber: amber,
+        orange: orange,
+        blue: blue,
+        violet: violet,
+        cyan: cyan,
+        pink: pink,
+        success: success,
+        warning: warning,
+        danger: danger,
+        dangerSoft: dangerSoft,
+        dangerInk: dangerInk,
+        shadow: shadow,
+        glass: glass ?? this.glass,
+        glassStrong: glassStrong ?? this.glassStrong,
+        glassBorder: glassBorder,
+        backdrop: backdrop ?? this.backdrop,
+        blobs: blobs ?? this.blobs,
+      );
+
+  /// Verre plus ou moins couvrant (réglage « transparence des cartes »).
+  FlowColors withGlassOpacity(double k) => k == 1
+      ? this
+      : FlowColors(
+        background: background,
+        surface: surface,
+        surfaceAlt: surfaceAlt,
+        sheet: sheet,
+        field: field,
+        chip: chip,
+        line: line,
+        cardBorder: cardBorder,
+        ink: ink,
+        inkSoft: inkSoft,
+        inkFaint: inkFaint,
+        brand: brand,
+        brandStrong: brandStrong,
+        brandDeep: brandDeep,
+        brandSoft: brandSoft,
+        brandInk: brandInk,
+        onBrand: onBrand,
+        tileOff: _scaleAlpha(tileOff, k),
+        tileOn: tileOn,
+        tileOnInk: tileOnInk,
+        tileOnInkSoft: tileOnInkSoft,
+        navBar: _scaleAlpha(navBar, k),
+        glowA: glowA,
+        glowB: glowB,
+        amber: amber,
+        orange: orange,
+        blue: blue,
+        violet: violet,
+        cyan: cyan,
+        pink: pink,
+        success: success,
+        warning: warning,
+        danger: danger,
+        dangerSoft: dangerSoft,
+        dangerInk: dangerInk,
+        shadow: shadow,
+        glass: _scaleAlpha(glass, k),
+        glassStrong: _scaleAlpha(glassStrong, k),
+        glassBorder: _scaleAlpha(glassBorder, (k + 1) / 2),
+        backdrop: backdrop,
+        blobs: blobs,
+        );
+
+  static Color _scaleAlpha(Color c, double k) => c.withValues(alpha: (c.a * k).clamp(0.0, 1.0));
 
   @override
   FlowColors copyWith() => this;

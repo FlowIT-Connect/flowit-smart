@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Petite icône des notifications push : soleil Solea monochrome (Android la teinte). -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp" android:height="24dp"
+    android:viewportWidth="24" android:viewportHeight="24">
+    <path android:fillColor="#FFFFFFFF" android:pathData="M12,7 a5,5 0 1,0 0.001,0 Z" />
+    <path android:fillColor="#FFFFFFFF" android:pathData="M19.60,12.90 L22.80,12.90 L22.80,11.10 L19.60,11.10 Z M16.74,18.01 L19.00,20.27 L20.27,19.00 L18.01,16.74 Z M11.10,19.60 L11.10,22.80 L12.90,22.80 L12.90,19.60 Z M5.99,16.74 L3.73,19.00 L5.00,20.27 L7.26,18.01 Z M4.40,11.10 L1.20,11.10 L1.20,12.90 L4.40,12.90 Z M7.26,5.99 L5.00,3.73 L3.73,5.00 L5.99,7.26 Z M12.90,4.40 L12.90,1.20 L11.10,1.20 L11.10,4.40 Z M18.01,7.26 L20.27,5.00 L19.00,3.73 L16.74,5.99 Z" />
+</vector>

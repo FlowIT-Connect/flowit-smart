@@ -8,6 +8,7 @@ import { addTTLock } from './adapters/ttlock.js';
 import { TTLockClient } from './adapters/ttlock_api.js';
 import { TuyaClient } from './adapters/tuya_api.js';
 import { TuyaCloudAdapter } from './adapters/tuya_cloud.js';
+import { addYeedi, YeediClient } from './adapters/yeedi.js';
 import { Bridge } from './bridge.js';
 import { loadConfig } from './config.js';
 import { PlatformSupervisor } from './platform.js';
@@ -61,6 +62,11 @@ if (config.cameras.length) {
 if (config.ttlock) {
   addTTLock(adapter, new TTLockClient(config.ttlock), { pollMs: config.ttlock.pollMs });
   log.info('bridge.ttlock', { api: config.ttlock.baseUrl, poll_seconds: config.ttlock.pollMs / 1000 });
+}
+
+if (config.yeedi) {
+  addYeedi(adapter, new YeediClient(config.yeedi), { pollMs: config.yeedi.pollMs });
+  log.info('bridge.yeedi', { module: config.yeedi.url, poll_seconds: config.yeedi.pollMs / 1000 });
 }
 
 if (config.video) {

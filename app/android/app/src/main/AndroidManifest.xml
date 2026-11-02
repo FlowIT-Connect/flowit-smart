@@ -7,6 +7,8 @@
     <uses-permission android:name="android.permission.BLUETOOTH_SCAN" android:usesPermissionFlags="neverForLocation" tools:targetApi="s" />
     <uses-permission android:name="android.permission.BLUETOOTH_CONNECT" />
     <uses-permission android:name="android.permission.INTERNET" />
+    <!-- Absence automatique (optionnelle) : position approximative, seulement si le membre l'active. -->
+    <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
     <application
         tools:replace="android:label"
         android:label="Solea"
@@ -33,7 +35,21 @@
                 <action android:name="android.intent.action.MAIN"/>
                 <category android:name="android.intent.category.LAUNCHER"/>
             </intent-filter>
+            <!-- Liens des e-mails de compte (mot de passe oublié, confirmation) : solea://auth-callback -->
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW"/>
+                <category android:name="android.intent.category.DEFAULT"/>
+                <category android:name="android.intent.category.BROWSABLE"/>
+                <data android:scheme="solea" android:host="auth-callback"/>
+            </intent-filter>
         </activity>
+        <!-- Notifications push (Firebase) : petite icône soleil et couleur Solea. -->
+        <meta-data
+            android:name="com.google.firebase.messaging.default_notification_icon"
+            android:resource="@drawable/ic_stat_solea" />
+        <meta-data
+            android:name="com.google.firebase.messaging.default_notification_color"
+            android:resource="@color/solea_notification" />
         <!-- Don't delete the meta-data below.
              This is used by the Flutter tool to generate GeneratedPluginRegistrant.java -->
         <meta-data

@@ -49,6 +49,10 @@ export function loadConfig(env = process.env) {
   if (ttlock && !/^[0-9a-f]{32}$/.test(ttlock.passwordMd5)) {
     throw new Error('TTLOCK_PASSWORD_MD5 doit être le MD5 du mot de passe TTLock (relancez « npm run configurer »)');
   }
+  // Robots aspirateurs yeedi (facultatif) : module séparé « Solea Yeedi » (dossier yeedi/).
+  const yeedi = env.YEEDI_URL?.trim()
+    ? { url: env.YEEDI_URL.trim(), token: required(env, 'YEEDI_TOKEN').trim(), pollMs: int(env, 'YEEDI_POLL_SECONDS', 15) * 1000 }
+    : null;
   return {
     supabaseUrl: required(env, 'SUPABASE_URL'),
     supabaseServiceKey: required(env, 'SUPABASE_SERVICE_ROLE_KEY'),
@@ -71,6 +75,7 @@ export function loadConfig(env = process.env) {
     // Caméras IP lues directement par la passerelle : "Nom=http://…/snapshot.jpg;Nom2=…"
     cameras: parseCameras(env.CAMERAS),
     ttlock,
+    yeedi,
     video: video
       ? {
           mediamtxApiUrl: env.MEDIAMTX_API_URL?.trim() || 'http://127.0.0.1:9997',
@@ -91,6 +96,10 @@ export function loadConfig(env = process.env) {
     pollIntervalMs: int(env, 'POLL_INTERVAL_MS', platform ? 10_000 : 2_000),
     platformRefreshMs: int(env, 'PLATFORM_REFRESH_SECONDS', 20) * 1000,
     automationRefreshMs: int(env, 'AUTOMATION_REFRESH_MS', 30_000),
+    // Météo pour les automatisations (vent fort, soleil…) : WEATHER=false pour couper.
+    weather: !['false', '0', 'non'].includes((env.WEATHER ?? '').trim().toLowerCase()),
+    weatherApiKey: env.WEATHER_API_KEY?.trim() || null,
+    weatherIntervalMs: int(env, 'WEATHER_INTERVAL_MINUTES', 5) * 60_000,
     // Ajout d'appareils depuis l'application : durée de recherche d'un appareil Smart Life.
     pairingScanMs: int(env, 'PAIRING_SCAN_SECONDS', 300) * 1000,
     pairingRetryMs: int(env, 'PAIRING_RETRY_SECONDS', 10) * 1000,

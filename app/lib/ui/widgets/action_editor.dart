@@ -77,6 +77,12 @@ class ActionEditorCard extends StatelessWidget {
               items: [for (final d in devices) DropdownMenuItem(value: d.id, child: Text(d.name, overflow: TextOverflow.ellipsis))],
               onChanged: (id) {
                 action.deviceId = id;
+                // Modèle d'automatisation : garde la commande prévue (volet, lumière) si l'appareil l'a.
+                final wanted = state.devices[id]?.controls.where((c) => c.key == action.capabilityKey).firstOrNull;
+                if (wanted != null && action.value != null) {
+                  onChanged();
+                  return;
+                }
                 final first = state.devices[id]?.controls.firstOrNull;
                 action.capabilityKey = first?.key;
                 action.value = first == null ? null : defaultValueFor(first);

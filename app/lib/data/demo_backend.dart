@@ -2,6 +2,9 @@ import 'dart:async';
 import 'dart:math';
 import 'dart:typed_data';
 
+import '../core/climate.dart';
+import '../core/home_modes.dart';
+import '../core/notifications.dart';
 import '../models/models.dart';
 import 'backend.dart';
 import 'demo_camera.dart';
@@ -51,6 +54,10 @@ class DemoBackend implements Backend {
   final _automations = <String, Map<String, dynamic>>{};
   final _integrations = <Map<String, dynamic>>[];
   final _logs = <Map<String, dynamic>>[];
+  final _notifications = <Map<String, dynamic>>[];
+  final _automationRuns = <Map<String, dynamic>>[];
+  final _homeModes = <String, Map<String, dynamic>>{};
+  int _notifSeq = 0;
   final _photos = <String, Uint8List>{};
   final _accessCodes = <Map<String, dynamic>>[];
   final _pairings = <String, Map<String, dynamic>>{};
@@ -76,7 +83,7 @@ class DemoBackend implements Backend {
   // ------------------------------------------------------------------ Données
   void _seed() {
     const homeId = '10000000-0000-4000-8000-000000000001';
-    _homes[homeId] = {'id': homeId, 'owner_id': _me, 'name': 'Maison démo', 'timezone': 'Africa/Algiers'};
+    _homes[homeId] = {'id': homeId, 'owner_id': _me, 'name': 'Maison démo', 'timezone': 'Africa/Algiers', 'latitude': 36.7538, 'longitude': 3.0588, 'location_name': 'Alger, Algérie'};
     _members.addAll([
       {'home_id': homeId, 'user_id': _me, 'role': 'owner', 'permissions': {}, 'profiles': {'display_name': 'Vous'}},
       {
@@ -152,11 +159,22 @@ class DemoBackend implements Backend {
           ['switch', 'boolean', true],
           ['power', 'sensor', false, {'unit': 'W'}],
         ]);
-    device('Thermostat', salon, 'wifi', 'cloud',
-        vendor: 'Netatmo', model: 'Smart Thermostat', state: {'target_temperature': 21.0, 'hvac_mode': 'heat', 'current_temperature': 20.4},
+    device('Robot aspirateur', cuisine, 'wifi', 'cloud',
+        vendor: 'yeedi', model: '2 hybrid', state: {'vacuum_state': 'charging', 'battery': 92, 'suction': 'standard'},
+        caps: [
+          ['vacuum_action', 'enum', true, {'kind': 'vacuum', 'options': ['start', 'pause', 'resume', 'stop', 'charge']}],
+          ['vacuum_state', 'sensor', false, {'kind': 'vacuum_state'}],
+          ['suction', 'enum', true, {'options': ['quiet', 'standard', 'strong', 'max']}],
+          ['battery', 'sensor', false, {'unit': '%'}],
+          ['vacuum_error', 'sensor', false, {'kind': 'text'}],
+        ]);
+    final thermostat = device('Thermostat', salon, 'wifi', 'cloud',
+        vendor: 'Netatmo', model: 'Smart Thermostat', state: {'target_temperature': 21.0, 'hvac_mode': 'heat', 'current_temperature': 20.4, 'preset': 'comfort', 'hvac_action': 'heating'},
         caps: [
           ['target_temperature', 'number', true, {'min': 7, 'max': 30, 'step': 0.5, 'unit': '°C'}],
           ['hvac_mode', 'enum', true, {'options': ['off', 'heat', 'auto']}],
+          ['preset', 'enum', true, {'options': ['comfort', 'eco', 'sleep', 'away', 'frost']}],
+          ['hvac_action', 'enum', false, {}],
           ['current_temperature', 'sensor', false, {'unit': '°C'}],
         ]);
     device('Capteur chambre', chambre, 'zigbee', 'gateway',
@@ -210,13 +228,22 @@ class DemoBackend implements Backend {
           ['battery', 'sensor', false, {'unit': '%'}],
         ]);
     device('Télécommande IR', salon, 'other', 'cloud', vendor: 'Générique', model: 'IR blaster');
-    device('Climatiseur salon', salon, 'tuya', 'cloud',
-        vendor: 'Tuya', model: 'Split 12000 BTU', state: {'target_temperature': 24.0, 'hvac_mode': 'cool', 'current_temperature': 27.5},
+    final clim = device('Climatiseur salon', salon, 'tuya', 'cloud',
+        vendor: 'Tuya', model: 'Split 12000 BTU', state: {'target_temperature': 24.0, 'hvac_mode': 'cool', 'current_temperature': 27.5, 'fan_mode': 'auto', 'swing': true, 'sleep': false},
         caps: [
           ['target_temperature', 'number', true, {'min': 16, 'max': 30, 'step': 1, 'unit': '°C'}],
-          ['hvac_mode', 'enum', true, {'options': ['off', 'cool', 'heat', 'dry', 'fan_only']}],
+          ['hvac_mode', 'enum', true, {'options': ['off', 'auto', 'cool', 'heat', 'dry', 'fan_only']}],
+          ['fan_mode', 'enum', true, {'options': ['auto', 'low', 'medium', 'high']}],
+          ['swing', 'boolean', true],
+          ['sleep', 'boolean', true],
           ['current_temperature', 'sensor', false, {'unit': '°C'}],
         ]);
+    // Chauffage et clim : le salon suit le programme par défaut.
+    final zoneId = newUuid();
+    _climateZones[zoneId] = {
+      'id': zoneId, 'home_id': homeId, 'room_id': salon, 'enabled': true, 'devices': [thermostat, clim],
+      'schedule': [for (final e in defaultSchedule) e.toJson()],
+    };
     final cameraEntree = device('Caméra entrée', entree, 'wifi', 'local',
         vendor: 'TP-Link', model: 'Tapo C200', state: {'camera': 'idle', 'motion': false},
         caps: [
@@ -306,6 +333,38 @@ class DemoBackend implements Backend {
       ],
       'run_locally': true,
     };
+    final auto3 = newUuid();
+    final windRun = DateTime.now().toUtc().subtract(const Duration(hours: 2, minutes: 1));
+    _automations[auto3] = {
+      'id': auto3,
+      'home_id': homeId,
+      'name': 'Vents forts : fermer les volets',
+      'enabled': true,
+      'priority': 'security',
+      'trigger': {'type': 'weather', 'metric': 'wind_speed', 'op': 'gt', 'value': 80, 'for_minutes': 2},
+      'conditions': [],
+      'exceptions': [],
+      'actions': [
+        {'device_id': volet, 'capability_key': 'cover_position', 'value': 0},
+      ],
+      'follow_up': {
+        'after_minutes': 30,
+        'restart_on_trigger': false,
+        'conditions': [
+          {'type': 'weather', 'metric': 'wind_speed', 'op': 'lt', 'value': 50},
+        ],
+        'actions': [
+          {'device_id': volet, 'capability_key': 'cover_position', 'value': 100},
+        ],
+      },
+      'run_locally': true,
+      'last_run_at': windRun.toIso8601String(),
+    };
+    _automationRuns.addAll([
+      {'id': 3, 'home_id': homeId, 'automation_id': auto3, 'name': 'Vents forts : fermer les volets', 'phase': 'follow_up', 'status': 'success', 'reason': 'PUIS', 'details': {'actions': 1, 'total': 1}, 'created_at': windRun.add(const Duration(minutes: 47)).toIso8601String()},
+      {'id': 2, 'home_id': homeId, 'automation_id': auto3, 'name': 'Vents forts : fermer les volets', 'phase': 'main', 'status': 'success', 'reason': 'weather:wind_speed', 'details': {'actions': 1, 'total': 1, 'weather': {'wind_speed': 86, 'wind_gust': 102}}, 'created_at': windRun.toIso8601String()},
+      {'id': 1, 'home_id': homeId, 'automation_id': auto3, 'name': 'Vents forts : fermer les volets', 'phase': 'main', 'status': 'skipped', 'reason': 'SAUF SI vérifié', 'details': {}, 'created_at': windRun.subtract(const Duration(days: 4)).toIso8601String()},
+    ]);
 
     _integrations.addAll([
       {'id': newUuid(), 'home_id': homeId, 'provider': 'home_assistant', 'status': 'connected', 'label': 'Home Assistant (démo)', 'last_sync_at': _now()},
@@ -315,6 +374,59 @@ class DemoBackend implements Backend {
 
     _log(homeId, 'device_unavailable', deviceId: ampoule, result: 'unavailable');
     _log(homeId, 'member_changed', result: 'insert', details: {'user_id': _amina, 'role': 'member'});
+    _seedNotifications(homeId, ampoule);
+  }
+
+  void _seedNotifications(String homeId, String ampoule) {
+    final now = DateTime.now().toUtc();
+    void add(String type, String body, Duration ago, {String? deviceId, bool read = false, Map<String, dynamic> data = const {}}) {
+      final k = NotificationKind.of(type);
+      _notifications.add({
+        'id': ++_notifSeq,
+        'home_id': homeId,
+        'user_id': _me,
+        'type': type,
+        'category': k.category,
+        'priority': k.priority,
+        'device_id': deviceId,
+        'title': type,
+        'body': body,
+        'data': data,
+        'read_at': read ? now.subtract(ago).add(const Duration(minutes: 1)).toIso8601String() : null,
+        'created_at': now.subtract(ago).toIso8601String(),
+      });
+    }
+
+    add('door_open', 'Porte d\'entrée · Entrée', const Duration(minutes: 4), data: {'device': 'Porte d\'entrée', 'room': 'Entrée'});
+    add('motion', 'Détecteur couloir · Couloir', const Duration(minutes: 12), data: {'device': 'Détecteur couloir', 'room': 'Couloir'});
+    add('high_wind', 'Vent 86 km/h · rafales 102 km/h', const Duration(hours: 2), data: {'wind': 86, 'gust': 102});
+    add('shutters_auto_closed', '3 volets fermés à cause du vent', const Duration(hours: 2, minutes: 1), read: true, data: {'count': 3});
+    add('device_offline', 'Ampoule bureau · Bureau', const Duration(hours: 5), deviceId: ampoule, read: true, data: {'device': 'Ampoule bureau', 'room': 'Bureau'});
+    add('automation_run', 'Bonne nuit', const Duration(hours: 14), read: true, data: {'automation': 'Bonne nuit'});
+    add('temperature_abnormal', 'Capteur chambre · 31.5 °C', const Duration(days: 1, hours: 3), read: true, data: {'temperature': 31.5});
+    add('water_leak', 'Capteur fuite · Salle de bain', const Duration(days: 3), read: true, data: {'device': 'Capteur fuite', 'room': 'Salle de bain'});
+    _notifications.sort((a, b) => (b['created_at'] as String).compareTo(a['created_at'] as String));
+  }
+
+  /// Ajoute une notification de démonstration (comme le ferait le serveur).
+  void demoNotify(String homeId, String type, String body, {Map<String, dynamic> data = const {}}) {
+    final k = NotificationKind.of(type);
+    final row = {
+      'id': ++_notifSeq,
+      'home_id': homeId,
+      'user_id': _me,
+      'type': type,
+      'category': k.category,
+      'priority': k.priority,
+      'device_id': null,
+      'title': type,
+      'body': body,
+      'data': data,
+      'read_at': null,
+      'created_at': _now(),
+    };
+    _notifications.insert(0, row);
+    _events.add(RealtimeEvent('notifications', 'INSERT', Map<String, dynamic>.from(row)));
   }
 
   void _log(String homeId, String type, {String? deviceId, String? requestId, String? result, Map<String, dynamic>? details}) {
@@ -402,6 +514,36 @@ class DemoBackend implements Backend {
   @override
   Future<void> updateLocale(String locale) async {}
 
+  Map<String, dynamic>? _preferences;
+
+  @override
+  Future<Map<String, dynamic>?> getPreferences() async {
+    await _wait();
+    return _preferences == null ? null : Map<String, dynamic>.from(_preferences!);
+  }
+
+  @override
+  Future<void> savePreferences(Map<String, dynamic> preferences) async {
+    await _wait();
+    _preferences = Map<String, dynamic>.from(preferences);
+  }
+
+  @override
+  Future<String> uploadBackground(Uint8List bytes, String contentType) async {
+    await _wait();
+    final ext = imageExtension(contentType);
+    if (ext == null) throw const BackendException('invalid', 'Format d\'image non pris en charge (JPEG, PNG ou WebP).');
+    final path = '$_me/bg-${DateTime.now().millisecondsSinceEpoch}.$ext';
+    _photos[path] = bytes;
+    return path;
+  }
+
+  @override
+  Future<Uint8List> downloadBackground(String path) => downloadDevicePhoto(path);
+
+  @override
+  Future<void> deleteBackground(String path) async => _photos.remove(path);
+
   // ------------------------------------------------------------------ Maisons
   @override
   Future<List<Home>> listHomes() async {
@@ -427,6 +569,13 @@ class DemoBackend implements Backend {
     _requireManager(homeId);
     _homes[homeId]!['name'] = name.trim();
     _log(homeId, 'config_changed', result: 'homes_update', details: {'name': name});
+  }
+
+  @override
+  Future<void> updateHomeLocation(String homeId, double latitude, double longitude, String? name) async {
+    await _wait();
+    _requireManager(homeId);
+    _homes[homeId]!.addAll({'latitude': latitude, 'longitude': longitude, 'location_name': name});
   }
 
   @override
@@ -539,7 +688,9 @@ class DemoBackend implements Backend {
     _rooms[room.id]!
       ..['name'] = room.name
       ..['icon'] = room.icon
-      ..['sort_order'] = room.sortOrder;
+      ..['sort_order'] = room.sortOrder
+      ..['image_key'] = room.imageKey
+      ..['image_fit'] = room.imageFit.toJson();
   }
 
   @override
@@ -636,6 +787,14 @@ class DemoBackend implements Backend {
         final state = Map<String, dynamic>.from(d['state'] as Map);
         if (row['capability_key'] == 'ekey') {
           state['ekeys'] = _demoKeys((state['ekeys'] as List?) ?? const [], Map<String, dynamic>.from(row['value'] as Map));
+        } else if (row['capability_key'] == 'vacuum_action') {
+          // Robot simulé : l'action devient son nouvel état, comme le confirmerait le vrai robot.
+          state['vacuum_state'] = switch (row['value']) {
+            'start' || 'resume' => 'cleaning',
+            'pause' => 'paused',
+            'charge' => 'returning',
+            _ => 'idle',
+          };
         } else if (row['capability_key'] != 'access_code') {
           state[row['capability_key'] as String] = row['value'];
         }
@@ -1023,7 +1182,7 @@ class DemoBackend implements Backend {
   Future<Automation> saveAutomation(Automation a, {bool isNew = false}) async {
     await _wait();
     _requireManager(a.homeId);
-    _automations[a.id] = {...a.toJson(), 'id': a.id};
+    _automations[a.id] = {...a.toJson(includeAdvanced: true), 'id': a.id, 'last_run_at': _automations[a.id]?['last_run_at']};
     _log(a.homeId, 'config_changed', result: isNew ? 'automations_insert' : 'automations_update', details: {'name': a.name});
     return Automation.fromJson(_automations[a.id]!);
   }
@@ -1032,6 +1191,118 @@ class DemoBackend implements Backend {
   Future<void> deleteAutomation(String automationId) async {
     await _wait();
     _automations.remove(automationId);
+  }
+
+  // ---------------------------------------------------------------- Chauffage et clim
+  final _climateSettings = <String, Map<String, dynamic>>{};
+  final _climateZones = <String, Map<String, dynamic>>{};
+
+  void _climateEvent(String table, Map<String, dynamic> row, [String type = 'UPDATE']) =>
+      _events.add(RealtimeEvent(table, type, Map<String, dynamic>.from(row)));
+
+  @override
+  Future<ClimateData> getClimate(String homeId) async {
+    await _wait();
+    final s = _climateSettings[homeId];
+    return ClimateData(
+      s == null ? ClimateSettings.initial : ClimateSettings.fromJson(s),
+      [for (final z in _climateZones.values.where((z) => z['home_id'] == homeId)) ClimateZone.fromJson(z)],
+    );
+  }
+
+  @override
+  Future<void> saveClimateSettings(String homeId, ClimateSettings settings) async {
+    await _wait();
+    _requireManager(homeId);
+    final row = {...?_climateSettings[homeId], 'home_id': homeId, ...settings.toJson()};
+    _climateSettings[homeId] = row;
+    _climateEvent('climate_settings', row);
+  }
+
+  @override
+  Future<void> saveClimateZone(String homeId, ClimateZone zone) async {
+    await _wait();
+    _requireManager(homeId);
+    final existing = _climateZones.values.where((z) => z['room_id'] == zone.roomId).firstOrNull;
+    final id = (existing?['id'] as String?) ?? newUuid();
+    final row = {...?existing, 'id': id, 'home_id': homeId, ...zone.toJson()};
+    _climateZones[id] = row;
+    _climateEvent('climate_zones', row, existing == null ? 'INSERT' : 'UPDATE');
+  }
+
+  @override
+  Future<void> deleteClimateZone(String zoneId) async {
+    await _wait();
+    final row = _climateZones.remove(zoneId);
+    if (row != null) _climateEvent('climate_zones', row, 'DELETE');
+  }
+
+  /// Présence en démonstration : distance calculée ici, rien n'est envoyé.
+  final presence = <String, bool>{};
+
+  @override
+  Future<bool> reportPresence(String homeId, double latitude, double longitude) async {
+    await _wait();
+    if (_member(homeId) == null) throw const BackendException('denied', 'Accès refusé');
+    final h = _homes[homeId]!;
+    final lat = h['latitude'] as double?;
+    final lon = h['longitude'] as double?;
+    if (lat == null || lon == null) throw const BackendException('invalid', 'Position du logement inconnue');
+    double rad(double d) => d * pi / 180;
+    final a = pow(sin(rad(latitude - lat) / 2), 2) + cos(rad(lat)) * cos(rad(latitude)) * pow(sin(rad(longitude - lon) / 2), 2);
+    final dist = 2 * 6371000 * asin(sqrt(a));
+    final radius = ((_climateSettings[homeId]?['geo_radius']) as num?) ?? 300;
+    return presence[homeId] = dist <= radius;
+  }
+
+  @override
+  Future<void> clearPresence(String homeId) async {
+    await _wait();
+    presence.remove(homeId);
+  }
+
+  @override
+  Future<void> setClimatePreset(String homeId, String? roomId, String? preset, DateTime? until) async {
+    await _wait();
+    if (_member(homeId) == null) throw const BackendException('denied', 'Accès refusé');
+    final u = preset == null ? null : until?.toUtc().toIso8601String();
+    if (roomId == null) {
+      final row = {...?_climateSettings[homeId], 'home_id': homeId, 'home_preset': preset, 'home_preset_until': u};
+      _climateSettings[homeId] = row;
+      _climateEvent('climate_settings', row);
+    } else {
+      final z = _climateZones.values.where((z) => z['home_id'] == homeId && z['room_id'] == roomId).firstOrNull;
+      if (z == null) throw const BackendException('invalid', 'Cette pièce n\'a pas de chauffage ni de clim réglés');
+      z['preset_override'] = preset;
+      z['override_until'] = u;
+      _climateEvent('climate_zones', z);
+    }
+  }
+
+  @override
+  Future<HomeModes?> getHomeModes(String homeId) async {
+    await _wait();
+    final row = _homeModes[homeId];
+    return row == null ? null : HomeModes.fromJson(row);
+  }
+
+  @override
+  Future<void> saveHomeModes(String homeId, HomeModes modes) async {
+    await _wait();
+    _requireManager(homeId);
+    final row = {'home_id': homeId, ...modes.toJson()};
+    _homeModes[homeId] = row;
+    _events.add(RealtimeEvent('home_modes', 'UPDATE', Map<String, dynamic>.from(row)));
+  }
+
+  @override
+  Future<List<AutomationRun>> listAutomationRuns(String homeId, {String? automationId, int limit = 50}) async {
+    await _wait();
+    return _automationRuns
+        .where((r) => r['home_id'] == homeId && (automationId == null || r['automation_id'] == automationId))
+        .take(limit)
+        .map(AutomationRun.fromJson)
+        .toList();
   }
 
   // ------------------------------------------------------------------ Intégrations
@@ -1061,6 +1332,48 @@ class DemoBackend implements Backend {
   Future<List<EventLog>> listEvents(String homeId, {int limit = 100}) async {
     await _wait();
     return _logs.where((l) => l['home_id'] == homeId).take(limit).map(EventLog.fromJson).toList();
+  }
+
+  // ------------------------------------------------------------------ Notifications
+  @override
+  Future<List<AppNotification>> listNotifications(String homeId, {int limit = 200}) async {
+    await _wait();
+    return _notifications.where((n) => n['home_id'] == homeId).take(limit).map(AppNotification.fromJson).toList();
+  }
+
+  @override
+  Future<void> markNotificationRead(int id) async {
+    await _wait();
+    for (final n in _notifications) {
+      if (n['id'] == id) n['read_at'] ??= _now();
+    }
+  }
+
+  @override
+  Future<void> markAllNotificationsRead(String homeId) async {
+    await _wait();
+    for (final n in _notifications) {
+      if (n['home_id'] == homeId) n['read_at'] ??= _now();
+    }
+  }
+
+  @override
+  Future<void> deleteNotification(int id) async {
+    await _wait();
+    _notifications.removeWhere((n) => n['id'] == id);
+  }
+
+  /// Jetons push enregistrés (lus par les tests).
+  final pushTokens = <String, Map<String, String>>{};
+
+  @override
+  Future<void> savePushToken(String token, String platform, String locale) async {
+    pushTokens[token] = {'platform': platform, 'locale': locale};
+  }
+
+  @override
+  Future<void> deletePushToken(String token) async {
+    pushTokens.remove(token);
   }
 
   // ------------------------------------------------------------------ Caméras et photos
@@ -1222,6 +1535,35 @@ class DemoBackend implements Backend {
     d['photo_path'] = path;
     d['updated_at'] = _now();
     _events.add(RealtimeEvent('devices', 'UPDATE', Map<String, dynamic>.from(d)));
+  }
+
+  @override
+  Future<Uint8List> downloadRoomPhoto(String path) => downloadDevicePhoto(path);
+
+  @override
+  Future<String> setRoomPhoto(Room room, Uint8List bytes, String contentType) async {
+    await _wait();
+    _requireManager(room.homeId);
+    final ext = imageExtension(contentType);
+    if (ext == null) throw const BackendException('invalid', 'Format d\'image non pris en charge (JPEG, PNG ou WebP).');
+    final path = '${room.homeId}/${room.id}-${DateTime.now().millisecondsSinceEpoch}.$ext';
+    _photos[path] = bytes;
+    _setRoomPhoto(room.id, path);
+    return path;
+  }
+
+  @override
+  Future<void> clearRoomPhoto(Room room) async {
+    await _wait();
+    _requireManager(room.homeId);
+    _setRoomPhoto(room.id, null);
+  }
+
+  void _setRoomPhoto(String roomId, String? path) {
+    final r = _rooms[roomId]!;
+    final old = r['photo_path'] as String?;
+    if (old != null) _photos.remove(old);
+    r['photo_path'] = path;
   }
 
   // ------------------------------------------------------------------ Temps réel

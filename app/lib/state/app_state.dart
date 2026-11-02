@@ -5,9 +5,15 @@ import 'dart:typed_data';
 import 'package:flutter/widgets.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import '../core/push.dart';
 import '../core/app_launcher.dart';
+import '../core/appearance.dart';
 import '../core/ble_lock.dart';
 import '../core/l10n.dart';
+import '../core/climate.dart';
+import '../core/home_modes.dart';
+import '../core/location.dart';
+import '../core/notifications.dart';
 import '../data/backend.dart';
 import '../data/weather.dart';
 import '../models/models.dart';
@@ -42,7 +48,9 @@ class AppState extends ChangeNotifier {
       this.weatherService,
       this.ble = const NoBleLock(),
       this.launcher = const AppLauncher(),
-      this.pairingPoll = const Duration(seconds: 2)})
+      this.pairingPoll = const Duration(seconds: 2),
+      this.push = const NoPush(),
+      this.location = const NoLocation()})
       : locale = initialLocale ?? const Locale('fr') {
     _authSub = backend.authChanges.listen(_onAuth);
     _recoverySub = backend.passwordRecovery.listen((_) {
@@ -53,6 +61,19 @@ class AppState extends ChangeNotifier {
   }
 
   final Backend backend;
+
+  /// Notifications push quand l'app est fermée (Firebase), désactivées par défaut.
+  final PushService push;
+
+  /// Position du téléphone pour l'Absence automatique (seulement si le membre l'active).
+  final LocationService location;
+  StreamSubscription<LatLon>? _presenceSub;
+
+  /// Ce téléphone partage-t-il la présence de son membre pour le logement courant ?
+  bool presenceSharing = false;
+
+  /// Dernier résultat : à la maison (true), parti (false), inconnu (null).
+  bool? presenceAtHome;
   final Duration commandTimeout;
 
   /// Bluetooth TTLock (app Android) ; indisponible sur le web.
@@ -92,6 +113,16 @@ class AppState extends ChangeNotifier {
   List<Automation> automations = const [];
   List<SceneRun> sceneRuns = const [];
   List<Invitation> myInvitations = const [];
+
+  /// Modes Été / Hiver / Vacances du logement.
+  HomeModes homeModes = HomeModes.none;
+  ClimateData climate = ClimateData.empty;
+
+  /// Centre de notifications de la maison courante (plus récentes d'abord).
+  List<AppNotification> notifications = const [];
+  NotificationSettings notificationSettings = NotificationSettings.defaults;
+
+  int get unreadNotifications => notifications.where((n) => !n.isRead).length;
 
   /// Offre du logement (null : base pas encore à jour, ou pas de logement).
   HomePlan? plan;
@@ -191,7 +222,51 @@ class AppState extends ChangeNotifier {
     }
     notifyListeners();
     unawaited(_loadPlatformAdmin());
+    unawaited(syncAppearance());
+    unawaited(push.register((token, platform) => backend.savePushToken(token, platform, locale.languageCode)));
     await loadHomes();
+  }
+
+  // ---------------------------------------------------------------- Apparence
+  /// Reprend l'apparence enregistrée dans le profil (autre téléphone, réinstallation).
+  Future<void> syncAppearance() async {
+    try {
+      final prefs = await backend.getPreferences();
+      if (prefs == null || prefs['appearance'] == null) return;
+      final remote = Appearance.fromJson(prefs['appearance']);
+      final controller = AppearanceController.instance;
+      if (remote == controller.value && (remote.photoPath == null || controller.photoBytes != null)) return;
+      Uint8List? photo;
+      if (remote.photoPath != null) {
+        try {
+          photo = await backend.downloadBackground(remote.photoPath!);
+        } on BackendException {
+          await controller.set(remote.copyWith(clearBackground: true));
+          return;
+        }
+      }
+      await controller.set(remote, photo: photo);
+    } on BackendException {
+      // Hors ligne : l'apparence gardée sur l'appareil reste en place.
+    }
+  }
+
+  /// Applique tout de suite l'apparence puis l'enregistre dans le profil.
+  /// [photo] : nouvelle photo d'arrière-plan importée.
+  Future<bool> saveAppearance(Appearance look, {Uint8List? photo, String? photoType}) async {
+    final controller = AppearanceController.instance;
+    final previousPhoto = controller.value.photoPath;
+    return run(() async {
+      var next = look;
+      if (photo != null && photoType != null) {
+        final path = await backend.uploadBackground(photo, photoType);
+        next = look.copyWith(background: 'photo:$path');
+      }
+      await controller.set(next, photo: photo);
+      final prefs = await backend.getPreferences() ?? <String, dynamic>{};
+      await backend.savePreferences({...prefs, 'appearance': next.toJson()});
+      if (previousPhoto != null && previousPhoto != next.photoPath) await backend.deleteBackground(previousPhoto);
+    }, success: tr('appearance.saved'));
   }
 
   Future<void> _loadPlatformAdmin() async {
@@ -204,6 +279,13 @@ class AppState extends ChangeNotifier {
   }
 
   Future<void> signOut() async {
+    // Ce téléphone ne reçoit plus les notifications du compte.
+    final token = await push.unregister();
+    if (token != null) {
+      try {
+        await backend.deletePushToken(token);
+      } catch (_) {}
+    }
     await run(backend.signOut);
   }
 
@@ -245,10 +327,19 @@ class AppState extends ChangeNotifier {
       final prefs = await SharedPreferences.getInstance();
       await prefs.setString('home', h.id);
       final saved = prefs.getString('weather.place.${h.id}');
-      if (saved != null) weatherPlace = WeatherPlace.fromJson(jsonDecode(saved) as Map<String, dynamic>);
+      if (saved != null) {
+        weatherPlace = WeatherPlace.fromJson(jsonDecode(saved) as Map<String, dynamic>);
+      } else if (h.hasLocation) {
+        final label = (h.locationName ?? h.name).split(', ');
+        weatherPlace = WeatherPlace(name: label.first, region: label.length > 1 ? label.sublist(1).join(', ') : null, latitude: h.latitude!, longitude: h.longitude!);
+      }
     } catch (_) {}
+    // La passerelle a besoin de la position pour la météo des automatisations.
+    if (!h.hasLocation && h.myRole.canManage) unawaited(_shareHomeLocation(weatherPlace));
     await refreshHome();
+    unawaited(_resumePresence(h.id));
     unawaited(refreshWeather());
+    unawaited(loadNotifications());
     _realtimeSub = backend.watchHome(h.id, onStatus: (connected) {
       if (realtimeConnected == connected) return;
       realtimeConnected = connected;
@@ -258,6 +349,9 @@ class AppState extends ChangeNotifier {
   }
 
   void _clearHome() {
+    _stopPresence();
+    presenceSharing = false;
+    presenceAtHome = null;
     _realtimeSub?.cancel();
     _realtimeSub = null;
     rooms = const [];
@@ -265,6 +359,9 @@ class AppState extends ChangeNotifier {
     scenes = const [];
     automations = const [];
     sceneRuns = const [];
+    notifications = const [];
+    homeModes = HomeModes.none;
+    climate = ClimateData.empty;
     plan = null;
     pending.clear();
     _photoCache.clear();
@@ -296,6 +393,8 @@ class AppState extends ChangeNotifier {
       automations = results[3] as List<Automation>;
       sceneRuns = results[4] as List<SceneRun>;
       await refreshPlan(notify: false);
+      await _loadHomeModes(h.id);
+      await _loadClimate(h.id);
       loadError = null;
       _setOnline(true);
     } on BackendException catch (e) {
@@ -332,7 +431,272 @@ class AppState extends ChangeNotifier {
         sceneRuns = [run, ...sceneRuns.where((r) => r.id != run.id)]..sort((a, b) => b.startedAt.compareTo(a.startedAt));
         if (run.finishedAt != null && previous?.finishedAt == null) _announceRun(run);
         notifyListeners();
+      case 'notifications':
+        _onNotification(e);
+      case 'home_modes':
+        homeModes = HomeModes.fromJson(e.record);
+        notifyListeners();
+      case 'climate_settings' || 'climate_zones':
+        final h = home;
+        if (h != null) unawaited(_loadClimate(h.id).then((_) => notifyListeners()));
     }
+  }
+
+  // ---------------------------------------------------------------- Modes
+  Future<void> _loadHomeModes(String homeId) async {
+    try {
+      homeModes = await backend.getHomeModes(homeId) ?? HomeModes.none;
+    } on BackendException {
+      homeModes = HomeModes.none; // base pas encore à jour
+    }
+  }
+
+  Future<bool> saveHomeModes(HomeModes next, {String? success}) async {
+    final h = home;
+    if (h == null) return false;
+    final previous = homeModes;
+    homeModes = next;
+    notifyListeners();
+    final ok = await run(() => backend.saveHomeModes(h.id, next), success: success);
+    if (!ok) {
+      homeModes = previous;
+      notifyListeners();
+    }
+    return ok;
+  }
+
+  // ---------------------------------------------------------------- Chauffage et clim
+  Future<void> _loadClimate(String homeId) async {
+    try {
+      climate = await backend.getClimate(homeId);
+    } on BackendException {
+      climate = ClimateData.empty; // base pas encore à jour
+    }
+  }
+
+  // ------------------------------------------------------------------ Présence (Absence automatique)
+
+  void _stopPresence() {
+    _presenceSub?.cancel();
+    _presenceSub = null;
+  }
+
+  /// Reprend le partage choisi sur ce téléphone pour ce logement (au chargement du logement).
+  Future<void> _resumePresence(String homeId) async {
+    try {
+      presenceSharing = (await SharedPreferences.getInstance()).getBool('presence.$homeId') ?? false;
+    } catch (_) {
+      presenceSharing = false;
+    }
+    if (presenceSharing && climate.settings.geoEnabled) {
+      if (await location.requestPermission()) {
+        _startPresence();
+      } else {
+        presenceSharing = false;
+      }
+      notifyListeners();
+    }
+  }
+
+  void _startPresence() {
+    _stopPresence();
+    unawaited(location.current().then((p) => p == null ? null : _sendPresence(p)));
+    _presenceSub = location.watch().listen((p) => _sendPresence(p));
+  }
+
+  /// Envoyée à chaque déplacement d'au moins 150 m (filtré par [LocationService.watch]).
+  Future<void> _sendPresence(LatLon p) async {
+    final h = home;
+    if (h == null || !presenceSharing) return;
+    try {
+      presenceAtHome = await backend.reportPresence(h.id, p.$1, p.$2);
+      notifyListeners();
+    } on BackendException {
+      // Base pas encore à jour ou réseau : nouvel essai au prochain déplacement.
+    }
+  }
+
+  /// Active ou coupe le partage de présence de ce téléphone pour le logement courant.
+  /// false si la localisation est refusée.
+  Future<bool> setPresenceSharing(bool on) async {
+    final h = home;
+    if (h == null) return false;
+    if (on && !await location.requestPermission()) {
+      _notices.add(Notice(tr('climate.geo.denied'), isError: true));
+      return false;
+    }
+    presenceSharing = on;
+    try {
+      await (await SharedPreferences.getInstance()).setBool('presence.${h.id}', on);
+    } catch (_) {}
+    if (on) {
+      _startPresence();
+    } else {
+      _stopPresence();
+      presenceAtHome = null;
+      await run(() => backend.clearPresence(h.id));
+    }
+    notifyListeners();
+    return true;
+  }
+
+  Future<void> reloadClimate() async {
+    final h = home;
+    if (h == null) return;
+    await _loadClimate(h.id);
+    notifyListeners();
+  }
+
+  Future<bool> saveClimateSettings(ClimateSettings next, {String? success}) async {
+    final h = home;
+    if (h == null) return false;
+    final ok = await run(() => backend.saveClimateSettings(h.id, next), success: success);
+    await reloadClimate();
+    return ok;
+  }
+
+  Future<bool> saveClimateZone(ClimateZone zone, {String? success}) async {
+    final h = home;
+    if (h == null) return false;
+    final ok = await run(() => backend.saveClimateZone(h.id, zone), success: success);
+    await reloadClimate();
+    return ok;
+  }
+
+  Future<bool> deleteClimateZone(ClimateZone zone, {String? success}) async {
+    if (zone.id == null) return false;
+    final ok = await run(() => backend.deleteClimateZone(zone.id!), success: success);
+    await reloadClimate();
+    return ok;
+  }
+
+  Future<bool> setClimatePreset(String? roomId, String? preset, {DateTime? until, String? success}) async {
+    final h = home;
+    if (h == null) return false;
+    final ok = await run(() => backend.setClimatePreset(h.id, roomId, preset, until), success: success);
+    await reloadClimate();
+    return ok;
+  }
+
+  /// Ambiance d'une pièce (celle écrite par la passerelle, sinon calculée ici).
+  (String, String) climatePresetFor(ClimateZone zone) {
+    // Le préchauffage n'est connu que de la passerelle.
+    if (zone.activeSource == 'preheat' && zone.activePreset != null && climate.settings.preheat) return (zone.activePreset!, 'preheat');
+    return effectivePreset(zone, climate.settings, vacation: homeModes.vacationActive());
+  }
+
+  // ---------------------------------------------------------------- Notifications
+  Future<void> loadNotifications() async {
+    final h = home;
+    if (h == null) return;
+    try {
+      final list = await backend.listNotifications(h.id);
+      if (home?.id != h.id) return;
+      notifications = list;
+      notifyListeners();
+    } on BackendException {
+      // Base pas encore à jour ou hors ligne : centre vide.
+    }
+    try {
+      final prefs = await backend.getPreferences();
+      notificationSettings = NotificationSettings.fromJson(prefs?['notifications']);
+      notifyListeners();
+    } on BackendException {
+      // Réglages par défaut.
+    }
+  }
+
+  void _onNotification(RealtimeEvent e) {
+    final id = (e.record['id'] as num?)?.toInt();
+    if (id == null) return;
+    if (e.type == 'DELETE') {
+      notifications = notifications.where((n) => n.id != id).toList();
+      notifyListeners();
+      return;
+    }
+    if (e.record['home_id'] != null && e.record['home_id'] != home?.id) return;
+    final n = AppNotification.fromJson(e.record);
+    final isNew = !notifications.any((x) => x.id == id);
+    notifications = [n, ...notifications.where((x) => x.id != id)]..sort((a, b) => b.createdAt.compareTo(a.createdAt));
+    if (isNew && !n.isRead && n.priorityRank >= 2) {
+      notify('${notificationTitle(n)} · ${notificationBody(n)}', error: n.priority == 'critical');
+    }
+    notifyListeners();
+  }
+
+  String notificationTitle(AppNotification n) {
+    final key = n.kind.labelKey;
+    final t = tr(key);
+    return t == key ? n.title : t;
+  }
+
+  String notificationBody(AppNotification n) {
+    final d = n.data;
+    String num1(Object? v) => v is num ? (v == v.roundToDouble() ? v.toInt().toString() : v.toStringAsFixed(1)) : '';
+    switch (n.type) {
+      case 'high_wind':
+        if (d['wind'] is num) {
+          return d['gust'] is num
+              ? tr('notif.body.windGust', {'wind': num1(d['wind']), 'gust': num1(d['gust'])})
+              : tr('notif.body.wind', {'wind': num1(d['wind'])});
+        }
+      case 'shutters_auto_closed':
+        if (d['count'] is num) return tr('notif.body.shutters', {'count': num1(d['count'])});
+      case 'automation_run':
+        if (d['automation'] is String) return d['automation'] as String;
+      case 'temperature_abnormal':
+        if (d['temperature'] is num) {
+          final place = [d['device'], d['room']].whereType<String>().join(' · ');
+          return [if (place.isNotEmpty) place, '${num1(d['temperature'])} °C'].join(' · ');
+        }
+    }
+    if (d['device'] is String) return [d['device'], d['room']].whereType<String>().join(' · ');
+    return n.body;
+  }
+
+  Future<void> markNotificationRead(AppNotification n) async {
+    if (n.isRead) return;
+    notifications = [for (final x in notifications) x.id == n.id ? x.markedRead() : x];
+    notifyListeners();
+    try {
+      await backend.markNotificationRead(n.id);
+    } on BackendException catch (e) {
+      notify(_errorText(e), error: true);
+    }
+  }
+
+  Future<void> markAllNotificationsRead() async {
+    final h = home;
+    if (h == null || unreadNotifications == 0) return;
+    notifications = [for (final x in notifications) x.isRead ? x : x.markedRead()];
+    notifyListeners();
+    await run(() => backend.markAllNotificationsRead(h.id));
+  }
+
+  Future<void> deleteNotification(AppNotification n) async {
+    notifications = notifications.where((x) => x.id != n.id).toList();
+    notifyListeners();
+    try {
+      await backend.deleteNotification(n.id);
+    } on BackendException catch (e) {
+      notify(_errorText(e), error: true);
+      await loadNotifications();
+    }
+  }
+
+  Future<bool> saveNotificationSettings(NotificationSettings next) async {
+    final previous = notificationSettings;
+    notificationSettings = next;
+    notifyListeners();
+    final ok = await run(() async {
+      final prefs = await backend.getPreferences() ?? <String, dynamic>{};
+      await backend.savePreferences({...prefs, 'notifications': next.toJson()});
+    });
+    if (!ok) {
+      notificationSettings = previous;
+      notifyListeners();
+    }
+    return ok;
   }
 
   void _scheduleReload() {
@@ -626,7 +990,32 @@ class AppState extends ChangeNotifier {
       final h = home;
       if (h != null) (await SharedPreferences.getInstance()).setString('weather.place.${h.id}', jsonEncode(place.toJson()));
     } catch (_) {}
+    if (canManage) unawaited(_shareHomeLocation(place));
     await refreshWeather(force: true);
+  }
+
+  Future<void> _shareHomeLocation(WeatherPlace place) async {
+    final h = home;
+    if (h == null) return;
+    try {
+      await backend.updateHomeLocation(h.id, place.latitude, place.longitude, place.label);
+      final updated = h.copyWith(latitude: place.latitude, longitude: place.longitude, locationName: place.label);
+      if (home?.id == h.id) home = updated;
+      homes = [for (final x in homes) x.id == h.id ? updated : x];
+    } on BackendException {
+      // Base pas encore à jour : la météo de l'accueil marche quand même.
+    }
+  }
+
+  // ---------------------------------------------------------------- Historique des automatisations
+  Future<List<AutomationRun>> automationRuns({String? automationId}) async {
+    final h = home;
+    if (h == null) return const [];
+    try {
+      return await backend.listAutomationRuns(h.id, automationId: automationId);
+    } on BackendException {
+      return const [];
+    }
   }
 
   // ---------------------------------------------------------------- Photos d'appareils
@@ -654,11 +1043,49 @@ class AppState extends ChangeNotifier {
         notifyListeners();
       });
 
+  // ---------------------------------------------------------------- Images des pièces
+  /// Photo personnelle d'une pièce (mise en cache ; null si illisible).
+  Future<Uint8List?> roomPhoto(String path) => _photoCache.putIfAbsent(path, () async {
+        try {
+          return await backend.downloadRoomPhoto(path);
+        } on BackendException catch (_) {
+          return null;
+        }
+      });
+
+  /// Enregistre le nom, l'icône et l'image d'une pièce en une fois.
+  /// [photo] remplace la photo personnelle ; [removePhoto] la retire.
+  Future<bool> saveRoom(
+    Room room, {
+    required String name,
+    required String? icon,
+    required String? imageKey,
+    required RoomImageFit fit,
+    Uint8List? photo,
+    String? photoType,
+    bool removePhoto = false,
+  }) =>
+      run(() async {
+        var updated = room.copyWith(name: name.trim(), icon: icon, imageKey: imageKey, clearImageKey: imageKey == null, imageFit: fit);
+        if (photo != null && photoType != null) {
+          final path = await backend.setRoomPhoto(room, photo, photoType);
+          _photoCache[path] = Future.value(photo);
+          updated = updated.copyWith(photoPath: path);
+        } else if (removePhoto && room.photoPath != null) {
+          await backend.clearRoomPhoto(room);
+          updated = updated.copyWith(clearPhoto: true);
+        }
+        await backend.updateRoom(updated);
+        rooms = [for (final r in rooms) r.id == room.id ? updated : r];
+        notifyListeners();
+      }, success: tr('room.saved'));
+
   @override
   void dispose() {
     _authSub.cancel();
     _recoverySub.cancel();
     _realtimeSub?.cancel();
+    _presenceSub?.cancel();
     _reloadDebounce?.cancel();
     _notices.close();
     super.dispose();

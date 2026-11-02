@@ -8,6 +8,7 @@ import '../../core/theme.dart';
 import '../../state/app_state.dart';
 import '../widgets/common.dart';
 import '../widgets/plan_card.dart';
+import 'hvac_connect_screen.dart';
 
 enum _Kind { lock, tuya }
 
@@ -189,6 +190,21 @@ class _AddDeviceScreenState extends State<AddDeviceScreen> {
       const PlanCard(),
       SectionHeader(context.tr('pair.choose')),
       option(_Kind.tuya, Icons.devices_other_rounded, f.brand, 'pair.tuya.title', 'pair.tuya.subtitle'),
+      const SizedBox(height: 8),
+      Card(
+        child: ListTile(
+          contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+          leading: TileIcon(Icons.ac_unit_rounded, color: f.blue),
+          title: Text(context.tr('pair.hvac.title')),
+          subtitle: Text(context.tr('pair.hvac.subtitle')),
+          trailing: const ForwardChevron(),
+          enabled: !full,
+          onTap: () async {
+            final added = await Navigator.of(context).push<bool>(MaterialPageRoute(builder: (_) => const HvacConnectScreen()));
+            if (added == true && context.mounted) Navigator.of(context).pop();
+          },
+        ),
+      ),
       const SizedBox(height: 8),
       option(_Kind.lock, Icons.lock_outline_rounded, f.violet, 'pair.lock.title', 'pair.lock.subtitle'),
     ];

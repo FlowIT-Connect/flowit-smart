@@ -1,17 +1,19 @@
+import 'package:flowit_smart/core/location.dart';
 import 'package:flowit_smart/app.dart';
 import 'package:flowit_smart/data/demo_backend.dart';
 import 'package:flowit_smart/state/app_state.dart';
 import 'package:flowit_smart/ui/screens/add_device_screen.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:flowit_smart/models/models.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
-Future<AppState> pumpApp(WidgetTester tester, {Locale locale = const Locale('fr'), Size size = const Size(400, 860)}) async {
+Future<AppState> pumpApp(WidgetTester tester, {Locale locale = const Locale('fr'), Size size = const Size(400, 860), LocationService location = const NoLocation()}) async {
   SharedPreferences.setMockInitialValues({});
   tester.view.physicalSize = size;
   tester.view.devicePixelRatio = 1;
   addTearDown(tester.view.reset);
-  final state = AppState(DemoBackend(latency: Duration.zero, confirmDelay: const Duration(milliseconds: 300), liveSensors: false), initialLocale: locale);
+  final state = AppState(DemoBackend(latency: Duration.zero, confirmDelay: const Duration(milliseconds: 300), liveSensors: false), initialLocale: locale, location: location);
   await tester.pumpWidget(FlowItApp(state: state));
   await tester.pumpAndSettle();
   return state;
@@ -31,6 +33,7 @@ void main() {
     await signIn(tester);
     expect(find.text('Favoris'), findsOneWidget);
     expect(find.text('Plafonnier'), findsWidgets);
+    await tester.scrollUntilVisible(find.text('Ampoule chevet'), 200, scrollable: find.byType(Scrollable).first);
     expect(find.text('Ampoule chevet'), findsOneWidget, reason: 'section À vérifier');
   });
 
@@ -60,6 +63,27 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.textContaining('commande à distance bloquée'), findsOneWidget);
     expect(find.text('Verrou'), findsNothing);
+  });
+
+  testWidgets('fiche climatiseur : mode, ventilation, oscillation, mode nuit', (tester) async {
+    final state = await pumpApp(tester);
+    await signIn(tester);
+    await tester.tap(find.text('Appareils').last);
+    await tester.pumpAndSettle();
+    await tester.enterText(find.byType(TextField).first, 'climatiseur');
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Climatiseur salon'));
+    await tester.pumpAndSettle();
+    expect(find.text('Climatisation'), findsWidgets);
+    expect(find.text('Moyenne'), findsOneWidget);
+    await tester.ensureVisible(find.text('Moyenne'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Moyenne'));
+    await tester.pump(const Duration(milliseconds: 400));
+    expect(state.devices.values.firstWhere((d) => d.name == 'Climatiseur salon').state['fan_mode'], 'medium');
+    expect(find.text('Oscillation'), findsOneWidget);
+    expect(find.text('Mode nuit'), findsOneWidget);
+    await tester.pump(const Duration(seconds: 3));
   });
 
   testWidgets('boîtier TTLock : activation par le propriétaire puis code d\'accès', (tester) async {
@@ -122,6 +146,38 @@ void main() {
     final volet = state.devices.values.firstWhere((d) => d.name == 'Volet salon');
     expect(volet.state['cover_control'], 'close');
     expect(volet.state['cover_position'], 0);
+    await tester.pump(const Duration(seconds: 3));
+  });
+
+  testWidgets('robot aspirateur : Nettoyer puis Pause, retour à la base, puissance', (tester) async {
+    final state = await pumpApp(tester);
+    await signIn(tester);
+    await tester.tap(find.text('Appareils').last);
+    await tester.pumpAndSettle();
+    await tester.enterText(find.byType(TextField).first, 'robot');
+    await tester.pumpAndSettle();
+    expect(find.textContaining('En charge · 92 %'), findsOneWidget, reason: 'état et batterie sur la tuile');
+    await tester.tap(find.text('Robot aspirateur'));
+    await tester.pumpAndSettle();
+    expect(find.widgetWithText(OutlinedButton, 'Base'), findsOneWidget);
+    expect(find.widgetWithText(OutlinedButton, 'Arrêter'), findsNothing, reason: 'rien à arrêter à la base');
+    await tester.tap(find.widgetWithText(FilledButton, 'Nettoyer'));
+    await tester.pump(const Duration(milliseconds: 400));
+    await tester.pumpAndSettle();
+    Device robot() => state.devices.values.firstWhere((d) => d.name == 'Robot aspirateur');
+    expect(robot().state['vacuum_state'], 'cleaning');
+    expect(find.widgetWithText(FilledButton, 'Pause'), findsOneWidget);
+    expect(find.widgetWithText(OutlinedButton, 'Arrêter'), findsOneWidget);
+    expect(find.text('Nettoyage'), findsOneWidget);
+    await tester.tap(find.widgetWithText(OutlinedButton, 'Base'));
+    await tester.pump(const Duration(milliseconds: 400));
+    expect(robot().state['vacuum_state'], 'returning');
+    await tester.scrollUntilVisible(find.text('Maximum'), 200, scrollable: find.byType(Scrollable).last);
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Maximum'));
+    await tester.pump(const Duration(milliseconds: 400));
+    await tester.pump(const Duration(milliseconds: 400));
+    expect(robot().state['suction'], 'max');
     await tester.pump(const Duration(seconds: 3));
   });
 
@@ -209,7 +265,7 @@ void main() {
     Navigator.of(tester.element(find.byType(AddDeviceScreen))).pop();
     await tester.pumpAndSettle();
 
-    await tester.tap(find.text('Paramètres').last);
+    await tester.tap(find.text('Réglages').last);
     await tester.pumpAndSettle();
     await tester.scrollUntilVisible(find.text('Paiements'), 200, scrollable: find.byType(Scrollable).last);
     await tester.drag(find.byType(Scrollable).last, const Offset(0, -200));
@@ -228,7 +284,7 @@ void main() {
   testWidgets('exploitant : appareil du compte installateur rangé dans un logement', (tester) async {
     final state = await pumpApp(tester);
     await signIn(tester);
-    await tester.tap(find.text('Paramètres').last);
+    await tester.tap(find.text('Réglages').last);
     await tester.pumpAndSettle();
     await tester.scrollUntilVisible(find.text('Appareils à attribuer'), 200, scrollable: find.byType(Scrollable).last);
     await tester.drag(find.byType(Scrollable).last, const Offset(0, -200));

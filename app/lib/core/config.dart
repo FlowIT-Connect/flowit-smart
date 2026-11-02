@@ -17,5 +17,19 @@ class AppConfig {
   /// Clé de l'offre commerciale Open-Meteo (météo extérieure). Vide = offre gratuite.
   static const weatherApiKey = String.fromEnvironment('WEATHER_API_KEY');
 
+  /// Firebase (notifications push quand l'app est fermée), projet solea-a979b.
+  /// Valeurs publiques tirées de google-services.json (elles sont dans chaque APK) ;
+  /// vides = push désactivé, le reste de l'app marche. iOS : à ajouter avec la clé APNs.
+  static const firebaseApiKey = String.fromEnvironment('FIREBASE_API_KEY', defaultValue: 'AIzaSyCvouU7F7gxl4l3RjGeojGt87_vYyjGogQ');
+  static const firebaseAppIdAndroid = String.fromEnvironment('FIREBASE_APP_ID_ANDROID', defaultValue: '1:174318293704:android:0f0086c5b54b82309fcbfd');
+  static const firebaseAppIdIos = String.fromEnvironment('FIREBASE_APP_ID_IOS');
+  static const firebaseSenderId = String.fromEnvironment('FIREBASE_SENDER_ID', defaultValue: '174318293704');
+  static const firebaseProjectId = String.fromEnvironment('FIREBASE_PROJECT_ID', defaultValue: 'solea-a979b');
+
+  /// Retour des liens reçus par e-mail (mot de passe oublié, confirmation d'inscription).
+  /// Sans cette adresse, Supabase renvoie vers la « Site URL » du projet (le site vitrine).
+  /// Les deux adresses doivent figurer dans Supabase > Authentication > URL Configuration > Redirect URLs.
+  static const authRedirectMobile = 'solea://auth-callback';
+
   static bool get hasSupabase => supabaseUrl.isNotEmpty && supabaseKey.isNotEmpty;
 }

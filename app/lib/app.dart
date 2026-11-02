@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 
+import 'core/appearance.dart';
 import 'core/l10n.dart';
 import 'core/theme.dart';
 import 'state/app_state.dart';
@@ -40,6 +41,9 @@ class _FlowItAppState extends State<FlowItApp> {
         ));
     });
     widget.state.addListener(_onState);
+    // Le lien de l'e-mail peut être traité avant l'affichage de la première page :
+    // on vérifie donc aussi une fois l'écran prêt.
+    WidgetsBinding.instance.addPostFrameCallback((_) => _onState());
   }
 
   void _onState() {
@@ -62,16 +66,19 @@ class _FlowItAppState extends State<FlowItApp> {
       state: widget.state,
       child: Builder(builder: (context) {
         final state = AppScope.of(context);
-        return ValueListenableBuilder<ThemeMode>(
-          valueListenable: ThemeController.instance,
-          builder: (context, mode, _) => MaterialApp(
+        return ListenableBuilder(
+          listenable: Listenable.merge([ThemeController.instance, AppearanceController.instance]),
+          builder: (context, _) {
+            final mode = ThemeController.instance.value;
+            final look = AppearanceController.instance.value;
+            return MaterialApp(
           title: 'Solea',
           debugShowCheckedModeBanner: false,
           navigatorKey: _navigator,
           scaffoldMessengerKey: _messenger,
-          theme: AppTheme.light(),
-          darkTheme: AppTheme.dark(),
-          themeMode: mode,
+          theme: look.isDefault ? AppTheme.light() : AppTheme.from(look.colors(Brightness.light), Brightness.light),
+          darkTheme: look.isDefault ? AppTheme.dark() : AppTheme.from(look.colors(Brightness.dark), Brightness.dark),
+          themeMode: look.forcedMode ?? mode,
           locale: state.locale,
           supportedLocales: L10n.supported,
           localizationsDelegates: const [
@@ -83,7 +90,8 @@ class _FlowItAppState extends State<FlowItApp> {
           home: !state.signedIn
               ? const AuthScreen()
               : (state.home == null ? const OnboardingScreen() : const Shell()),
-          ),
+            );
+          },
         );
       }),
     );

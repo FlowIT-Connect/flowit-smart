@@ -51,7 +51,7 @@ List<Color> sceneGradient(BuildContext context, String? key) {
   };
 }
 
-enum DeviceKind { camera, light, plug, cover, airConditioner, climate, lock, door, motion, sensor, other }
+enum DeviceKind { camera, light, plug, cover, airConditioner, climate, lock, vacuum, door, motion, sensor, other }
 
 /// Modes propres à un climatiseur (un thermostat de chauffage ne les a pas).
 const _acModes = {'cool', 'dry', 'fan_only'};
@@ -60,6 +60,7 @@ DeviceKind deviceKind(Device d) {
   bool has(String k) => d.capability(k) != null;
   if (d.isCamera) return DeviceKind.camera;
   if (d.isSensitive || has('lock')) return DeviceKind.lock;
+  if (has('vacuum_action')) return DeviceKind.vacuum;
   if (has('cover_position') || has('cover_control')) return DeviceKind.cover;
   if (has('target_temperature')) {
     final modes = d.capability('hvac_mode')?.options ?? const [];
@@ -77,6 +78,7 @@ IconData deviceIcon(Device d) => switch (deviceKind(d)) {
       DeviceKind.camera => Icons.videocam_rounded,
       DeviceKind.airConditioner => Icons.ac_unit_rounded,
       DeviceKind.lock => Icons.lock_rounded,
+      DeviceKind.vacuum => Icons.cleaning_services_rounded,
       DeviceKind.cover => Icons.blinds_rounded,
       DeviceKind.climate => Icons.thermostat_rounded,
       DeviceKind.light => Icons.lightbulb_rounded,
@@ -108,6 +110,7 @@ Color deviceAccent(BuildContext context, Device d) {
     DeviceKind.airConditioner => f.blue,
     DeviceKind.camera => f.violet,
     DeviceKind.lock => f.violet,
+    DeviceKind.vacuum => f.cyan,
     DeviceKind.door => f.cyan,
     DeviceKind.motion => f.pink,
     DeviceKind.sensor => f.cyan,
@@ -124,6 +127,9 @@ IconData capabilityIcon(String key) => switch (key) {
       'target_temperature' => Icons.thermostat_rounded,
       'hvac_mode' => Icons.mode_fan_off_rounded,
       'lock' => Icons.lock_rounded,
+      'vacuum_action' || 'vacuum_state' => Icons.cleaning_services_rounded,
+      'suction' => Icons.air_rounded,
+      'vacuum_error' => Icons.error_outline_rounded,
       'temperature' || 'current_temperature' => Icons.device_thermostat_rounded,
       'humidity' => Icons.water_drop_rounded,
       'battery' => Icons.battery_std_rounded,
@@ -132,6 +138,15 @@ IconData capabilityIcon(String key) => switch (key) {
       'contact' => Icons.sensor_door_rounded,
       'motion' => Icons.directions_walk_rounded,
       'illuminance' => Icons.light_mode_rounded,
+      'preset' => Icons.spa_rounded,
+      'fan_mode' => Icons.air_rounded,
+      'swing' || 'swing_mode' => Icons.swap_vert_rounded,
+      'eco' => Icons.eco_rounded,
+      'sleep' => Icons.bedtime_rounded,
+      'away' => Icons.flight_takeoff_rounded,
+      'window_detection' || 'window_open' => Icons.window_rounded,
+      'child_lock' => Icons.child_care_rounded,
+      'hvac_action' => Icons.local_fire_department_rounded,
       _ => Icons.tune_rounded,
     };
 

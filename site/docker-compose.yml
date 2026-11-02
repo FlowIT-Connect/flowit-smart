@@ -1,0 +1,9 @@
+# Serveur ADEX : le site écoute sur 127.0.0.1:3000, derrière le proxy HTTPS du serveur.
+services:
+  site:
+    build: .
+    image: solea-site
+    restart: unless-stopped
+    env_file: .env
+    ports:
+      - "127.0.0.1:3000:3000"

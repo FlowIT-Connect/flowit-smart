@@ -1,7 +1,21 @@
 // Cœur de la passerelle : synchronisation de l'inventaire, exécution des commandes
 // (pending → sent → confirmed | failed | timeout | rejected) et automatisations locales.
 
-import { conditionsHold, localTime, stateTriggerFired, timeTriggerDue } from './automations.js';
+import {
+  activeModes,
+  closedCovers,
+  conditionsHold,
+  exceptionHolds,
+  localTime,
+  modeTriggerFired,
+  presencePlan,
+  stateTriggerFired,
+  sunTriggerDue,
+  timeTriggerDue,
+  weatherTriggerHolds,
+} from './automations.js';
+import { DEFAULT_PRESETS, anticipatedPreset, blendRate, presetTemperature, trackWarmup, deviceCommands, geoDecision, openWindow, seasonMode, windowOffCommands, windowRestoreCommands, zoneKind, zoneTemperature } from './climate.js';
+import { fetchWeather } from './weather.js';
 import { CameraStreamer } from './cameras.js';
 import { log } from './log.js';
 import { validateValue } from './validate.js';
@@ -20,8 +34,9 @@ export class Bridge {
   /**
    * @param {{store:any, adapter:any, config:any, clock?:()=>Date}} deps
    */
-  constructor({ store, adapter, config, clock = () => new Date() }) {
+  constructor({ store, adapter, config, clock = () => new Date(), weatherFetcher = fetchWeather }) {
     this.store = store;
+    this.weatherFetcher = weatherFetcher;
     this.adapter = adapter;
     this.config = config;
     this.clock = clock;
@@ -36,6 +51,29 @@ export class Bridge {
     this.automations = [];
     this.firedTimeKeys = new Map();
     this.lastAutomationRun = new Map();
+    /** Météo du logement (null : pas de position ou pas encore lue). */
+    this.weather = null;
+    /** Déclencheurs météo : depuis quand le seuil est dépassé, et déjà exécutés. */
+    this.weatherSince = new Map();
+    this.weatherFired = new Set();
+    this.weatherConfirm = null;
+    /** « PUIS » en attente : automationId -> { timer, deadline }. */
+    this.followUps = new Map();
+    /** Exécutions récentes par automatisation (coupe-circuit anti-boucle). */
+    this.recentRuns = new Map();
+    /** Modes du logement (été / hiver / vacances) et simulation de présence. */
+    this.modeRow = null;
+    this.modes = [];
+    this.simulation = null; // { day, plan: [{id, on, off, state}] }
+    /** Chauffage / clim : ambiance déjà appliquée par zone (zoneId -> signature). */
+    this.climateApplied = new Map();
+    /** Fenêtre ouverte : zone -> ouverte depuis (ms), et coupures en cours (modes à remettre). */
+    this.windowOpenSince = new Map();
+    this.windowCuts = new Map();
+    /** Préchauffage en cours : zone -> ambiance anticipée. */
+    this.preheating = new Map();
+    /** Apprentissage : montée en température suivie par zone. */
+    this.warmups = new Map();
     this.inflightDevices = new Set();
     this.inflightRuns = new Set();
     this.running = new Set();
@@ -89,7 +127,19 @@ export class Bridge {
       every(this.config.automationRefreshMs, () => this.refreshAutomations());
       // Boîtier vidéo à côté d'une autre passerelle : seuls les déclencheurs de SES appareils
       // (mouvement d'une caméra…) tournent ici ; les déclencheurs horaires restent à l'autre.
-      if (this.config.runTimeTriggers !== false) every(10_000, () => this.tickTimeTriggers());
+      if (this.config.runTimeTriggers !== false) {
+        every(10_000, () => this.tickTimeTriggers());
+        every(60_000, async () => {
+          await this.evaluateModes(); // départ / retour atteint
+          await this.tickPresenceSimulation();
+          await this.tickClimate();
+        });
+        // Météo lue par la passerelle elle-même : les règles tournent même téléphone éteint.
+        if (this.config.weather !== false) {
+          await this.refreshWeather().catch((e) => log.warn('weather.failed', { error: e.message }));
+          every(this.config.weatherIntervalMs ?? 300_000, () => this.refreshWeather());
+        }
+      }
     }
     if (this.store.subscribeCameraWatch) {
       this.cameras = new CameraStreamer({
@@ -107,6 +157,9 @@ export class Bridge {
   async stop() {
     this.stopped = true;
     for (const t of this.timers) clearInterval(t);
+    for (const f of this.followUps.values()) clearTimeout(f.timer);
+    this.followUps.clear();
+    clearTimeout(this.weatherConfirm);
     this.unsubscribe?.();
     await this.cameras?.stop();
     this.adapter.stop();
@@ -174,6 +227,7 @@ export class Bridge {
       }
       this.devices.set(deviceId, {
         externalId: desc.externalId,
+        name: desc.name,
         caps: new Map(desc.capabilities.map((c) => [c.capability_key, c])),
         isSensitive: desc.isSensitive || prev?.isSensitive || false,
         bleKey,
@@ -416,17 +470,329 @@ export class Bridge {
 
   // ------------------------------------------------------------------ Automatisations (exécution locale, §5.9)
   async refreshAutomations() {
-    this.automations = await this.store.listAutomations(this.homeId);
+    const list = await this.store.listAutomations(this.homeId);
+    // Règles de sécurité d'abord (vent fort, fuite…).
+    this.automations = [...list].sort((a, b) => (b.priority === 'security') - (a.priority === 'security'));
     const integ = await this.store.getIntegration(this.config.integrationId);
     this.enabled = integ?.status !== 'disabled';
+    await this.refreshModes();
+  }
+
+  // ------------------------------------------------------------------ Modes Été / Hiver / Vacances
+  async refreshModes() {
+    try {
+      this.modeRow = (await this.store.getHomeModes?.(this.homeId)) ?? null;
+    } catch {
+      this.modeRow = null; // base pas encore à jour
+    }
+    await this.evaluateModes();
+  }
+
+  /** Changement de mode (réglage ou date de départ / retour atteinte) → déclencheurs « mode ». */
+  async evaluateModes() {
+    const before = this.modes;
+    const after = activeModes(this.modeRow, this.clock());
+    this.modes = after;
+    // Premier relevé après un redémarrage : pas de déclenchement, le mode était déjà là.
+    if (!this.modesLoaded) {
+      this.modesLoaded = true;
+      return;
+    }
+    if (before.join() === after.join()) return;
+    log.info('modes.changed', { modes: after });
+    const now = localTime(this.clock(), this.timezone);
+    for (const a of this.automations) {
+      if (modeTriggerFired(a.trigger, before, after)) await this.runAutomation(a, now, `mode:${a.trigger.mode}:${a.trigger.event ?? 'start'}`);
+    }
+    if (!after.includes('vacation')) await this.#endSimulation();
+  }
+
+  /**
+   * Simulation de présence pendant les vacances : lumières choisies allumées puis
+   * éteintes à des heures différentes chaque soir, à partir du coucher du soleil.
+   */
+  async tickPresenceSimulation() {
+    const row = this.modeRow;
+    const ids = Array.isArray(row?.simulation_devices) ? row.simulation_devices.filter((id) => this.devices.has(id)) : [];
+    if (!this.modes.includes('vacation') || !row?.presence_simulation || !ids.length) {
+      await this.#endSimulation();
+      return;
+    }
+    const now = localTime(this.clock(), this.timezone);
+    const day = now.key.slice(0, 10);
+    if (this.simulation?.day !== day) {
+      const sunset = this.weather?.sunset instanceof Date ? localTime(this.weather.sunset, this.timezone) : null;
+      const start = Math.min(21 * 60, sunset && sunset.key.slice(0, 10) === day ? sunset.minutes : 19 * 60);
+      this.simulation = { day, plan: presencePlan(ids, start, this.random ?? Math.random).map((p) => ({ ...p, state: false })) };
+    }
+    for (const p of this.simulation.plan) {
+      const want = now.minutes >= p.on && now.minutes < p.off;
+      if (want !== p.state) {
+        p.state = want;
+        await this.#simCommand(p.id, want, `${day}:${p.id}:${want ? 'on' : 'off'}`);
+      }
+    }
+  }
+
+  async #endSimulation() {
+    const sim = this.simulation;
+    this.simulation = null;
+    for (const p of sim?.plan ?? []) {
+      if (p.state) await this.#simCommand(p.id, false, `${sim.day}:${p.id}:end`);
+    }
+  }
+
+  async #simCommand(deviceId, on, key) {
+    try {
+      await this.store.insertCommand({ home_id: this.homeId, device_id: deviceId, capability_key: 'switch', value: on, idempotency_key: `sim:${key}` });
+      log.info('presence.simulation', { device_id: deviceId, on });
+      await this.processQueue();
+    } catch (e) {
+      log.warn('presence.simulation_failed', { error: e.message });
+    }
+  }
+
+  // ------------------------------------------------------------------ Chauffage et clim par pièce
+  /**
+   * Applique l'ambiance de chaque pièce (Confort, Éco, Nuit, Absence, Hors-gel) quand elle
+   * change. Entre deux changements, un réglage fait à la main sur l'appareil est respecté.
+   */
+  async tickClimate() {
+    let data;
+    try {
+      data = await this.store.getClimate?.(this.homeId);
+    } catch {
+      data = null;
+    }
+    if (!data || data.settings?.enabled === false) return;
+    const now = this.clock();
+    const local = localTime(now, this.timezone);
+    const mode = seasonMode(this.modes);
+    const presets = data.settings?.presets ?? DEFAULT_PRESETS;
+    await this.#climateGeo(data.settings, now);
+    for (const zone of data.zones) {
+      if (!zone.enabled) continue;
+      if (await this.#climateWindow(zone, presets, mode, now)) {
+        this.warmups.delete(zone.id);
+        continue;
+      }
+      const kind = zoneKind(zone, this.devices, mode);
+      const measured = zoneTemperature(zone, this.devices);
+      const outdoor = typeof this.weather?.temperature === 'number' ? this.weather.temperature : null;
+      const rateKey = kind === 'cool' ? 'cool_rate' : 'heat_rate';
+      const { preset, source } = anticipatedPreset({
+        zone,
+        settings: data.settings,
+        modes: this.modes,
+        now,
+        localAt: (d) => (d === now ? local : localTime(d, this.timezone)),
+        presets,
+        kind,
+        measured,
+        outdoor,
+        maxMinutes: data.settings?.preheat === false ? 0 : data.settings?.preheat_max ?? 120,
+        ongoing: this.preheating.get(zone.id) ?? null,
+        rate: zone[rateKey] == null ? null : Number(zone[rateKey]),
+      });
+      const learn = trackWarmup(this.warmups.get(zone.id), { target: presetTemperature(presets, preset, kind), measured, kind, nowMs: now.getTime(), outdoor });
+      if (learn.track) this.warmups.set(zone.id, learn.track);
+      else this.warmups.delete(zone.id);
+      if (learn.rate != null) {
+        const rate = blendRate(zone[rateKey], learn.rate);
+        zone[rateKey] = rate;
+        log.info('climate.rate_learned', { zone_id: zone.id, kind, rate });
+        await this.store.updateClimateZone(zone.id, { [rateKey]: rate }).catch((e) => log.warn('climate.save_failed', { error: e.message }));
+      }
+      if (source === 'preheat') this.preheating.set(zone.id, preset);
+      else this.preheating.delete(zone.id);
+      const signature = `${preset}|${source}|${mode}|${JSON.stringify(presets[preset] ?? null)}|${(zone.devices ?? []).join()}`;
+      if (this.climateApplied.get(zone.id) === signature) continue;
+      let target = null;
+      let pending = false;
+      for (const deviceId of zone.devices ?? []) {
+        const d = this.devices.get(deviceId);
+        if (!d) continue;
+        if (d.availability === 'unavailable') {
+          pending = true; // réessayé à la prochaine minute
+          continue;
+        }
+        const res = deviceCommands(d, presets, preset, mode);
+        target ??= res.target;
+        for (const [i, c] of res.commands.entries()) {
+          try {
+            await this.store.insertCommand({ home_id: this.homeId, device_id: deviceId, capability_key: c.capability_key, value: c.value, idempotency_key: `climate:${zone.id}:${local.key}:${deviceId}:${i}` });
+          } catch (e) {
+            pending = true;
+            log.warn('climate.command_failed', { zone_id: zone.id, device_id: deviceId, error: e.message });
+          }
+        }
+      }
+      if (!pending) this.climateApplied.set(zone.id, signature);
+      log.info('climate.applied', { zone_id: zone.id, preset, source, mode, target });
+      if (zone.active_preset !== preset || zone.active_source !== source || Number(zone.active_target ?? NaN) !== target) {
+        await this.store
+          .updateClimateZone(zone.id, { active_preset: preset, active_source: source, active_target: target, active_since: now.toISOString() })
+          .catch((e) => log.warn('climate.save_failed', { error: e.message }));
+      }
+    }
+    await this.processQueue();
+  }
+
+  /** Absence automatique d'après la présence des membres (géolocalisation, optionnelle). */
+  async #climateGeo(settings, now) {
+    if (!settings || (!settings.geo_enabled && !settings.geo_away)) return;
+    let presence = [];
+    try {
+      presence = (await this.store.getPresence?.(this.homeId)) ?? [];
+    } catch {
+      presence = [];
+    }
+    const decision = geoDecision(settings, presence, now.getTime());
+    if (!decision) return;
+    const patch = decision === 'leave'
+      ? { home_preset: 'away', home_preset_until: null, geo_away: true }
+      : { geo_away: false, ...(settings.home_preset === 'away' ? { home_preset: null, home_preset_until: null } : {}) };
+    try {
+      await this.store.updateClimateSettings(this.homeId, patch);
+    } catch (e) {
+      log.warn('climate.geo_failed', { error: e.message });
+      return;
+    }
+    Object.assign(settings, patch); // appliqué dès cette minute
+    log.info('climate.geo', { decision });
+    await this.#notify(
+      'automation_run',
+      decision === 'leave' ? 'Tout le monde est parti : Absence dans toute la maison' : 'Retour à la maison : chaque pièce reprend son programme',
+      { automation: 'geo', decision },
+      'climate-geo',
+    );
+  }
+
+  /**
+   * Fenêtre ouverte plus de window_delay minutes : coupe la clim ou le chauffage de la pièce
+   * (par le mode de l'appareil, jamais par l'alimentation) et prévient. Fermée : remet le mode
+   * d'avant puis l'ambiance. Renvoie true tant que la pièce reste coupée.
+   */
+  async #climateWindow(zone, presets, season, now) {
+    const nowMs = now.getTime();
+    const opener = openWindow(zone, this.devices);
+    let cut = this.windowCuts.get(zone.id);
+    const send = async (deviceId, commands, tag) => {
+      for (const [i, c] of commands.entries()) {
+        await this.store
+          .insertCommand({ home_id: this.homeId, device_id: deviceId, capability_key: c.capability_key, value: c.value, idempotency_key: `climate-window:${zone.id}:${tag}:${deviceId}:${i}` })
+          .catch((e) => log.warn('climate.window_command_failed', { zone_id: zone.id, device_id: deviceId, error: e.message }));
+      }
+    };
+    if (opener) {
+      const since = this.windowOpenSince.get(zone.id) ?? nowMs;
+      this.windowOpenSince.set(zone.id, since);
+      // Après un redémarrage, une pièce déjà coupée le reste sans attendre de nouveau.
+      if (!cut && !zone.active_window && nowMs - since < Math.max(0, zone.window_delay ?? 2) * 60_000) return false;
+      if (!cut) {
+        cut = { since, modes: new Map() };
+        this.windowCuts.set(zone.id, cut);
+        if (!zone.active_window) {
+          const name = this.devices.get(opener)?.name;
+          await this.#notify('window_open', `Fenêtre ouverte${name ? ` (${name})` : ''} : chauffage et clim coupés dans la pièce`, { zone_id: zone.id, room_id: zone.room_id, device_id: opener }, zone.id);
+          await this.store.updateClimateZone(zone.id, { active_window: true }).catch((e) => log.warn('climate.save_failed', { error: e.message }));
+        }
+        log.info('climate.window_open', { zone_id: zone.id, device_id: opener });
+      }
+      for (const deviceId of zone.devices ?? []) {
+        const d = this.devices.get(deviceId);
+        if (!d || d.availability === 'unavailable') continue;
+        if (!cut.modes.has(deviceId)) cut.modes.set(deviceId, d.state?.hvac_mode ?? null);
+        await send(deviceId, windowOffCommands(d, presets), `${cut.since}:off`);
+      }
+      return true;
+    }
+    this.windowOpenSince.delete(zone.id);
+    if (!cut && !zone.active_window) return false;
+    const tag = `${cut?.since ?? nowMs}:on`;
+    for (const deviceId of zone.devices ?? []) {
+      const d = this.devices.get(deviceId);
+      if (!d) continue;
+      if (d.availability === 'unavailable') return true; // réessayé à la prochaine minute
+      await send(deviceId, windowRestoreCommands(d, cut?.modes.get(deviceId), season), tag);
+    }
+    this.windowCuts.delete(zone.id);
+    this.climateApplied.delete(zone.id); // l'ambiance est remise juste après
+    await this.store.updateClimateZone(zone.id, { active_window: false }).catch((e) => log.warn('climate.save_failed', { error: e.message }));
+    log.info('climate.window_closed', { zone_id: zone.id });
+    return false;
+  }
+
+  #ctx() {
+    return { weather: this.weather, date: this.clock(), modes: this.modes ?? [] };
   }
 
   async tickTimeTriggers() {
     const now = localTime(this.clock(), this.timezone);
     for (const a of this.automations) {
-      if (!timeTriggerDue(a.trigger, now) || this.firedTimeKeys.get(a.id) === now.key) continue;
+      const due = timeTriggerDue(a.trigger, now) || sunTriggerDue(a.trigger, now, this.weather, this.timezone);
+      if (!due || this.firedTimeKeys.get(a.id) === now.key) continue;
       this.firedTimeKeys.set(a.id, now.key);
-      await this.runAutomation(a, now, `time:${now.key}`);
+      await this.runAutomation(a, now, `${a.trigger.type}:${now.key}`);
+    }
+  }
+
+  // ------------------------------------------------------------------ Météo
+  async refreshWeather() {
+    const home = await this.store.getHome(this.homeId);
+    const lat = home?.latitude == null ? null : Number(home.latitude);
+    const lon = home?.longitude == null ? null : Number(home.longitude);
+    if (!Number.isFinite(lat) || !Number.isFinite(lon)) return null; // position pas encore choisie dans l'app
+    const w = await this.weatherFetcher({ latitude: lat, longitude: lon, apiKey: this.config.weatherApiKey ?? null });
+    this.weather = w;
+    try {
+      await this.store.insertWeatherReading({
+        home_id: this.homeId,
+        observed_at: (w.observed_at ?? this.clock()).toISOString(),
+        wind_speed: w.wind_speed,
+        wind_gust: w.wind_gust,
+        precipitation: w.precipitation,
+        temperature: w.temperature,
+        is_day: w.is_day,
+        sunrise: w.sunrise?.toISOString() ?? null,
+        sunset: w.sunset?.toISOString() ?? null,
+        source: w.source ?? 'open-meteo',
+      });
+    } catch (e) {
+      log.warn('weather.store_failed', { error: e.message }); // base pas encore à jour
+    }
+    await this.evaluateWeatherTriggers();
+    return w;
+  }
+
+  /** Seuil dépassé pendant `for_minutes` (délai de confirmation) → une exécution, réarmée quand ça retombe. */
+  async evaluateWeatherTriggers() {
+    const nowMs = this.clock().getTime();
+    const now = localTime(this.clock(), this.timezone);
+    for (const a of this.automations) {
+      if (a.trigger?.type !== 'weather') continue;
+      if (!weatherTriggerHolds(a.trigger, this.weather)) {
+        this.weatherSince.delete(a.id);
+        this.weatherFired.delete(a.id);
+        continue;
+      }
+      if (this.weatherFired.has(a.id)) continue;
+      const waitMs = Math.max(0, Number(a.trigger.for_minutes) || 0) * 60_000;
+      if (!this.weatherSince.has(a.id)) {
+        this.weatherSince.set(a.id, nowMs);
+        if (waitMs > 0) {
+          // Nouvelle lecture à la fin du délai pour confirmer.
+          clearTimeout(this.weatherConfirm);
+          this.weatherConfirm = setTimeout(
+            () => this.refreshWeather().catch((e) => log.warn('weather.failed', { error: e.message })),
+            waitMs + 1_000,
+          );
+          continue;
+        }
+      }
+      if (nowMs - this.weatherSince.get(a.id) < waitMs) continue;
+      this.weatherFired.add(a.id);
+      await this.runAutomation(a, now, `weather:${a.trigger.metric}:${nowMs}`);
     }
   }
 
@@ -439,21 +805,9 @@ export class Bridge {
     }
   }
 
-  async runAutomation(a, now, reason) {
-    // Anti-boucle : une exécution au plus toutes les 10 s par automatisation.
-    const last = this.lastAutomationRun.get(a.id) ?? 0;
-    if (this.clock().getTime() - last < 10_000) {
-      log.warn('automation.throttled', { automation_id: a.id });
-      return;
-    }
-    const states = await this.store.listDeviceStates(this.homeId);
-    if (!conditionsHold(a.conditions, states, now)) {
-      log.debug('automation.conditions_false', { automation_id: a.id });
-      return;
-    }
-    this.lastAutomationRun.set(a.id, this.clock().getTime());
+  async #issue(a, actions, keyPrefix) {
     let issued = 0;
-    for (const [i, act] of (a.actions ?? []).entries()) {
+    for (const [i, act] of (actions ?? []).entries()) {
       try {
         if (act.scene_id) {
           await this.store.executeScene(act.scene_id, a.id);
@@ -463,7 +817,7 @@ export class Bridge {
             device_id: act.device_id,
             capability_key: act.capability_key,
             value: act.value,
-            idempotency_key: `auto:${a.id}:${reason}:${i}`,
+            idempotency_key: `${keyPrefix}:${i}`,
             automation_id: a.id,
           });
         }
@@ -472,9 +826,117 @@ export class Bridge {
         log.error('automation.action_failed', { automation_id: a.id, error: e.message });
       }
     }
+    return issued;
+  }
+
+  async #recordRun(a, phase, status, reason, details = {}) {
+    try {
+      await this.store.insertAutomationRun({ home_id: this.homeId, automation_id: a.id, name: a.name ?? '', phase, status, reason: String(reason).slice(0, 200), details });
+    } catch (e) {
+      log.warn('automation.history_failed', { error: e.message }); // base pas encore à jour
+    }
+  }
+
+  async #notify(type, body, data, ref) {
+    try {
+      await this.store.notifyHome(this.homeId, type, body, data, ref);
+    } catch (e) {
+      log.warn('notify.failed', { type, error: e.message });
+    }
+  }
+
+  async runAutomation(a, now, reason) {
+    // Anti-boucle : une exécution au plus toutes les 10 s par automatisation…
+    const nowMs = this.clock().getTime();
+    const last = this.lastAutomationRun.get(a.id) ?? 0;
+    if (nowMs - last < 10_000) {
+      log.warn('automation.throttled', { automation_id: a.id });
+      return;
+    }
+    // … et 30 par heure au plus (deux règles qui se relancent l'une l'autre).
+    const recent = (this.recentRuns.get(a.id) ?? []).filter((t) => nowMs - t < 3_600_000);
+    if (recent.length >= 30) {
+      log.warn('automation.loop_blocked', { automation_id: a.id });
+      if (recent.length === 30) await this.#recordRun(a, 'main', 'skipped', 'Boucle détectée : 30 exécutions en une heure');
+      recent.push(nowMs);
+      this.recentRuns.set(a.id, recent);
+      return;
+    }
+    const states = await this.store.listDeviceStates(this.homeId);
+    const ctx = this.#ctx();
+    if (!conditionsHold(a.conditions, states, now, ctx)) {
+      log.debug('automation.conditions_false', { automation_id: a.id });
+      return;
+    }
+    if (exceptionHolds(a.exceptions, states, now, ctx)) {
+      log.info('automation.exception', { automation_id: a.id });
+      await this.#recordRun(a, 'main', 'skipped', 'SAUF SI vérifié', { trigger: reason });
+      return;
+    }
+    this.lastAutomationRun.set(a.id, nowMs);
+    recent.push(nowMs);
+    this.recentRuns.set(a.id, recent);
+    const actions = a.actions ?? [];
+    const issued = await this.#issue(a, actions, `auto:${a.id}:${reason}`);
     await this.store.markAutomationRun(a.id, this.clock().toISOString());
     await this.store.logEvent({ home_id: this.homeId, event_type: 'automation_run', result: issued ? 'success' : 'failed', details: { automation_id: a.id, name: a.name, actions: issued } });
+    const status = issued === actions.length ? 'success' : issued ? 'partial' : 'failed';
+    const weather = a.trigger?.type === 'weather' && this.weather
+      ? { wind_speed: this.weather.wind_speed, wind_gust: this.weather.wind_gust, temperature: this.weather.temperature, precipitation: this.weather.precipitation }
+      : undefined;
+    await this.#recordRun(a, 'main', status, reason, { actions: issued, total: actions.length, ...(weather ? { weather } : {}) });
+    if (a.trigger?.type === 'weather' && ['wind_speed', 'wind_gust'].includes(a.trigger.metric) && weather) {
+      const wind = Math.round(weather.wind_speed ?? 0);
+      const gust = weather.wind_gust == null ? null : Math.round(weather.wind_gust);
+      await this.#notify('high_wind', `Vent ${wind} km/h${gust == null ? '' : ` · rafales ${gust} km/h`}`, { wind, ...(gust == null ? {} : { gust }) }, a.id);
+    }
+    const covers = closedCovers(actions);
+    if (covers && issued) await this.#notify('shutters_auto_closed', `${covers} volet(s) fermé(s) : ${a.name ?? ''}`, { count: covers, automation: a.name ?? '' }, a.id);
     log.info('automation.run', { automation_id: a.id, reason, actions: issued });
+    this.#scheduleFollowUp(a);
+    await this.processQueue();
+  }
+
+  // ------------------------------------------------------------------ « PUIS » (actions différées)
+  #scheduleFollowUp(a) {
+    const f = a.follow_up;
+    if (!f || !Array.isArray(f.actions) || !f.actions.length) return;
+    const existing = this.followUps.get(a.id);
+    if (existing) {
+      if (f.restart_on_trigger === false) return; // garde le premier délai
+      clearTimeout(existing.timer);
+    }
+    const delayMs = Math.max(0, Number(f.after_minutes) || 0) * 60_000;
+    const deadline = this.clock().getTime() + delayMs + 24 * 3_600_000;
+    const entry = { deadline, timer: null };
+    entry.timer = setTimeout(() => this.runFollowUp(a.id).catch((e) => log.error('automation.follow_up_failed', { error: e.message })), delayMs);
+    this.followUps.set(a.id, entry);
+  }
+
+  /** Exécute le « PUIS » si ses conditions sont vraies ; sinon réessaie chaque minute (24 h au plus). */
+  async runFollowUp(automationId) {
+    const entry = this.followUps.get(automationId);
+    const a = this.automations.find((x) => x.id === automationId);
+    if (!entry || !a?.follow_up || this.stopped) {
+      this.followUps.delete(automationId);
+      return;
+    }
+    const now = localTime(this.clock(), this.timezone);
+    const states = await this.store.listDeviceStates(this.homeId);
+    if (!conditionsHold(a.follow_up.conditions, states, now, this.#ctx())) {
+      if (this.clock().getTime() >= entry.deadline) {
+        this.followUps.delete(automationId);
+        await this.#recordRun(a, 'follow_up', 'skipped', 'Conditions du PUIS jamais réunies en 24 h');
+        return;
+      }
+      entry.timer = setTimeout(() => this.runFollowUp(automationId).catch((e) => log.error('automation.follow_up_failed', { error: e.message })), this.config.followUpRetryMs ?? 60_000);
+      return;
+    }
+    this.followUps.delete(automationId);
+    const actions = a.follow_up.actions;
+    const issued = await this.#issue(a, actions, `follow:${a.id}:${this.clock().getTime()}`);
+    await this.#recordRun(a, 'follow_up', issued === actions.length ? 'success' : issued ? 'partial' : 'failed', 'PUIS', { actions: issued, total: actions.length });
+    log.info('automation.follow_up', { automation_id: a.id, actions: issued });
     await this.processQueue();
   }
 }

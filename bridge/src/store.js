@@ -24,7 +24,12 @@ export class SupabaseStore {
   }
 
   async getHome(id) {
-    return check(await this.db.from('homes').select('id, timezone').eq('id', id).maybeSingle());
+    const res = await this.db.from('homes').select('id, timezone, latitude, longitude').eq('id', id).maybeSingle();
+    // Base pas encore à jour (pas de position) : la passerelle démarre quand même, sans météo.
+    if (res.error && /latitude|longitude|column/i.test(res.error.message ?? '')) {
+      return check(await this.db.from('homes').select('id, timezone').eq('id', id).maybeSingle());
+    }
+    return check(res);
   }
 
   async setIntegrationStatus(id, status, lastError, lastSyncAt) {
@@ -331,5 +336,49 @@ export class SupabaseStore {
 
   async logEvent(row) {
     check(await this.db.from('event_logs').insert(row));
+  }
+
+  /** Modes du logement (null : aucun réglage, ou base pas encore à jour). */
+  async getHomeModes(homeId) {
+    const res = await this.db.from('home_modes').select('*').eq('home_id', homeId).maybeSingle();
+    if (res.error) return null;
+    return res.data;
+  }
+
+  /** Chauffage et clim par pièce (null : base pas encore à jour). */
+  async getClimate(homeId) {
+    const [settings, zones] = await Promise.all([
+      this.db.from('climate_settings').select('*').eq('home_id', homeId).maybeSingle(),
+      this.db.from('climate_zones').select('*').eq('home_id', homeId),
+    ]);
+    if (settings.error || zones.error) return null;
+    return { settings: settings.data, zones: zones.data ?? [] };
+  }
+
+  /** Présence des membres qui la partagent (Absence automatique), vide si la table manque. */
+  async getPresence(homeId) {
+    const { data, error } = await this.db.from('member_presence').select('user_id, at_home, since, updated_at').eq('home_id', homeId);
+    return error ? [] : data ?? [];
+  }
+
+  async updateClimateSettings(homeId, patch) {
+    check(await this.db.from('climate_settings').update(patch).eq('home_id', homeId));
+  }
+
+  async updateClimateZone(id, patch) {
+    check(await this.db.from('climate_zones').update(patch).eq('id', id));
+  }
+
+  async insertAutomationRun(row) {
+    check(await this.db.from('automation_runs').insert(row));
+  }
+
+  async insertWeatherReading(row) {
+    check(await this.db.from('weather_readings').insert(row));
+  }
+
+  /** Notification à tous les membres du logement (vents forts, volets fermés…). */
+  async notifyHome(homeId, type, body, data = {}, ref = null) {
+    check(await this.db.rpc('notify_home', { p_home_id: homeId, p_type: type, p_body: body, p_data: data, p_ref: ref }));
   }
 }

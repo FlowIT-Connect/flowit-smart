@@ -1,6 +1,9 @@
 import 'dart:math';
 import 'dart:typed_data';
 
+import '../core/climate.dart';
+import '../core/home_modes.dart';
+import '../core/notifications.dart';
 import '../models/models.dart';
 
 /// Erreur métier présentée à l'utilisateur (message non révélateur, §5.1).
@@ -39,10 +42,22 @@ abstract class Backend {
   Future<void> deleteAccount();
   Future<void> updateLocale(String locale);
 
+  /// Préférences du profil (apparence…), null si aucune.
+  Future<Map<String, dynamic>?> getPreferences();
+  Future<void> savePreferences(Map<String, dynamic> preferences);
+
+  /// Photo d'arrière-plan personnelle (bucket privé backgrounds, propre à l'utilisateur).
+  Future<String> uploadBackground(Uint8List bytes, String contentType);
+  Future<Uint8List> downloadBackground(String path);
+  Future<void> deleteBackground(String path);
+
   // --- Maisons et membres (§5.2)
   Future<List<Home>> listHomes();
   Future<Home> createHome(String name, String timezone);
   Future<void> renameHome(String homeId, String name);
+
+  /// Position du logement, lue par la passerelle pour la météo et le soleil.
+  Future<void> updateHomeLocation(String homeId, double latitude, double longitude, String? name);
   Future<void> deleteHome(String homeId);
   Future<List<Member>> listMembers(String homeId);
   Future<void> updateMember(String homeId, String userId, {HomeRole? role, List<String>? allowedDevices, bool clearRestriction = false});
@@ -124,6 +139,29 @@ abstract class Backend {
   Future<Automation> saveAutomation(Automation automation, {bool isNew = false});
   Future<void> deleteAutomation(String automationId);
 
+  /// Chauffage et clim par pièce.
+  Future<ClimateData> getClimate(String homeId);
+  Future<void> saveClimateSettings(String homeId, ClimateSettings settings);
+  Future<void> saveClimateZone(String homeId, ClimateZone zone);
+  Future<void> deleteClimateZone(String zoneId);
+
+  /// Présence de ce membre pour l'Absence automatique : le serveur ne garde que « à la maison »
+  /// ou non (renvoyé) et la distance arrondie, jamais la position.
+  Future<bool> reportPresence(String homeId, double latitude, double longitude);
+
+  /// Arrêt du partage de présence de ce membre.
+  Future<void> clearPresence(String homeId);
+
+  /// Ambiance pour toute la maison ([roomId] null) ou une pièce ; [preset] null = programme.
+  Future<void> setClimatePreset(String homeId, String? roomId, String? preset, DateTime? until);
+
+  /// Modes Été / Hiver / Vacances (null : jamais réglés).
+  Future<HomeModes?> getHomeModes(String homeId);
+  Future<void> saveHomeModes(String homeId, HomeModes modes);
+
+  /// Historique d'exécution écrit par la passerelle (le plus récent d'abord).
+  Future<List<AutomationRun>> listAutomationRuns(String homeId, {String? automationId, int limit = 50});
+
   // --- Intégrations
   Future<List<Integration>> listIntegrations(String homeId);
   Future<String> createIntegration(String homeId, String provider, String? label);
@@ -131,6 +169,17 @@ abstract class Backend {
 
   // --- Journal (§5.10)
   Future<List<EventLog>> listEvents(String homeId, {int limit = 100});
+
+  // --- Centre de notifications
+  /// Notifications de l'utilisateur connecté pour une maison, les plus récentes d'abord.
+  Future<List<AppNotification>> listNotifications(String homeId, {int limit = 200});
+  Future<void> markNotificationRead(int id);
+  Future<void> markAllNotificationsRead(String homeId);
+  Future<void> deleteNotification(int id);
+
+  /// Jeton push du téléphone (notifications app fermée) pour l'utilisateur connecté.
+  Future<void> savePushToken(String token, String platform, String locale);
+  Future<void> deletePushToken(String token);
 
   // --- Caméras et photos d'appareils
   /// Images d'une caméra tant que le flux est écouté (la passerelle n'envoie rien sinon).
@@ -164,6 +213,16 @@ abstract class Backend {
 
   /// Revient à la photo automatique (produit ou type d'appareil).
   Future<void> clearDevicePhoto(Device device);
+
+  // --- Images des pièces
+  /// Photo personnelle d'une pièce (bucket privé room-photos).
+  Future<Uint8List> downloadRoomPhoto(String path);
+
+  /// Enregistre la photo d'une pièce et renvoie son chemin (photo_path).
+  Future<String> setRoomPhoto(Room room, Uint8List bytes, String contentType);
+
+  /// Retire la photo personnelle (la pièce revient à son image de bibliothèque).
+  Future<void> clearRoomPhoto(Room room);
 
   // --- Temps réel (§10)
   /// Flux des changements de la maison : devices, device_commands, scene_runs…

@@ -1,7 +1,9 @@
+import 'dart:typed_data';
 import 'dart:ui' show ImageFilter;
 
 import 'package:flutter/material.dart';
 
+import 'appearance.dart';
 import 'theme.dart';
 
 /// Glassmorphism Solea : fond de lumières floutées et panneaux de verre dépoli.
@@ -23,6 +25,17 @@ class AmbientBackground extends StatelessWidget {
         Positioned.fill(
           child: IgnorePointer(
             child: RepaintBoundary(child: CustomPaint(painter: _BackdropPainter(f.backdrop, f.blobs))),
+          ),
+        ),
+        // Arrière-plan choisi par l'utilisateur (bibliothèque ou photo), flouté.
+        Positioned.fill(
+          child: IgnorePointer(
+            child: ValueListenableBuilder<Appearance>(
+              valueListenable: AppearanceController.instance,
+              builder: (context, look, _) => look.background == null
+                  ? const SizedBox.shrink()
+                  : RepaintBoundary(child: BackgroundView(appearance: look, photo: AppearanceController.instance.photoBytes)),
+            ),
           ),
         ),
         Positioned.fill(child: child),
@@ -134,4 +147,82 @@ class GlassPageTransitions extends PageTransitionsTheme {
     Widget child,
   ) =>
       super.buildTransitions(route, context, animation, secondaryAnimation, AmbientBackground(child: child));
+}
+
+/// Arrière-plan d'apparence : image (bibliothèque ou photo importée), flou et
+/// luminosité réglables. Sert aussi à l'aperçu de l'écran Apparence.
+class BackgroundView extends StatelessWidget {
+  const BackgroundView({super.key, required this.appearance, this.photo});
+
+  final Appearance appearance;
+  final Uint8List? photo;
+
+  @override
+  Widget build(BuildContext context) {
+    final a = appearance;
+    final Widget image;
+    if (a.photoPath != null && photo != null) {
+      image = Image.memory(photo!, fit: BoxFit.cover, gaplessPlayback: true);
+    } else {
+      final key = a.libraryKey ?? 'abstrait_couleurs_1';
+      final asset = BackgroundLibrary.assetFor(key);
+      final fallback = BackgroundArt(key);
+      image = asset == null ? fallback : Image.asset(asset, fit: BoxFit.cover, gaplessPlayback: true, errorBuilder: (_, _, _) => fallback);
+    }
+    final b = a.brightness;
+    return Stack(fit: StackFit.expand, children: [
+      ClipRect(
+        child: a.blur <= 0
+            ? image
+            : ImageFiltered(imageFilter: ImageFilter.blur(sigmaX: a.blur, sigmaY: a.blur, tileMode: TileMode.mirror), child: image),
+      ),
+      ColoredBox(color: b < 0 ? Colors.black.withValues(alpha: -b) : Colors.white.withValues(alpha: b)),
+    ]);
+  }
+}
+
+/// Dégradé de secours d'une image de la bibliothèque des arrière-plans.
+class BackgroundArt extends StatelessWidget {
+  const BackgroundArt(this.imageKey, {super.key});
+
+  final String imageKey;
+
+  @override
+  Widget build(BuildContext context) {
+    final cat = BackgroundLibrary.categoryOfImage(imageKey) ?? BackgroundLibrary.categories.first;
+    final v = BackgroundLibrary.variantOf(imageKey);
+    return CustomPaint(painter: _ArtPainter(cat.colors, v));
+  }
+}
+
+class _ArtPainter extends CustomPainter {
+  _ArtPainter(this.colors, this.variant);
+
+  final List<Color> colors;
+  final int variant;
+
+  @override
+  void paint(Canvas canvas, Size s) {
+    final rect = Offset.zero & s;
+    final shift = [0.0, .5, -.5][variant % 3];
+    canvas.drawRect(
+      rect,
+      Paint()..shader = LinearGradient(begin: Alignment(-1, -1 + shift), end: Alignment(1, 1 - shift), colors: colors, stops: const [0, .5, 1]).createShader(rect),
+    );
+    final unit = s.longestSide;
+    for (var i = 0; i < 3; i++) {
+      final dx = [.2, .8, .5][(i + variant) % 3];
+      final dy = [.25, .55, .85][i];
+      canvas.drawCircle(
+        Offset(s.width * dx, s.height * dy),
+        unit * .22,
+        Paint()
+          ..color = colors[i % 2].withValues(alpha: .55)
+          ..maskFilter = MaskFilter.blur(BlurStyle.normal, unit * .12),
+      );
+    }
+  }
+
+  @override
+  bool shouldRepaint(covariant _ArtPainter old) => old.colors != colors || old.variant != variant;
 }

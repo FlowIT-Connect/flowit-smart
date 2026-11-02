@@ -9,6 +9,8 @@ import '../widgets/common.dart';
 import '../widgets/plan_card.dart';
 import 'admin_devices_screen.dart';
 import 'admin_payments_screen.dart';
+import 'appearance_screen.dart';
+import 'notifications_screen.dart';
 import 'security/security_screen.dart';
 import 'onboarding_screen.dart';
 
@@ -80,6 +82,22 @@ class SettingsScreen extends StatelessWidget {
               ),
             ),
           ),
+        ),
+        ListTile(
+          key: const ValueKey('open-appearance'),
+          leading: TileIcon(Icons.palette_rounded, color: f.violet),
+          title: Text(context.tr('appearance.title')),
+          subtitle: Text(context.tr('appearance.subtitle')),
+          trailing: const ForwardChevron(),
+          onTap: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => const AppearanceScreen())),
+        ),
+        ListTile(
+          key: const ValueKey('open-notification-settings'),
+          leading: TileIcon(Icons.notifications_active_rounded, color: f.brand),
+          title: Text(context.tr('notif.settings')),
+          subtitle: Text(context.tr('notif.open')),
+          trailing: const ForwardChevron(),
+          onTap: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => const NotificationSettingsScreen())),
         ),
         ListTile(
           leading: TileIcon(Icons.translate_rounded, color: f.blue),

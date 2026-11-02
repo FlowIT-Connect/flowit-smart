@@ -7,6 +7,7 @@ Application domotique multimarque (cahier des charges v1.0 du 26/10/2026).
 | `app/` | Application Flutter (Android, iOS, Web), FR / EN / AR (RTL) |
 | `bridge/` | FlowIT Bridge : passerelle Node.js qui relie Supabase à Home Assistant sur le réseau local, ou directement au cloud Tuya |
 | `supabase/` | Migrations SQL (schéma, RLS, fonctions) et tests |
+| `site/` | Site international Solea (vitrine, puis boutique et administration), Next.js, 6 langues : voir [site/README.md](site/README.md) |
 | `docs/` | Architecture, installation, tests, limites, dépendances |
 | `screenshots/` | Captures de l'application en mode démo |
 
@@ -20,6 +21,8 @@ Démarrage rapide sans matériel ni compte : `cd app && flutter run -d chrome`
 **Tester des appareils Tuya / Smart Life sans box** : suivre [docs/TUYA_SANS_BOX.md](docs/TUYA_SANS_BOX.md) (la passerelle tourne sur un PC et passe par le cloud Tuya).
 
 **Serrures et contrôles d'accès TTLock** (codes d'accès, historique, ouverture à distance avec passerelle G2/G3) : voir [docs/TTLOCK.md](docs/TTLOCK.md).
+
+**Robots aspirateurs yeedi / Ecovacs** (nettoyer, pause, base, puissance, batterie) : module séparé open source, voir [yeedi/LISEZMOI.md](yeedi/LISEZMOI.md).
 
 **Ajouter un appareil depuis Solea** (serrure TTLock en Bluetooth, appareil Smart Life guidé) : voir [docs/AJOUTER_UN_APPAREIL.md](docs/AJOUTER_UN_APPAREIL.md).
 

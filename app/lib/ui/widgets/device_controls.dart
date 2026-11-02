@@ -30,6 +30,7 @@ String formatValue(BuildContext context, Capability? cap, String key, dynamic va
     return unit == null ? text : '$text $unit';
   }
   if (cap?.type == CapabilityType.enumeration) return optionLabel(context, value.toString());
+  if (value is String) return context.tryTr('value.$key.$value') ?? value;
   return value.toString();
 }
 
@@ -180,6 +181,11 @@ class DeviceTile extends StatelessWidget {
     if (d.isAccessControl) return context.tr('access.short');
     if (d.availability == Availability.unknown && d.state.isEmpty) return context.tr('availability.unknown');
     if (d.isCamera) return context.tr('camera.tapToView');
+    if (d.capability('vacuum_state') != null && d.state['vacuum_state'] != null) {
+      final status = formatValue(context, d.capability('vacuum_state'), 'vacuum_state', d.state['vacuum_state']);
+      final battery = d.state['battery'];
+      return battery is num ? '$status · ${battery.round()} %' : status;
+    }
     for (final key in ['switch', 'cover_position', 'target_temperature', 'temperature', 'contact', 'motion', 'power']) {
       final cap = d.capability(key);
       if (cap != null && d.state.containsKey(key)) {
@@ -338,6 +344,16 @@ IconData _modeIcon(String o) => switch (o) {
       'auto' || 'heat_cool' => Icons.autorenew_rounded,
       'dry' => Icons.water_drop_rounded,
       'fan_only' => Icons.air_rounded,
+      'comfort' => Icons.weekend_rounded,
+      'eco' => Icons.eco_rounded,
+      'sleep' => Icons.bedtime_rounded,
+      'away' => Icons.flight_takeoff_rounded,
+      'frost' => Icons.severe_cold_rounded,
+      'boost' => Icons.rocket_launch_rounded,
+      'schedule' => Icons.schedule_rounded,
+      'manual' => Icons.pan_tool_alt_rounded,
+      'home' => Icons.home_rounded,
+      'none' => Icons.block_rounded,
       _ => Icons.tune_rounded,
     };
 
@@ -545,6 +561,15 @@ class _CapabilityControlState extends State<_CapabilityControl> {
           ]),
         );
       case CapabilityType.enumeration:
+        if (cap.key == 'vacuum_action') return _vacuumButtons(context, d, cap, title, indicator, pending, enabled, send);
+        if (!cap.writable) {
+          // État rapporté par l'appareil (ex. chauffe en cours) : affiché, jamais modifiable.
+          return ListTile(
+            leading: TileIcon(capabilityIcon(cap.key)),
+            title: title,
+            trailing: Text(formatValue(context, cap, cap.key, current)),
+          );
+        }
         if (cap.key == 'cover_control') {
           // Actions ponctuelles : chaque bouton reste disponible, même pour répéter la dernière.
           return Padding(
@@ -578,8 +603,8 @@ class _CapabilityControlState extends State<_CapabilityControl> {
             ]),
           );
         }
-        if (cap.key == 'hvac_mode') {
-          // Modes en gros boutons ronds, le mode actif rempli d'orange.
+        if (cap.key == 'hvac_mode' || cap.key == 'preset') {
+          // Modes et ambiances en gros boutons ronds, le mode actif rempli d'orange.
           return Padding(
             padding: const EdgeInsets.fromLTRB(16, 10, 16, 12),
             child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
@@ -666,12 +691,63 @@ class _CapabilityControlState extends State<_CapabilityControl> {
     }
   }
 
+  /// Robot aspirateur : le bouton principal suit l'état (Nettoyer, Pause ou Reprendre),
+  /// à côté de « Retour à la base » et, pendant un nettoyage, « Arrêter ».
+  Widget _vacuumButtons(BuildContext context, Device d, Capability cap, Widget title, Widget indicator, PendingCommand? pending,
+      bool enabled, void Function(dynamic) send) {
+    final status = d.state['vacuum_state'];
+    final busy = status == 'cleaning' || status == 'paused' || status == 'returning';
+    final main = switch (status) {
+      'cleaning' => 'pause',
+      'paused' => 'resume',
+      _ => 'start',
+    };
+    bool offers(String o) => cap.options.contains(o);
+    Widget button(String o, {bool filled = false}) {
+      final icon = Icon(_vacuumIcon(o));
+      final label = Text(context.tr('vacuum.$o'), maxLines: 1, overflow: TextOverflow.ellipsis);
+      final onPressed = enabled ? () => send(o) : null;
+      return filled ? FilledButton.icon(onPressed: onPressed, icon: icon, label: label) : OutlinedButton.icon(onPressed: onPressed, icon: icon, label: label);
+    }
+
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 10, 16, 12),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+        Row(children: [
+          TileIcon(capabilityIcon(cap.key)),
+          const SizedBox(width: 14),
+          Expanded(child: DefaultTextStyle.merge(style: Theme.of(context).textTheme.bodyLarge?.copyWith(fontWeight: FontWeight.w600), child: title)),
+          if (pending != null) indicator,
+        ]),
+        const SizedBox(height: 12),
+        Row(children: [
+          if (offers(main)) Expanded(child: button(main, filled: true)),
+          if (offers('charge')) ...[
+            const SizedBox(width: 8),
+            Expanded(child: button('charge')),
+          ],
+        ]),
+        if (busy && offers('stop')) ...[
+          const SizedBox(height: 8),
+          button('stop'),
+        ],
+      ]),
+    );
+  }
+
   num _round(num v, Capability cap) {
     final steps = ((v - cap.min) / cap.step).round();
     final r = cap.min + steps * cap.step;
     return cap.step is int && cap.min is int ? r.round() : double.parse(r.toStringAsFixed(2));
   }
 }
+
+IconData _vacuumIcon(String action) => switch (action) {
+      'start' || 'resume' => Icons.play_arrow_rounded,
+      'pause' => Icons.pause_rounded,
+      'charge' => Icons.ev_station_rounded,
+      _ => Icons.stop_rounded,
+    };
 
 IconData _coverIcon(String action) => switch (action) {
       'open' => Icons.keyboard_arrow_up_rounded,

@@ -4,10 +4,23 @@
 <dict>
 	<key>NSCameraUsageDescription</key>
 	<string>Prendre en photo vos appareils pour les reconnaître dans Solea.</string>
+	<key>NSLocationWhenInUseUsageDescription</key>
+	<string>Savoir si vous êtes à la maison pour mettre le chauffage et la clim en Absence quand tout le monde est parti (seulement si vous l'activez ; votre position n'est pas gardée).</string>
 	<key>NSPhotoLibraryUsageDescription</key>
 	<string>Choisir la photo d'un appareil dans votre galerie.</string>
 	<key>CADisableMinimumFrameDurationOnPhone</key>
 	<true/>
+	<key>CFBundleURLTypes</key>
+	<array>
+		<dict>
+			<key>CFBundleURLName</key>
+			<string>auth-callback</string>
+			<key>CFBundleURLSchemes</key>
+			<array>
+				<string>solea</string>
+			</array>
+		</dict>
+	</array>
 	<key>CFBundleDevelopmentRegion</key>
 	<string>$(DEVELOPMENT_LANGUAGE)</string>
 	<key>CFBundleDisplayName</key>
