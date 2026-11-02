@@ -14,9 +14,10 @@ if errorlevel 1 (
   exit /b 1
 )
 
-if not exist node_modules (
+if not exist node_modules\@supabase\supabase-js (
   echo Installation des composants, une seule fois...
-  call npm ci --omit=dev --no-audit --no-fund
+  call npm ci --omit=dev --no-audit --no-fund --loglevel=error
+  if errorlevel 1 call npm install --omit=dev --no-audit --no-fund --loglevel=error
   if errorlevel 1 (
     echo L'installation a échoué. Vérifiez la connexion Internet puis relancez.
     pause
