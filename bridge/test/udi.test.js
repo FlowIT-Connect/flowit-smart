@@ -198,17 +198,22 @@ describe('RTSP', () => {
   afterEach(() => server?.close());
 
   /** Petit serveur RTSP protégé par Digest. */
-  function startServer({ user = 'admin', pass = 'S3cret!', sdp } = {}) {
+  function startServer({ user = 'admin', pass = 'S3cret!', sdp, closeAfter401 = false, resetAll = false } = {}) {
     return new Promise((resolve) => {
       server = net.createServer((sock) => {
         sock.on('data', (buf) => {
+          if (resetAll) return sock.resetAndDestroy();
           const req = buf.toString();
           const cseq = /CSeq: (\d+)/.exec(req)[1];
           const auth = /Authorization: Digest (.*)\r\n/.exec(req)?.[1];
           const md5 = (s) => createHash('md5').update(s).digest('hex');
           const uri = /uri="([^"]+)"/.exec(auth ?? '')?.[1];
           const valid = auth && md5(`${md5(`${user}:cam:${pass}`)}:n1:${md5(`DESCRIBE:${uri}`)}`) === /response="([^"]+)"/.exec(auth)[1];
-          if (!valid) return sock.write(`RTSP/1.0 401 Unauthorized\r\nCSeq: ${cseq}\r\nWWW-Authenticate: Digest realm="cam", nonce="n1"\r\n\r\n`);
+          if (!valid) {
+            sock.write(`RTSP/1.0 401 Unauthorized\r\nCSeq: ${cseq}\r\nWWW-Authenticate: Digest realm="cam", nonce="n1"\r\n\r\n`);
+            if (closeAfter401) sock.end();
+            return;
+          }
           sock.write(`RTSP/1.0 200 OK\r\nCSeq: ${cseq}\r\nContent-Type: application/sdp\r\nContent-Length: ${Buffer.byteLength(sdp)}\r\n\r\n${sdp}`);
         });
       }).listen(0, '127.0.0.1', () => resolve(server.address().port));
@@ -220,6 +225,19 @@ describe('RTSP', () => {
     const port = await startServer({ sdp: SDP });
     const r = await probeRtsp(`rtsp://admin:S3cret!@127.0.0.1:${port}/Streaming/Channels/101`);
     assert.deepEqual(r, { ok: true, status: 200, video: { codec: 'H264' }, audio: { codec: 'MPEG4-GENERIC' } });
+  });
+
+  test('caméra qui ferme la connexion après 401 (Dahua) : nouvelle connexion identifiée', async () => {
+    const port = await startServer({ sdp: SDP, closeAfter401: true });
+    const r = await probeRtsp(`rtsp://127.0.0.1:${port}/cam/realmonitor?channel=1&subtype=0`, { username: 'admin', password: 'S3cret!' });
+    assert.equal(r.ok, true);
+  });
+
+  test('connexion coupée dès la première demande : RTSP désactivé expliqué', async () => {
+    const port = await startServer({ sdp: SDP, resetAll: true });
+    const r = await probeRtsp(`rtsp://127.0.0.1:${port}/x`, { username: 'admin', password: 'S3cret!' });
+    assert.equal(r.ok, false);
+    assert.match(r.error, /dès la première demande/);
   });
 
   test('mauvais mot de passe : 401 expliqué', async () => {
@@ -556,6 +574,66 @@ describe('Dahua : ajout par QR code', () => {
     );
     await moved.connect();
     assert.equal(moved.located().host, '192.168.1.77');
+  });
+
+  test('pilote : Hero qui coupe sans identifiants, flux « authbasic » avec Basic d\'emblée', async () => {
+    const seen = [];
+    const probe = async (url, opts) => {
+      seen.push({ url, basicFirst: opts.basicFirst === true });
+      return opts.basicFirst && url.includes('&authbasic=') ? { ok: true, status: 200, video: { codec: 'H265' } } : { ok: false, error: 'La caméra coupe le flux RTSP dès la première demande' };
+    };
+    const d = new DahuaDriver({ id: 'q7', serial: 'S1', host: '192.168.1.45', password: 'TEST1234' }, { probe, fetchImpl: async () => new Response('', { status: 404 }), onvif: () => assert.fail('ONVIF inutile') });
+    await d.connect();
+    const b64 = Buffer.from('admin:TEST1234').toString('base64');
+    assert.equal(d.streams().main, `rtsp://192.168.1.45:554/cam/realmonitor?channel=1&subtype=0&authbasic=${b64}`);
+    assert.equal(seen[1].basicFirst, true);
+    await d.ping();
+    assert.equal(seen.at(-1).basicFirst, true);
+  });
+
+  test('pilote : vidéo refusée partout, images fixes quand même', async () => {
+    const jpeg = Buffer.from([0xff, 0xd8, 0xff, 0xd9]);
+    const d = new DahuaDriver(
+      { id: 'q8', serial: 'S1', host: '192.168.1.45', password: 'TEST1234' },
+      {
+        probe: async () => ({ ok: false, error: 'La caméra coupe le flux RTSP dès la première demande' }),
+        onvif: () => ({ connect: async () => {}, rtspCheck: { ok: false, error: 'coupé aussi' }, streams: () => ({}) }),
+        fetchImpl: async () => new Response(jpeg, { status: 200, headers: { 'content-type': 'image/jpeg' } }),
+      },
+    );
+    await d.connect();
+    assert.equal(d.capabilities().video_stream, false);
+    assert.equal(d.capabilities().snapshot, true);
+    const diag = await d.diagnose();
+    assert.deepEqual(diag.steps.map((x) => [x.step, x.ok]), [['rtsp', false], ['image', true], ['identification', true]]);
+    await d.ping();
+  });
+
+  test('pilote : adresse Dahua standard coupée, flux trouvé par ONVIF', async () => {
+    const onvifUrl = 'rtsp://192.168.1.45:554/cam/realmonitor?channel=1&subtype=0&unicast=true&proto=Onvif';
+    const probe = async (url) => (url === onvifUrl ? { ok: true, status: 200, video: { codec: 'H264' } } : { ok: false, error: 'La caméra coupe le flux RTSP dès la première demande' });
+    let asked = null;
+    const d = new DahuaDriver(
+      { id: 'q5', serial: 'S1', host: '192.168.1.45', password: 'TEST1234' },
+      {
+        probe,
+        fetchImpl: async () => new Response('', { status: 404 }),
+        onvif: (src) => {
+          asked = src;
+          return { connect: async () => {}, rtspCheck: { ok: true, status: 200, video: { codec: 'H264' } }, streams: () => ({ main: onvifUrl, sub: null }) };
+        },
+      },
+    );
+    await d.connect();
+    assert.deepEqual([asked.host, asked.port, asked.username, asked.password], ['192.168.1.45', 80, 'admin', 'TEST1234']);
+    assert.equal(d.streams().main, onvifUrl);
+    assert.equal(d.capabilities().video_stream, true);
+
+    const both = new DahuaDriver(
+      { id: 'q6', serial: 'S1', host: '192.168.1.45', password: 'x' },
+      { probe, onvif: () => ({ connect: async () => { throw new Error('Identifiants refusés par l\'appareil'); } }) },
+    );
+    await assert.rejects(both.connect(), (e) => /Essai ONVIF : Identifiants refusés/.test(e.message));
   });
 
   test('boîtier : adresse trouvée enregistrée, recherche réseau avec les caméras Dahua', async () => {

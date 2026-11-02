@@ -10,15 +10,22 @@
 import { fetchWithAuth } from '../auth.js';
 import { UdiError, capabilityFlags, webrtcAudio } from '../contract.js';
 import { probeRtsp } from '../rtsp.js';
+import { OnvifDriver } from './onvif_driver.js';
 
 export const dahuaRtsp = (host, subtype, port = 554) => `rtsp://${host}:${port}/cam/realmonitor?channel=1&subtype=${subtype}`;
+
+/** Variante « authbasic » (Dahua grand public) : identifiants dans l'adresse, lue seulement sur le réseau local. */
+export const dahuaRtspAuthBasic = (host, subtype, { username, password }) =>
+  `${dahuaRtsp(host, subtype)}&authbasic=${Buffer.from(`${username}:${password}`).toString('base64')}`;
 
 export class DahuaDriver {
   /**
    * @param {{id:string, host?:string|null, serial?:string|null, model?:string|null, username?:string, password?:string}} source
-   * @param {{locate?:(serial:string)=>Promise<{host:string, model?:string|null, mac?:string|null}|null>, probe?:Function, fetchImpl?:Function}} [deps]
+   * @param {{locate?:(serial:string)=>Promise<{host:string, model?:string|null, mac?:string|null}|null>, probe?:Function, fetchImpl?:Function, onvif?:Function}} [deps]
    */
-  constructor(source, { locate = async () => null, probe = probeRtsp, fetchImpl = (...a) => fetch(...a) } = {}) {
+  constructor(source, { locate = async () => null, probe = probeRtsp, fetchImpl = (...a) => fetch(...a), onvif = (src) => new OnvifDriver(src, { fetchImpl, probe, events: false }) } = {}) {
+    this.onvif = onvif;
+    this.alt = null; // flux annoncés par ONVIF quand l'adresse Dahua standard ne répond pas
     this.source = source;
     this.locate = locate;
     this.probe = probe;
@@ -65,7 +72,30 @@ export class DahuaDriver {
       const before = this.host;
       if ((await this.#find()) && this.host !== before) check = await this.#probe();
     }
+    // Adresse RTSP standard refusée : on demande à la caméra elle-même (ONVIF) où est son flux.
+    // Certaines Hero coupent toute demande sans identifiants : on les envoie d'emblée.
+    if (!check.ok && check.status !== 401) {
+      const basic = await this.probe(dahuaRtspAuthBasic(this.host, 0, this.creds), { ...this.creds, basicFirst: true });
+      if (basic.ok) {
+        check = basic;
+        this.alt = { main: dahuaRtspAuthBasic(this.host, 0, this.creds), sub: dahuaRtspAuthBasic(this.host, 1, this.creds) };
+      }
+    }
+    if (!check.ok && check.status !== 401) {
+      const alt = await this.#viaOnvif();
+      if (alt.check?.ok) check = alt.check;
+      else check = { ...check, error: `${check.error}. Essai ONVIF : ${alt.error}` };
+    }
     this.check = check;
+    if (!check.ok && check.status !== 401) {
+      // Vidéo refusée mais caméra joignable : les images fixes suffisent pour la surveiller.
+      const snap = await this.#trySnapshot().then(() => true, () => false);
+      if (snap) {
+        this.snapshotOk = true;
+        this.flags = capabilityFlags({ snapshot: true });
+        return;
+      }
+    }
     if (!check.ok) {
       throw new UdiError(check.status === 401 ? 'Code de sécurité refusé par la caméra' : check.error, check.status === 401 ? 'auth' : 'unreachable');
     }
@@ -75,6 +105,18 @@ export class DahuaDriver {
       snapshot: this.snapshotOk,
       audio_input: webrtcAudio(check.audio?.codec),
     });
+  }
+
+  async #viaOnvif() {
+    try {
+      const d = this.onvif({ id: this.source.id, name: this.source.name ?? 'Dahua', host: this.host, port: 80, ...this.creds });
+      await d.connect();
+      const check = d.rtspCheck ?? { ok: false, error: 'aucun flux annoncé' };
+      if (check.ok) this.alt = d.streams();
+      return { check, error: check.ok ? null : check.error };
+    } catch (e) {
+      return { check: null, error: e?.message ?? String(e) };
+    }
   }
 
   identity() {
@@ -91,6 +133,7 @@ export class DahuaDriver {
   }
 
   streams() {
+    if (this.alt?.main) return this.alt;
     return this.host ? { main: dahuaRtsp(this.host, 0), sub: dahuaRtsp(this.host, 1) } : { main: null, sub: null };
   }
 
@@ -126,6 +169,12 @@ export class DahuaDriver {
       return { steps, detected: {} };
     }
     const c = this.check;
+    if (!c.ok) {
+      add('rtsp', false, c.error);
+      add('image', true, 'Images fixes disponibles : la caméra refuse la vidéo en direct');
+      add('identification', true, ['Dahua', this.identity().model, this.source.serial ? `n° ${this.source.serial}` : null].filter(Boolean).join(' · '));
+      return { steps, detected: {} };
+    }
     add('rtsp', true, `Vidéo ${c.video?.codec ?? '?'}${c.audio ? `, audio ${c.audio.codec ?? '?'}${webrtcAudio(c.audio.codec) ? '' : ' (non lisible en WebRTC)'}` : ', sans audio'}`);
     add('image', this.snapshotOk, this.snapshotOk ? 'Image fixe disponible' : 'Pas d\'image fixe : la vidéo reste disponible');
     add('identification', true, ['Dahua', this.identity().model, this.source.serial ? `n° ${this.source.serial}` : null].filter(Boolean).join(' · '));
@@ -133,7 +182,11 @@ export class DahuaDriver {
   }
 
   async ping() {
-    const check = await this.#probe();
+    if (this.check && !this.check.ok && this.snapshotOk) {
+      await this.#trySnapshot();
+      return;
+    }
+    const check = this.alt?.main ? await this.probe(this.alt.main, { ...this.creds, basicFirst: this.alt.main.includes('authbasic=') }) : await this.#probe();
     if (!check.ok) throw new UdiError(check.error, check.status === 401 ? 'auth' : 'unreachable');
   }
 

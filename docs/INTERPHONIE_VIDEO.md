@@ -78,6 +78,18 @@ marque n'est annoncée compatible sans essai. Conseil : changer le code d'origin
 
 ## Installer le boîtier
 
+### Sur un PC Windows (essai, petit logement)
+
+1. Téléchargez le projet (bouton *Code › Download ZIP* sur GitHub), décompressez-le, ouvrez le
+   dossier `bridge`.
+2. Double-cliquez sur `Demarrer-Boitier-Video.cmd`. La première fois il installe les composants
+   et le relais vidéo MediaMTX, puis pose trois questions : clé `service_role` de Supabase,
+   e-mail du compte Solea, logement. L'intégration « Boîtier vidéo » est créée toute seule.
+3. Si Windows demande l'autorisation du pare-feu : cocher *Réseaux privés*, *Autoriser*.
+4. Garder la fenêtre ouverte. Changer de logement : supprimer `.env.video` et relancer.
+
+### Sur un mini-PC avec Docker
+
 1. Dans Solea : *Paramètres › Intégrations › Ajouter › Autre*, nommez-la « Boîtier vidéo ».
    Copiez son identifiant.
 2. Sur le boîtier (Docker installé) :
