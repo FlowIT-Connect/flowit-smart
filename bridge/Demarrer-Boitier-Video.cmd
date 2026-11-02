@@ -5,6 +5,14 @@ chcp 65001 >nul
 title Solea - Boitier video
 cd /d "%~dp0"
 
+if not exist package.json (
+  echo Ce fichier a été lancé sans le reste du dossier, sans doute depuis le .zip.
+  echo Faites un clic droit sur le .zip, puis "Extraire tout", ouvrez le dossier bridge
+  echo extrait et relancez Demarrer-Boitier-Video.cmd depuis ce dossier.
+  pause
+  exit /b 1
+)
+
 where node >nul 2>nul
 if errorlevel 1 (
   echo Node.js n'est pas installé. La page de téléchargement va s'ouvrir :
