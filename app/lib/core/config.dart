@@ -26,5 +26,10 @@ class AppConfig {
   static const firebaseSenderId = String.fromEnvironment('FIREBASE_SENDER_ID', defaultValue: '174318293704');
   static const firebaseProjectId = String.fromEnvironment('FIREBASE_PROJECT_ID', defaultValue: 'solea-a979b');
 
+  /// Retour des liens reçus par e-mail (mot de passe oublié, confirmation d'inscription).
+  /// Sans cette adresse, Supabase renvoie vers la « Site URL » du projet (le site vitrine).
+  /// Les deux adresses doivent figurer dans Supabase > Authentication > URL Configuration > Redirect URLs.
+  static const authRedirectMobile = 'solea://auth-callback';
+
   static bool get hasSupabase => supabaseUrl.isNotEmpty && supabaseKey.isNotEmpty;
 }
