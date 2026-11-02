@@ -87,6 +87,15 @@ export class DahuaDriver {
       else check = { ...check, error: `${check.error}. Essai ONVIF : ${alt.error}` };
     }
     this.check = check;
+    if (!check.ok && check.status !== 401) {
+      // Vidéo refusée mais caméra joignable : les images fixes suffisent pour la surveiller.
+      const snap = await this.#trySnapshot().then(() => true, () => false);
+      if (snap) {
+        this.snapshotOk = true;
+        this.flags = capabilityFlags({ snapshot: true });
+        return;
+      }
+    }
     if (!check.ok) {
       throw new UdiError(check.status === 401 ? 'Code de sécurité refusé par la caméra' : check.error, check.status === 401 ? 'auth' : 'unreachable');
     }
@@ -160,6 +169,12 @@ export class DahuaDriver {
       return { steps, detected: {} };
     }
     const c = this.check;
+    if (!c.ok) {
+      add('rtsp', false, c.error);
+      add('image', true, 'Images fixes disponibles : la caméra refuse la vidéo en direct');
+      add('identification', true, ['Dahua', this.identity().model, this.source.serial ? `n° ${this.source.serial}` : null].filter(Boolean).join(' · '));
+      return { steps, detected: {} };
+    }
     add('rtsp', true, `Vidéo ${c.video?.codec ?? '?'}${c.audio ? `, audio ${c.audio.codec ?? '?'}${webrtcAudio(c.audio.codec) ? '' : ' (non lisible en WebRTC)'}` : ', sans audio'}`);
     add('image', this.snapshotOk, this.snapshotOk ? 'Image fixe disponible' : 'Pas d\'image fixe : la vidéo reste disponible');
     add('identification', true, ['Dahua', this.identity().model, this.source.serial ? `n° ${this.source.serial}` : null].filter(Boolean).join(' · '));
@@ -167,6 +182,10 @@ export class DahuaDriver {
   }
 
   async ping() {
+    if (this.check && !this.check.ok && this.snapshotOk) {
+      await this.#trySnapshot();
+      return;
+    }
     const check = this.alt?.main ? await this.probe(this.alt.main, { ...this.creds, basicFirst: this.alt.main.includes('authbasic=') }) : await this.#probe();
     if (!check.ok) throw new UdiError(check.error, check.status === 401 ? 'auth' : 'unreachable');
   }

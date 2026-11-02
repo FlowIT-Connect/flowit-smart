@@ -591,6 +591,24 @@ describe('Dahua : ajout par QR code', () => {
     assert.equal(seen.at(-1).basicFirst, true);
   });
 
+  test('pilote : vidéo refusée partout, images fixes quand même', async () => {
+    const jpeg = Buffer.from([0xff, 0xd8, 0xff, 0xd9]);
+    const d = new DahuaDriver(
+      { id: 'q8', serial: 'S1', host: '192.168.1.45', password: 'TEST1234' },
+      {
+        probe: async () => ({ ok: false, error: 'La caméra coupe le flux RTSP dès la première demande' }),
+        onvif: () => ({ connect: async () => {}, rtspCheck: { ok: false, error: 'coupé aussi' }, streams: () => ({}) }),
+        fetchImpl: async () => new Response(jpeg, { status: 200, headers: { 'content-type': 'image/jpeg' } }),
+      },
+    );
+    await d.connect();
+    assert.equal(d.capabilities().video_stream, false);
+    assert.equal(d.capabilities().snapshot, true);
+    const diag = await d.diagnose();
+    assert.deepEqual(diag.steps.map((x) => [x.step, x.ok]), [['rtsp', false], ['image', true], ['identification', true]]);
+    await d.ping();
+  });
+
   test('pilote : adresse Dahua standard coupée, flux trouvé par ONVIF', async () => {
     const onvifUrl = 'rtsp://192.168.1.45:554/cam/realmonitor?channel=1&subtype=0&unicast=true&proto=Onvif';
     const probe = async (url) => (url === onvifUrl ? { ok: true, status: 200, video: { codec: 'H264' } } : { ok: false, error: 'La caméra coupe le flux RTSP dès la première demande' });
