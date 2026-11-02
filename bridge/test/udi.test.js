@@ -198,17 +198,22 @@ describe('RTSP', () => {
   afterEach(() => server?.close());
 
   /** Petit serveur RTSP protégé par Digest. */
-  function startServer({ user = 'admin', pass = 'S3cret!', sdp } = {}) {
+  function startServer({ user = 'admin', pass = 'S3cret!', sdp, closeAfter401 = false, resetAll = false } = {}) {
     return new Promise((resolve) => {
       server = net.createServer((sock) => {
         sock.on('data', (buf) => {
+          if (resetAll) return sock.resetAndDestroy();
           const req = buf.toString();
           const cseq = /CSeq: (\d+)/.exec(req)[1];
           const auth = /Authorization: Digest (.*)\r\n/.exec(req)?.[1];
           const md5 = (s) => createHash('md5').update(s).digest('hex');
           const uri = /uri="([^"]+)"/.exec(auth ?? '')?.[1];
           const valid = auth && md5(`${md5(`${user}:cam:${pass}`)}:n1:${md5(`DESCRIBE:${uri}`)}`) === /response="([^"]+)"/.exec(auth)[1];
-          if (!valid) return sock.write(`RTSP/1.0 401 Unauthorized\r\nCSeq: ${cseq}\r\nWWW-Authenticate: Digest realm="cam", nonce="n1"\r\n\r\n`);
+          if (!valid) {
+            sock.write(`RTSP/1.0 401 Unauthorized\r\nCSeq: ${cseq}\r\nWWW-Authenticate: Digest realm="cam", nonce="n1"\r\n\r\n`);
+            if (closeAfter401) sock.end();
+            return;
+          }
           sock.write(`RTSP/1.0 200 OK\r\nCSeq: ${cseq}\r\nContent-Type: application/sdp\r\nContent-Length: ${Buffer.byteLength(sdp)}\r\n\r\n${sdp}`);
         });
       }).listen(0, '127.0.0.1', () => resolve(server.address().port));
@@ -220,6 +225,19 @@ describe('RTSP', () => {
     const port = await startServer({ sdp: SDP });
     const r = await probeRtsp(`rtsp://admin:S3cret!@127.0.0.1:${port}/Streaming/Channels/101`);
     assert.deepEqual(r, { ok: true, status: 200, video: { codec: 'H264' }, audio: { codec: 'MPEG4-GENERIC' } });
+  });
+
+  test('caméra qui ferme la connexion après 401 (Dahua) : nouvelle connexion identifiée', async () => {
+    const port = await startServer({ sdp: SDP, closeAfter401: true });
+    const r = await probeRtsp(`rtsp://127.0.0.1:${port}/cam/realmonitor?channel=1&subtype=0`, { username: 'admin', password: 'S3cret!' });
+    assert.equal(r.ok, true);
+  });
+
+  test('connexion coupée dès la première demande : RTSP désactivé expliqué', async () => {
+    const port = await startServer({ sdp: SDP, resetAll: true });
+    const r = await probeRtsp(`rtsp://127.0.0.1:${port}/x`, { username: 'admin', password: 'S3cret!' });
+    assert.equal(r.ok, false);
+    assert.match(r.error, /dès la première demande/);
   });
 
   test('mauvais mot de passe : 401 expliqué', async () => {

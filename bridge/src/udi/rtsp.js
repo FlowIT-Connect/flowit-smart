@@ -74,32 +74,46 @@ export async function probeRtsp(rawUrl, { username, password, timeoutMs = 6000, 
   u.username = '';
   u.password = '';
   const url = u.toString();
-  const socket = connect({ host: u.hostname, port: Number(u.port) || 554 });
-  socket.setTimeout?.(timeoutMs);
-  const timeout = new Promise((_, reject) => {
-    const t = setTimeout(() => reject(new Error('délai dépassé')), timeoutMs);
-    socket.once('close', () => clearTimeout(t));
-    socket.once('timeout', () => reject(new Error('délai dépassé')));
-  });
+
+  // Une connexion neuve par requête : certaines caméras (Dahua grand public) ferment la
+  // connexion après avoir répondu 401, la requête identifiée doit donc repartir de zéro.
+  const describe = async (cseq, extra = {}) => {
+    const socket = connect({ host: u.hostname, port: Number(u.port) || 554 });
+    socket.setTimeout?.(timeoutMs);
+    let timer;
+    const timeout = new Promise((_, reject) => {
+      timer = setTimeout(() => reject(new Error('délai dépassé')), timeoutMs);
+      socket.once('timeout', () => reject(new Error('délai dépassé')));
+    });
+    try {
+      await Promise.race([new Promise((resolve, reject) => (socket.once('connect', resolve), socket.once('error', reject))), timeout]);
+      return await Promise.race([rtspRequest(socket, { method: 'DESCRIBE', url, cseq, headers: { Accept: 'application/sdp', ...extra } }), timeout]);
+    } finally {
+      clearTimeout(timer);
+      socket.destroy();
+    }
+  };
+
+  let stage = 'connexion';
   try {
-    await Promise.race([new Promise((resolve, reject) => (socket.once('connect', resolve), socket.once('error', reject))), timeout]);
-    const describe = (cseq, extra = {}) => rtspRequest(socket, { method: 'DESCRIBE', url, cseq, headers: { Accept: 'application/sdp', ...extra } });
-    let res = await Promise.race([describe(1), timeout]);
+    let res = await describe(1);
     if (res.status === 401 && user) {
+      stage = 'identification';
       const challenge = parseChallenge(res.headers['www-authenticate']);
       const authorization =
         challenge?.scheme === 'digest'
           ? digestHeader({ method: 'DESCRIBE', uri: url, username: user, password: pass, challenge })
           : basicHeader(user, pass);
-      res = await Promise.race([describe(2, { Authorization: authorization }), timeout]);
+      res = await describe(2, { Authorization: authorization });
     }
     if (res.status === 401) return { ok: false, status: 401, error: 'Identifiants refusés par le flux RTSP' };
     if (res.status !== 200) return { ok: false, status: res.status, error: `Le flux RTSP répond ${res.status}` };
     return { ok: true, status: 200, ...parseSdp(res.body) };
   } catch (e) {
+    const cut = /ECONNRESET|socket hang up|EPIPE/i.test(e.message);
+    if (cut && stage === 'identification') return { ok: false, error: `La caméra coupe le flux RTSP après l'envoi du mot de passe (${e.message})` };
+    if (cut) return { ok: false, error: `La caméra coupe le flux RTSP dès la première demande : RTSP désactivé ou accès bloqué (${e.message})` };
     return { ok: false, error: `Flux RTSP injoignable (${e.message})` };
-  } finally {
-    socket.destroy();
   }
 }
 
