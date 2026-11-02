@@ -100,6 +100,40 @@ void main() {
     await tester.pumpAndSettle();
   });
 
+  testWidgets('ajout simple : caméra Dahua trouvée sur le réseau, code de sécurité, sans adresse à taper', (tester) async {
+    await pumpApp(tester);
+    await signIn(tester);
+    await openSecurity(tester);
+    await tester.tap(find.text('Ajouter un équipement'));
+    await tester.pumpAndSettle();
+    expect(find.text('Scanner le QR code'), findsOneWidget);
+    await tester.ensureVisible(find.text('Lancer la recherche'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Lancer la recherche'));
+    for (var i = 0; i < 3; i++) {
+      await tester.pump(const Duration(seconds: 1));
+    }
+    await tester.pumpAndSettle();
+    await tester.ensureVisible(find.text('Caméra Dahua démo'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Caméra Dahua démo'));
+    await tester.pumpAndSettle();
+    // Le panneau QR est rempli : modèle, numéro de série, adresse trouvée ; il ne manque que le code.
+    expect(find.text('9K00AB1CDEF2345'), findsOneWidget);
+    expect(find.text('Dahua DH-H5A'), findsOneWidget);
+    await tester.tap(find.text('Ajouter et tester').first);
+    await tester.pumpAndSettle();
+    expect(find.text('Donnez un nom et le code de sécurité.'), findsOneWidget);
+    await tester.enterText(find.widgetWithText(TextField, 'Code de sécurité'), 'TEST1234');
+    await tester.tap(find.text('Ajouter et tester').first);
+    await tester.pump(const Duration(milliseconds: 300));
+    await tester.pumpAndSettle();
+    expect(find.textContaining('9K00AB1CDEF2345'), findsWidgets);
+    expect(find.text('Dahua (QR code)'), findsOneWidget);
+    await tester.pump(const Duration(seconds: 2));
+    await tester.pumpAndSettle();
+  });
+
   testWidgets('ajout : recherche sur le réseau, saisie et contrôles', (tester) async {
     await pumpApp(tester);
     await signIn(tester);

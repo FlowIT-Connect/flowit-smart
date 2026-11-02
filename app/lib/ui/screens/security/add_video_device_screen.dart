@@ -2,14 +2,17 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 
+import '../../../core/device_qr.dart';
 import '../../../core/l10n.dart';
 import '../../../core/theme.dart';
 import '../../../data/backend.dart';
 import '../../../models/models.dart';
 import '../../../state/app_state.dart';
 import '../../widgets/common.dart';
+import 'qr_scan_screen.dart';
 
-/// « Ajouter un équipement vidéo » : recherche sur le réseau local (ONVIF) ou saisie manuelle.
+/// « Ajouter un équipement vidéo » : QR code de l'étiquette (le plus simple), recherche sur le
+/// réseau local (ONVIF et Dahua) ou saisie manuelle.
 ///
 /// Les identifiants partent directement dans un coffre lisible par le boîtier seulement :
 /// l'application ne peut plus les relire ensuite. Renvoie l'identifiant de l'équipement ajouté.
@@ -34,15 +37,24 @@ class _AddVideoDeviceScreenState extends State<AddVideoDeviceScreen> {
   bool _showPass = false;
   bool _saving = false;
 
+  // QR code : contenu lu sur l'étiquette (ou caméra Dahua choisie dans la recherche).
+  DeviceQr? _qr;
+  String? _qrHost;
+  final _qrName = TextEditingController();
+  final _qrCode = TextEditingController();
+  final _qrLocation = TextEditingController();
+  final _scroll = ScrollController();
+
   VideoScan? _scan;
   bool _scanning = false;
   String? _scanError;
 
   @override
   void dispose() {
-    for (final c in [_name, _host, _port, _rtsp, _snapshot, _user, _pass, _location]) {
+    for (final c in [_name, _host, _port, _rtsp, _snapshot, _user, _pass, _location, _qrName, _qrCode, _qrLocation]) {
       c.dispose();
     }
+    _scroll.dispose();
     super.dispose();
   }
 
@@ -77,7 +89,62 @@ class _AddVideoDeviceScreenState extends State<AddVideoDeviceScreen> {
     }
   }
 
+  Future<void> _scanQr() async {
+    final qr = await Navigator.of(context).push<DeviceQr>(MaterialPageRoute(builder: (_) => const QrScanScreen()));
+    if (qr == null || !mounted) return;
+    _useQr(qr, host: null);
+  }
+
+  void _useQr(DeviceQr qr, {String? host}) {
+    setState(() {
+      _qr = qr;
+      _qrHost = host;
+      _qrCode.text = qr.safetyCode ?? '';
+      if (_qrName.text.trim().isEmpty) _qrName.text = context.tr('add.qrDefaultName');
+    });
+    // Le panneau QR est en haut : on y remonte pour finir l'ajout.
+    if (_scroll.hasClients) _scroll.animateTo(0, duration: const Duration(milliseconds: 300), curve: Curves.easeOut);
+  }
+
+  Future<void> _saveQr() async {
+    final qr = _qr;
+    final state = AppScope.read(context);
+    final home = state.home;
+    if (qr == null || home == null) return;
+    if (_qrName.text.trim().isEmpty || _qrCode.text.isEmpty) {
+      state.notify(context.tr('add.qrMissing'), error: true);
+      return;
+    }
+    final draft = VideoSourceDraft(
+      name: _qrName.text,
+      category: 'camera',
+      driver: qr.driver,
+      host: _qrHost ?? '',
+      serial: qr.serial,
+      model: qr.model ?? '',
+      manufacturer: qr.manufacturer,
+      username: 'admin',
+      password: _qrCode.text,
+      location: _qrLocation.text,
+    );
+    setState(() => _saving = true);
+    try {
+      final id = await state.backend.addVideoSource(home.id, draft);
+      state.notify(state.tr('add.added'));
+      if (mounted) Navigator.of(context).pop(id);
+    } on BackendException catch (e) {
+      state.notify(e.message, error: true);
+    } finally {
+      if (mounted) setState(() => _saving = false);
+    }
+  }
+
   void _pick(ScanResult r) {
+    if (r.protocol == 'dahua' && r.serial != null) {
+      // Caméra Dahua trouvée sur le réseau : il ne manque que son code de sécurité.
+      _useQr(DeviceQr(manufacturer: 'Dahua', serial: r.serial!, model: r.hardware), host: r.host);
+      return;
+    }
     setState(() {
       _draft.driver = 'onvif';
       _host.text = r.host;
@@ -133,7 +200,10 @@ class _AddVideoDeviceScreenState extends State<AddVideoDeviceScreen> {
         maxWidth: 720,
         child: Form(
           key: _form,
-          child: ListView(padding: const EdgeInsets.fromLTRB(16, 8, 16, 40), children: [
+          child: ListView(controller: _scroll, padding: const EdgeInsets.fromLTRB(16, 8, 16, 40), children: [
+            // ------------------------------------------------ QR code
+            _qrPanel(context),
+            const SizedBox(height: 14),
             // ------------------------------------------------ Recherche
             GlassPanel(
               radius: 22,
@@ -158,7 +228,7 @@ class _AddVideoDeviceScreenState extends State<AddVideoDeviceScreen> {
                     contentPadding: EdgeInsets.zero,
                     leading: const Icon(Icons.videocam_rounded),
                     title: Text(r.name ?? r.hardware ?? r.host),
-                    subtitle: Text([r.hardware, '${r.host}:${r.port}'].whereType<String>().join(' · ')),
+                    subtitle: Text([r.hardware, r.protocol == 'dahua' ? r.host : '${r.host}:${r.port}'].whereType<String>().join(' · ')),
                     trailing: r.alreadyAdded ? Text(context.tr('add.alreadyAdded'), style: theme.textTheme.labelSmall) : const Icon(Icons.add_rounded),
                     onTap: r.alreadyAdded ? null : () => _pick(r),
                   ),
@@ -260,6 +330,66 @@ class _AddVideoDeviceScreenState extends State<AddVideoDeviceScreen> {
           ]),
         ),
       ),
+    );
+  }
+
+  Widget _qrPanel(BuildContext context) {
+    final f = context.flow;
+    final theme = Theme.of(context);
+    final qr = _qr;
+    return GlassPanel(
+      radius: 22,
+      padding: const EdgeInsets.all(16),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+        Row(children: [
+          Icon(Icons.qr_code_scanner_rounded, color: f.brand),
+          const SizedBox(width: 8),
+          Expanded(child: Text(context.tr('add.qr'), style: theme.textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w800))),
+        ]),
+        const SizedBox(height: 4),
+        Text(context.tr('add.qrHelp'), style: theme.textTheme.bodySmall?.copyWith(color: f.inkSoft, height: 1.35)),
+        const SizedBox(height: 12),
+        if (qr == null)
+          FilledButton.icon(onPressed: _scanQr, icon: const Icon(Icons.qr_code_scanner_rounded), label: Text(context.tr('add.qrButton')))
+        else ...[
+          _qrLine(context, Icons.videocam_rounded, context.tr('add.qrModel'), [qr.manufacturer, qr.model].whereType<String>().join(' ')),
+          _qrLine(context, Icons.tag_rounded, context.tr('add.qrSerial'), qr.serial),
+          _qrLine(context, Icons.wifi_find_rounded, context.tr('add.qrAddress'), _qrHost ?? context.tr('add.qrAddressAuto')),
+          if (qr.safetyCode != null)
+            _qrLine(context, Icons.lock_rounded, context.tr('add.qrCode'), context.tr('add.qrCodeRead'))
+          else
+            TextField(
+              controller: _qrCode,
+              obscureText: true,
+              autocorrect: false,
+              enableSuggestions: false,
+              decoration: InputDecoration(labelText: context.tr('add.qrCode'), helperText: context.tr('add.qrCodeHelp')),
+            ),
+          const SizedBox(height: 8),
+          TextField(controller: _qrName, maxLength: 60, decoration: InputDecoration(labelText: context.tr('add.name'))),
+          TextField(controller: _qrLocation, maxLength: 80, decoration: InputDecoration(labelText: context.tr('add.location'), hintText: context.tr('add.locationHint'))),
+          const SizedBox(height: 8),
+          FilledButton.icon(
+            onPressed: _saving ? null : _saveQr,
+            icon: _saving ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2)) : const Icon(Icons.check_rounded),
+            label: Text(context.tr('add.save')),
+          ),
+          TextButton(onPressed: _saving ? null : _scanQr, child: Text(context.tr('add.qrAgain'))),
+        ],
+      ]),
+    );
+  }
+
+  Widget _qrLine(BuildContext context, IconData icon, String label, String value) {
+    final f = context.flow;
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 4),
+      child: Row(children: [
+        Icon(icon, size: 18, color: f.inkSoft),
+        const SizedBox(width: 8),
+        Text('$label : ', style: TextStyle(color: f.inkSoft)),
+        Expanded(child: Text(value, style: const TextStyle(fontWeight: FontWeight.w700), overflow: TextOverflow.ellipsis)),
+      ]),
     );
   }
 }

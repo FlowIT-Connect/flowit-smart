@@ -52,8 +52,9 @@ class VideoSource {
   final String? deviceId;
   final String name;
   final String category; // camera | intercom | access | monitor | sensor
-  final String driver; // onvif | rtsp
+  final String driver; // onvif | rtsp | dahua
   final String? host;
+  final String? serial;
   final int? port;
   final String? rtspUrl;
   final String? snapshotUrl;
@@ -78,6 +79,7 @@ class VideoSource {
     this.category = 'camera',
     this.driver = 'onvif',
     this.host,
+    this.serial,
     this.port,
     this.rtspUrl,
     this.snapshotUrl,
@@ -106,6 +108,7 @@ class VideoSource {
       category: (j['category'] as String?) ?? 'camera',
       driver: (j['driver'] as String?) ?? 'onvif',
       host: j['host'] as String?,
+      serial: j['serial'] as String?,
       port: (j['port'] as num?)?.toInt(),
       rtspUrl: j['rtsp_url'] as String?,
       snapshotUrl: j['snapshot_url'] as String?,
@@ -132,7 +135,14 @@ class VideoSource {
       status == VideoSourceStatus.connecting ||
       (testRequestedAt != null && (diagnosedAt == null || diagnosedAt!.isBefore(testRequestedAt!)));
 
-  String get address => driver == 'onvif' ? '${host ?? '?'}:${port ?? 80}' : (rtspUrl ?? '—');
+  /// Caméra ajoutée par QR code dont le boîtier n'a pas encore trouvé l'adresse.
+  bool get locating => driver == 'dahua' && host == null;
+
+  String get address => switch (driver) {
+        'onvif' => '${host ?? '?'}:${port ?? 80}',
+        'dahua' => host ?? '…',
+        _ => rtspUrl ?? '—',
+      };
 }
 
 /// Saisie d'un nouvel équipement (les identifiants ne sont jamais relus ensuite).
@@ -148,6 +158,9 @@ class VideoSourceDraft {
     this.username = '',
     this.password = '',
     this.location = '',
+    this.serial = '',
+    this.model = '',
+    this.manufacturer = '',
   });
 
   String name;
@@ -160,14 +173,19 @@ class VideoSourceDraft {
   String username;
   String password;
   String location;
+  String serial; // QR code : la caméra est retrouvée sur le réseau par ce numéro
+  String model;
+  String manufacturer;
 }
 
 class ScanResult {
-  const ScanResult({required this.host, required this.port, this.name, this.hardware, this.alreadyAdded = false});
+  const ScanResult({required this.host, required this.port, this.name, this.hardware, this.serial, this.protocol = 'onvif', this.alreadyAdded = false});
   final String host;
   final int port;
   final String? name;
   final String? hardware;
+  final String? serial;
+  final String protocol; // onvif | dahua
   final bool alreadyAdded;
 
   factory ScanResult.fromJson(Map j) => ScanResult(
@@ -175,6 +193,8 @@ class ScanResult {
         port: (j['port'] as num?)?.toInt() ?? 80,
         name: j['name']?.toString(),
         hardware: j['hardware']?.toString(),
+        serial: j['serial']?.toString(),
+        protocol: j['protocol']?.toString() ?? 'onvif',
         alreadyAdded: j['already_added'] == true,
       );
 }

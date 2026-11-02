@@ -19,6 +19,7 @@ import { SupabaseStore } from './store.js';
 import { VideoOnlyAdapter } from './adapters/video_only.js';
 import { addUdi, UdiHub } from './udi/index.js';
 import { MediaMtx } from './udi/media/mediamtx.js';
+import { discoverDahua } from './udi/dahua/dhip.js';
 import { discoverOnvif, subnetFilter } from './udi/onvif/discovery.js';
 
 applyAddonOptions();
@@ -75,6 +76,8 @@ if (config.video) {
   const hub = new UdiHub({
     mediamtx: v.relay ? new MediaMtx({ apiUrl: v.mediamtxApiUrl, webrtcUrl: v.mediamtxWebrtcUrl }) : null,
     discover: v.discovery ? (opts) => discoverOnvif(opts) : null,
+    // Recherche Dahua toujours active : elle sert à retrouver les caméras ajoutées par QR code.
+    discoverDahua: (opts) => discoverDahua(opts),
     allowedSubnet: allowed,
     stun: v.stun,
     turn: v.turn,

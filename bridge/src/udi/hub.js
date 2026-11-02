@@ -6,7 +6,9 @@
 
 import { log } from '../log.js';
 import { OnvifDriver } from './drivers/onvif_driver.js';
+import { DahuaDriver } from './drivers/dahua_driver.js';
 import { RtspDriver } from './drivers/rtsp_driver.js';
+import { sameSerial } from './dahua/dhip.js';
 import { UdiError } from './contract.js';
 import { iceServers, pathName } from './media/mediamtx.js';
 import { withCredentials } from './rtsp.js';
@@ -17,23 +19,26 @@ const sourceIdOf = (externalId) => (externalId?.startsWith(UDI_PREFIX) ? externa
 export function defaultDriverFactory(source, deps = {}) {
   if (source.driver === 'onvif') return new OnvifDriver(source, deps);
   if (source.driver === 'rtsp') return new RtspDriver(source, deps);
+  if (source.driver === 'dahua') return new DahuaDriver(source, deps);
   throw new UdiError(`Pilote inconnu : ${source.driver}`, 'unsupported');
 }
 
 /** Signature des réglages qui imposent de reconnecter le pilote. */
+// Dahua : l'adresse est trouvée par le boîtier lui-même (numéro de série), elle ne compte pas.
 const settingsKey = (s) =>
-  JSON.stringify([s.driver, s.host, s.port, s.rtsp_url, s.rtsp_sub_url, s.snapshot_url, s.username, s.password, s.credentials_updated_at]);
+  JSON.stringify([s.driver, s.driver === 'dahua' ? s.serial : s.host, s.port, s.rtsp_url, s.rtsp_sub_url, s.snapshot_url, s.username, s.password, s.credentials_updated_at]);
 
 export class UdiHub {
   /**
    * @param {{driverFactory?:Function, mediamtx?:any, discover?:Function, allowedSubnet?:(ip:string)=>boolean,
-   *          stun?:string[], turn?:string[], turnSecret?:string|null, retryMinMs?:number, retryMaxMs?:number,
+   *          discoverDahua?:Function, stun?:string[], turn?:string[], turnSecret?:string|null, retryMinMs?:number, retryMaxMs?:number,
    *          pingMs?:number, sessionMaxAgeMs?:number, clock?:()=>number, version?:string}} [opts]
    */
   constructor({
     driverFactory = defaultDriverFactory,
     mediamtx = null,
     discover = null,
+    discoverDahua = null,
     allowedSubnet = () => true,
     stun = [],
     turn = [],
@@ -45,13 +50,15 @@ export class UdiHub {
     clock = () => Date.now(),
     version = 'udi-1',
   } = {}) {
-    Object.assign(this, { driverFactory, mediamtx, discover, allowedSubnet, stun, turn, turnSecret, retryMinMs, retryMaxMs, pingMs, sessionMaxAgeMs, clock, version });
+    Object.assign(this, { driverFactory, mediamtx, discover, discoverDahua, allowedSubnet, stun, turn, turnSecret, retryMinMs, retryMaxMs, pingMs, sessionMaxAgeMs, clock, version });
     /** sourceId -> runner */
     this.runners = new Map();
     /** sessionId -> { location, startedAt } */
     this.sessions = new Map();
     this.busySessions = new Set();
     this.scanBusy = false;
+    this.dahuaSearch = null; // recherche DHIP en cours (partagée)
+    this.dahuaCache = { at: 0, found: [] };
     this.timers = [];
     this.stopped = true;
     this.emitter = null;
@@ -188,7 +195,7 @@ export class UdiHub {
       stopped: false,
     };
     try {
-      r.driver = this.driverFactory(source);
+      r.driver = this.driverFactory(source, { locate: (serial) => this.locate(serial) });
       r.driver.onEvent((ev) => this.#onDriverEvent(r, ev));
     } catch (e) {
       r.status = 'error';
@@ -235,6 +242,12 @@ export class UdiHub {
     r.lastError = null;
     r.identity = r.driver.identity();
     r.flags = r.driver.capabilities();
+    // Caméra ajoutée par QR code : on enregistre l'adresse trouvée sur le réseau.
+    const where = r.driver.located?.();
+    if (where?.host && where.host !== r.source.host) {
+      r.source.host = where.host;
+      await this.store.updateVideoSource(r.source.id, { host: where.host, ...(where.mac ? { mac: where.mac } : {}) }).catch(() => {});
+    }
     await this.#preparePaths(r).catch((e) => log.warn('udi.mediamtx_failed', { source: r.source.id, error: e.message }));
     await this.#report(r);
     log.info('udi.online', { source: r.source.id, driver: r.source.driver, model: r.identity.model });
@@ -272,7 +285,7 @@ export class UdiHub {
     if (connected) await this.#online(r);
     else {
       const failed = result.steps.find((s) => !s.ok);
-      await this.#failed(r, new UdiError(failed?.detail ?? 'Diagnostic en échec', /refusés/.test(failed?.detail ?? '') ? 'auth' : 'unreachable'));
+      await this.#failed(r, new UdiError(failed?.detail ?? 'Diagnostic en échec', /refusé/.test(failed?.detail ?? '') ? 'auth' : 'unreachable'));
     }
   }
 
@@ -357,16 +370,20 @@ export class UdiHub {
 
   // ---------------------------------------------------------------- Recherche réseau
   async processScans() {
-    if (this.stopped || this.scanBusy || !this.discover) return;
+    if (this.stopped || this.scanBusy || (!this.discover && !this.discoverDahua)) return;
     const scans = await this.store.listPendingVideoScans(this.homeId);
     const scan = scans[0];
     if (!scan) return;
     this.scanBusy = true;
     try {
       await this.store.updateVideoScan(scan.id, { status: 'running' });
-      const found = await this.discover({ allowed: this.allowedSubnet });
-      const known = new Set([...this.runners.values()].map((r) => r.source.host).filter(Boolean));
-      const results = found.map((d) => ({
+      const [onvif, dahua] = await Promise.all([
+        this.discover ? this.discover({ allowed: this.allowedSubnet }).catch(() => []) : [],
+        this.#dahuaDevices(true),
+      ]);
+      const sources = [...this.runners.values()].map((r) => r.source);
+      const known = new Set(sources.map((s) => s.host).filter(Boolean));
+      const results = onvif.map((d) => ({
         host: d.host,
         port: d.port,
         name: d.name,
@@ -374,6 +391,19 @@ export class UdiHub {
         protocol: 'onvif',
         already_added: known.has(d.host),
       }));
+      // Une caméra Dahua qui répond aussi en ONVIF n'apparaît qu'une fois.
+      for (const d of dahua) {
+        if (results.some((x) => x.host === d.host)) continue;
+        results.push({
+          host: d.host,
+          port: d.httpPort,
+          name: d.name,
+          hardware: d.model,
+          serial: d.serial,
+          protocol: 'dahua',
+          already_added: known.has(d.host) || sources.some((s) => sameSerial(s.serial, d.serial)),
+        });
+      }
       await this.store.updateVideoScan(scan.id, { status: 'done', results, finished_at: new Date(this.clock()).toISOString() });
       log.info('udi.scan_done', { found: results.length });
     } catch (e) {
@@ -381,6 +411,33 @@ export class UdiHub {
     } finally {
       this.scanBusy = false;
     }
+  }
+
+  /** Appareils Dahua du réseau local (recherche DHIP partagée, gardée 30 s). */
+  async #dahuaDevices(fresh = false) {
+    if (!this.discoverDahua) return [];
+    if (!fresh && this.clock() - this.dahuaCache.at < 30_000) return this.dahuaCache.found;
+    this.dahuaSearch ??= this.discoverDahua({ allowed: this.allowedSubnet })
+      .catch((e) => {
+        log.warn('udi.dahua_search_failed', { error: e.message });
+        return [];
+      })
+      .then((found) => {
+        this.dahuaCache = { at: this.clock(), found };
+        return found;
+      })
+      .finally(() => (this.dahuaSearch = null));
+    return this.dahuaSearch;
+  }
+
+  /** Retrouve une caméra par son numéro de série (QR code de l'étiquette). */
+  async locate(serial) {
+    const match = (list) => list.find((d) => sameSerial(d.serial, serial));
+    const cached = match(await this.#dahuaDevices());
+    if (cached) return cached;
+    const found = match(await this.#dahuaDevices(true)) ?? null;
+    log.info('udi.locate', { serial, found: found?.host ?? null });
+    return found;
   }
 
   // ---------------------------------------------------------------- Boîtier
@@ -398,7 +455,7 @@ export class UdiHub {
     await this.store.upsertMediaGateway(this.homeId, {
       ice_servers: servers,
       relay_ok: mediamtxOk,
-      discovery: Boolean(this.discover),
+      discovery: Boolean(this.discover || this.discoverDahua),
       version: this.version,
       last_seen_at: new Date(this.clock()).toISOString(),
     });
