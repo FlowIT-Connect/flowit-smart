@@ -91,7 +91,10 @@ class _SecurityScreenState extends State<SecurityScreen> {
     final online = cameras.where((d) => d.availability == Availability.available).length;
     final offline = cameras.where((d) => d.availability == Availability.unavailable).length;
     final sourceByDevice = {for (final s in _sources) if (s.deviceId != null) s.deviceId!: s};
-    final pendingSources = _sources.where((s) => s.deviceId == null || !state.devices.containsKey(s.deviceId)).toList();
+    // Équipements sans carte caméra visible (pas encore d'appareil, ou appareil masqué) : toujours
+    // listés ici, sinon leur fiche (diagnostic, suppression) devient inaccessible.
+    final shown = {for (final d in cameras) d.id};
+    final pendingSources = _sources.where((s) => s.deviceId == null || !shown.contains(s.deviceId)).toList();
 
     return Scaffold(
       appBar: AppBar(
