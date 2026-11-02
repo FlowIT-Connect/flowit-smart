@@ -1406,7 +1406,10 @@ class DemoBackend implements Backend {
       'name': d.name.trim(),
       'category': d.category,
       'driver': d.driver,
-      'host': d.driver == 'onvif' ? d.host.trim() : null,
+      'host': d.driver == 'onvif' || (d.driver == 'dahua' && d.host.trim().isNotEmpty) ? d.host.trim() : null,
+      'serial': d.driver == 'dahua' && d.serial.trim().isNotEmpty ? d.serial.trim().toUpperCase() : null,
+      'model': d.model.trim().isEmpty ? null : d.model.trim(),
+      'manufacturer': d.manufacturer.trim().isEmpty ? null : d.manufacturer.trim(),
       'port': d.driver == 'onvif' ? d.port : null,
       'rtsp_url': d.driver == 'rtsp' ? d.rtspUrl.trim() : null,
       'location': d.location.trim().isEmpty ? null : d.location.trim(),
@@ -1460,6 +1463,7 @@ class DemoBackend implements Backend {
         ..['results'] = [
           {'host': '192.168.1.20', 'port': 80, 'name': 'Tapo C200', 'hardware': 'C200', 'already_added': true},
           {'host': '192.168.1.40', 'port': 80, 'name': 'Visiophone démo', 'hardware': 'VTO2202F-P', 'already_added': false},
+          {'host': '192.168.1.45', 'port': 80, 'name': 'Caméra Dahua démo', 'hardware': 'DH-H5A', 'serial': '9K00AB1CDEF2345', 'protocol': 'dahua', 'already_added': false},
         ];
     });
     return id;

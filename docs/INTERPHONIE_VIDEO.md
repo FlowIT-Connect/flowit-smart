@@ -9,8 +9,14 @@ visiophone et les fabricants un par un viendront aux phases suivantes.
 ## Ce que fait la phase A
 
 - **Ajouter une caméra ou un visiophone** depuis Solea : *Paramètres › Sécurité et vidéo ›
-  Ajouter un équipement*. Deux façons :
-  - **Rechercher sur le réseau** : le boîtier vidéo trouve tout seul les appareils ONVIF.
+  Ajouter un équipement*. Trois façons :
+  - **Scanner le QR code** (le plus simple, caméras Dahua : Hero, Imou, IPC) : Solea lit sous
+    la caméra le modèle, le numéro de série et le code de sécurité. Le boîtier vidéo retrouve
+    ensuite la caméra tout seul sur le Wi-Fi par son numéro de série (recherche Dahua, port UDP
+    37810) et retient son adresse, même si la box lui en donne une autre plus tard. Aucune
+    adresse IP à chercher. Sans caméra sur l'appareil (PC), le texte du QR peut être collé.
+  - **Rechercher sur le réseau** : le boîtier vidéo trouve tout seul les appareils ONVIF et
+    Dahua ; pour une Dahua, il ne reste qu'à saisir le code de sécurité.
   - **Saisie manuelle** : adresse IP (ONVIF) ou adresse du flux (RTSP).
 - **Diagnostic automatique** après l'ajout : connexion, marque, modèle, firmware, profils
   ONVIF, flux RTSP, image fixe, événements. Chaque étape est affichée ✓ ou ✗.
@@ -51,7 +57,7 @@ produit, cherchez : **ONVIF (Profile S)**, **RTSP**, et **SIP** pour un visiopho
 
 | Type | Exemples | À éviter |
 |---|---|---|
-| Caméra | Hikvision DS-2CD1xxx, Dahua IPC-HDW / HFW (PoE) | Ezviz, Imou, Tapo, Ring (pensées pour leur cloud) |
+| Caméra | Hikvision DS-2CD1xxx, Dahua IPC-HDW / HFW (PoE), Dahua Hero (ajout par QR code, en cours d'essai) | Ezviz, Tapo, Ring, Xiaomi (pensées pour leur cloud) |
 | Visiophone | Akuvox R20A, Dahua VTO2202F-P | modèles « app uniquement » sans SIP |
 
 Ces exemples sont **à vérifier sur le vrai matériel** : aucun n'a encore été testé avec Solea.
@@ -60,6 +66,15 @@ Réglages à faire dans la caméra (page web de la caméra) :
 1. Activer **ONVIF** et créer un utilisateur ONVIF (souvent distinct du compte admin).
 2. Mettre la caméra **à l'heure** (NTP) : ONVIF refuse les connexions si l'heure est fausse.
 3. Pour le son : choisir l'audio **G.711** (PCMU/PCMA). L'AAC n'est pas lisible en WebRTC.
+
+### QR code Dahua
+
+Contenu relevé sur une vraie étiquette DH-H5A (valeurs remplacées) :
+`{SN:9K00AB1CDEF2345,DT:DH-H5A,SC:ABCD1234,NC:030}` : SN = numéro de série, DT = modèle,
+SC = code de sécurité (mot de passe d'origine, identifiant `admin`), NC ignoré. Le code part
+directement dans le coffre lisible par le boîtier seulement. La vidéo passe par l'adresse RTSP
+standard de Dahua (`/cam/realmonitor?channel=1&subtype=0|1`). Tout autre QR est refusé : aucune
+marque n'est annoncée compatible sans essai. Conseil : changer le code d'origine chez le client.
 
 ## Installer le boîtier
 

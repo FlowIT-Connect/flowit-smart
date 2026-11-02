@@ -11,7 +11,9 @@ import { setLogLevel } from '../src/log.js';
 import { digestHeader, fetchWithAuth, parseChallenge } from '../src/udi/auth.js';
 import { capabilityFlags, UDI_CAPABILITIES } from '../src/udi/contract.js';
 import { OnvifDriver } from '../src/udi/drivers/onvif_driver.js';
+import { DahuaDriver } from '../src/udi/drivers/dahua_driver.js';
 import { RtspDriver } from '../src/udi/drivers/rtsp_driver.js';
+import { discoverDahua, parseDhipReply, sameSerial, searchPacket } from '../src/udi/dahua/dhip.js';
 import { addUdi, UdiHub } from '../src/udi/index.js';
 import { iceServers, MediaMtx, pathName, turnCredentials } from '../src/udi/media/mediamtx.js';
 import { motionFromNotification, OnvifClient, parseNotifications } from '../src/udi/onvif/client.js';
@@ -460,5 +462,144 @@ describe('Configuration du boîtier', () => {
   });
   test('jamais sur la passerelle de la plateforme', () => {
     assert.throws(() => loadConfig({ ...base, ADAPTER: 'tuya_cloud', PLATFORM: 'true', TUYA_ACCESS_ID: 'a', TUYA_ACCESS_SECRET: 'b', VIDEO: 'true' }), /boîtier/);
+  });
+});
+
+describe('Dahua : ajout par QR code', () => {
+  const REPLY = (info) => {
+    const body = Buffer.from(JSON.stringify({ mac: 'aa:bb:cc:00:11:22', method: 'client.notifyDevInfo', params: { deviceInfo: info } }));
+    const head = Buffer.alloc(32);
+    head.writeUInt32LE(0x20, 0);
+    head.write('DHIP', 4, 'ascii');
+    head.writeUInt32LE(body.length, 16);
+    head.writeUInt32LE(body.length, 24);
+    return Buffer.concat([head, body]);
+  };
+  const HERO = { DeviceType: 'DH-H5A', SerialNo: '9K00AB1CDEF2345', Mac: 'AA:BB:CC:00:11:22', HttpPort: 80, IPv4Address: { IPAddress: '192.168.1.45' } };
+
+  test('paquet de recherche DHIP : en-tête de 32 octets et JSON', () => {
+    const p = searchPacket();
+    assert.equal(p.toString('ascii', 4, 8), 'DHIP');
+    assert.equal(p.readUInt32LE(16), p.length - 32);
+    assert.equal(p.readUInt32LE(24), p.length - 32);
+    assert.deepEqual(JSON.parse(p.subarray(32).toString()), { method: 'DHDiscover.search', params: { mac: '', uni: 1 } });
+  });
+
+  test('réponse : adresse, numéro de série, MAC, modèle ; datagrammes étrangers ignorés', () => {
+    assert.deepEqual(parseDhipReply(REPLY(HERO)), { host: '192.168.1.45', serial: '9K00AB1CDEF2345', mac: 'aa:bb:cc:00:11:22', model: 'DH-H5A', httpPort: 80, name: 'DH-H5A', vendor: 'Dahua' });
+    assert.equal(parseDhipReply(searchPacket()), null, 'notre propre recherche renvoyée par le multicast');
+    assert.equal(parseDhipReply(Buffer.from('bonjour')), null);
+    assert.equal(sameSerial(' 9k00ab1cdef2345', '9K00AB1CDEF2345'), true);
+  });
+
+  test('recherche : multicast + diffusion, dédoublonnée, sous-réseaux respectés', async () => {
+    const sent = [];
+    const sock = new EventEmitter();
+    sock.bind = (port, cb) => {
+      assert.equal(port, 37810);
+      setImmediate(cb);
+    };
+    sock.setBroadcast = () => {};
+    sock.addMembership = () => {};
+    sock.send = (_b, _o, _l, port, address) => {
+      sent.push(`${address}:${port}`);
+      setImmediate(() => {
+        sock.emit('message', REPLY(HERO), { address: '192.168.1.45' });
+        sock.emit('message', REPLY({ ...HERO, SerialNo: 'X2', IPv4Address: { IPAddress: '8.8.8.8' } }), { address: '8.8.8.8' });
+      });
+    };
+    sock.close = () => {};
+    const found = await discoverDahua({ timeoutMs: 80, allowed: subnetFilter(''), socketFactory: () => sock });
+    assert.deepEqual(sent, ['239.255.255.251:37810', '255.255.255.255:37810']);
+    assert.deepEqual(found.map((f) => f.serial), ['9K00AB1CDEF2345']);
+  });
+
+  test('pilote : caméra retrouvée par son numéro de série, flux Dahua, code de sécurité', async () => {
+    const probes = [];
+    const probe = async (url, creds) => {
+      probes.push({ url, creds });
+      return { ok: true, status: 200, video: { codec: 'H264' }, audio: { codec: 'PCMA' } };
+    };
+    const fetchImpl = async () => new Response('', { status: 404 });
+    const d = new DahuaDriver(
+      { id: 'q1', serial: '9K00AB1CDEF2345', model: 'DH-H5A', username: 'admin', password: 'TEST1234' },
+      { locate: async (sn) => (sn === '9K00AB1CDEF2345' ? { host: '192.168.1.45', model: 'DH-H5A', mac: 'aa:bb:cc:00:11:22' } : null), probe, fetchImpl },
+    );
+    await d.connect();
+    assert.equal(probes[0].url, 'rtsp://192.168.1.45:554/cam/realmonitor?channel=1&subtype=0');
+    assert.deepEqual(probes[0].creds, { username: 'admin', password: 'TEST1234' });
+    assert.deepEqual(d.streams(), { main: probes[0].url, sub: 'rtsp://192.168.1.45:554/cam/realmonitor?channel=1&subtype=1' });
+    assert.equal(d.capabilities().video_stream, true);
+    assert.equal(d.capabilities().audio_input, true);
+    assert.equal(d.capabilities().snapshot, false, 'pas d\'image fixe annoncée sans preuve');
+    assert.deepEqual(d.located(), { host: '192.168.1.45', mac: 'aa:bb:cc:00:11:22' });
+  });
+
+  test('pilote : introuvable, code refusé, adresse changée', async () => {
+    const lost = new DahuaDriver({ id: 'q2', serial: 'NOPE', password: 'x' }, { locate: async () => null });
+    await assert.rejects(lost.connect(), (e) => e.kind === 'unreachable' && /introuvable/.test(e.message));
+    const diag = await lost.diagnose();
+    assert.equal(diag.steps[0].step, 'réseau');
+    assert.equal(diag.steps[0].ok, false);
+
+    const refused = new DahuaDriver({ id: 'q3', serial: 'S1', password: 'faux' }, { locate: async () => ({ host: '192.168.1.45' }), probe: async () => ({ ok: false, status: 401, error: 'Identifiants refusés' }) });
+    await assert.rejects(refused.connect(), (e) => e.kind === 'auth');
+
+    // La box a donné une nouvelle adresse : la caméra est retrouvée par son numéro de série.
+    const moved = new DahuaDriver(
+      { id: 'q4', serial: 'S1', host: '192.168.1.45', password: 'ok' },
+      {
+        locate: async () => ({ host: '192.168.1.77' }),
+        probe: async (url) => (url.includes('192.168.1.77') ? { ok: true, status: 200, video: { codec: 'H265' } } : { ok: false, error: 'Hôte injoignable' }),
+        fetchImpl: async () => new Response('', { status: 404 }),
+      },
+    );
+    await moved.connect();
+    assert.equal(moved.located().host, '192.168.1.77');
+  });
+
+  test('boîtier : adresse trouvée enregistrée, recherche réseau avec les caméras Dahua', async () => {
+    const store = new MemoryStore();
+    store.videoSources = [{ id: 'qr-1', home_id: 'home-1', name: 'Salon', category: 'camera', driver: 'dahua', serial: '9K00AB1CDEF2345', host: null, username: 'admin', password: 'TEST1234' }];
+    const { mtx, paths } = globalThis.__fakeMtx();
+    let searches = 0;
+    const hub = new UdiHub({
+      mediamtx: mtx,
+      allowedSubnet: subnetFilter(''),
+      discoverDahua: async () => {
+        searches++;
+        return [{ host: '192.168.1.45', serial: '9K00AB1CDEF2345', mac: 'aa:bb:cc:00:11:22', model: 'DH-H5A', httpPort: 80, name: 'DH-H5A' }, { host: '192.168.1.46', serial: 'OTHER', model: 'IPC-HFW1230S', httpPort: 80, name: 'IPC' }];
+      },
+      driverFactory: (s, deps) =>
+        new DahuaDriver(s, { ...deps, probe: async () => ({ ok: true, status: 200, video: { codec: 'H264' } }), fetchImpl: async () => new Response('', { status: 404 }) }),
+      retryMinMs: 30,
+      retryMaxMs: 100,
+    });
+    const adapter = addUdi(new VideoOnlyAdapter(), hub);
+    bridge = new Bridge({ store, adapter, config: { integrationId: 'integ-1', commandTimeoutMs: 300, pendingMaxAgeMs: 30_000, pollIntervalMs: 50, automationRefreshMs: 60_000, runAutomations: false, runTimeTriggers: false } });
+    await bridge.start();
+    assert.ok(await until(() => store.videoSources[0].status === 'online'));
+    assert.equal(store.videoSources[0].host, '192.168.1.45');
+    assert.equal(store.videoSources[0].manufacturer, 'Dahua');
+    assert.equal(store.videoSources[0].diagnostic.steps[0].detail, "Trouvée à l'adresse 192.168.1.45");
+    assert.equal(paths.get('solea_qr1_main').source, 'rtsp://admin:TEST1234@192.168.1.45:554/cam/realmonitor?channel=1&subtype=0');
+    // L'adresse enregistrée ne relance pas le pilote.
+    const runner = hub.runners.get('qr-1');
+    await hub.refreshSources();
+    assert.equal(hub.runners.get('qr-1'), runner);
+
+    store.videoScans.push({ id: 'scan-d', home_id: 'home-1', status: 'pending' });
+    assert.ok(await until(() => store.videoScans[0].status === 'done', 8000));
+    assert.deepEqual(store.videoScans[0].results.map((r) => [r.host, r.protocol, r.serial, r.already_added]), [
+      ['192.168.1.45', 'dahua', '9K00AB1CDEF2345', true],
+      ['192.168.1.46', 'dahua', 'OTHER', false],
+    ]);
+    assert.ok(searches >= 1);
+  });
+
+  let bridge;
+  afterEach(async () => {
+    await bridge?.stop();
+    bridge = null;
   });
 });

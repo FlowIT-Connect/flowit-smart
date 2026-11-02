@@ -172,7 +172,7 @@ export class SupabaseStore {
     const rows = check(
       await this.db
         .from('video_sources')
-        .select('id, home_id, name, category, driver, host, port, rtsp_url, rtsp_sub_url, snapshot_url, manufacturer, model, enabled, diagnosed_at, test_requested_at, credentials_updated_at, video_source_secrets(username, password)')
+        .select('id, home_id, name, category, driver, host, port, serial, rtsp_url, rtsp_sub_url, snapshot_url, manufacturer, model, enabled, diagnosed_at, test_requested_at, credentials_updated_at, video_source_secrets(username, password)')
         .eq('home_id', homeId),
     );
     return rows.map(({ video_source_secrets: sec, ...r }) => {

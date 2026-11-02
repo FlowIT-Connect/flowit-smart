@@ -52,7 +52,7 @@ class SupabaseBackend implements Backend {
         throw const BackendException('denied', 'Accès refusé.');
       }
       if (e.message.contains('LIMITE_APPAREILS')) throw BackendException('limit', e.message);
-      if (e.message.contains('IDENTIFIANTS_DANS_URL') || e.message.contains('TROP_DE_DEMANDES_VIDEO')) {
+      if (e.message.contains('IDENTIFIANTS_DANS_URL') || e.message.contains('TROP_DE_DEMANDES_VIDEO') || e.message.contains('CAMERA_DEJA_AJOUTEE')) {
         throw BackendException('invalid', e.message.replaceFirst(RegExp(r'^[A-Z_]+ : '), ''));
       }
       if (e.code == 'P0001') throw BackendException('invalid', e.message);
@@ -642,15 +642,20 @@ class SupabaseBackend implements Backend {
   Future<String> addVideoSource(String homeId, VideoSourceDraft d) => _guard(() async {
         String? opt(String v) => v.trim().isEmpty ? null : v.trim();
         final onvif = d.driver == 'onvif';
+        final dahua = d.driver == 'dahua';
         return await _client.rpc('add_video_source', params: {
           'p_home_id': homeId,
           'p_name': d.name.trim(),
           'p_driver': d.driver,
           'p_category': d.category,
-          'p_host': onvif ? opt(d.host) : null,
+          'p_host': onvif || dahua ? opt(d.host) : null,
           'p_port': onvif ? d.port : null,
-          'p_rtsp_url': onvif ? null : opt(d.rtspUrl),
-          'p_snapshot_url': onvif ? null : opt(d.snapshotUrl),
+          'p_rtsp_url': d.driver == 'rtsp' ? opt(d.rtspUrl) : null,
+          'p_snapshot_url': d.driver == 'rtsp' ? opt(d.snapshotUrl) : null,
+          // QR code seulement : numéro de série, modèle et marque lus sur l'étiquette.
+          if (dahua) 'p_serial': opt(d.serial),
+          if (dahua) 'p_model': opt(d.model),
+          if (dahua) 'p_manufacturer': opt(d.manufacturer),
           'p_username': opt(d.username),
           'p_password': d.password.isEmpty ? null : d.password,
           'p_location': opt(d.location),

@@ -164,3 +164,18 @@ select pg_temp.as_user('00000000-0000-0000-0000-0000000000f2');
 select public.delete_video_source((select id from t_src));
 select pg_temp.check((select count(*) = 0 from public.devices where id = 'f1000000-0000-0000-0000-000000000001'), 'supprimer l''équipement supprime l''appareil');
 reset role;
+
+-- ---------------------------------------------------------------- Ajout par QR code (Dahua)
+select pg_temp.as_user('00000000-0000-0000-0000-0000000000f2');
+create temp table t_qr as select public.add_video_source('f0000000-0000-0000-0000-000000000001', 'Salon', 'dahua', 'camera',
+  p_password => 'TEST1234', p_model => 'DH-H5A', p_serial => '9k00ab1cdef2345') as id;
+grant select on t_qr to public;
+select pg_temp.check((select driver = 'dahua' and host is null and serial = '9K00AB1CDEF2345' and manufacturer = 'Dahua' and model = 'DH-H5A'
+  from public.video_sources where id = (select id from t_qr)), 'QR code : caméra Dahua ajoutée sans adresse IP');
+select pg_temp.check(pg_temp.try_sql($$select public.add_video_source('f0000000-0000-0000-0000-000000000001', 'Encore', 'dahua', 'camera', p_password => 'x', p_serial => '9K00AB1CDEF2345')$$) like '%CAMERA_DEJA_AJOUTEE%', 'QR code : même caméra refusée deux fois');
+select pg_temp.check(pg_temp.try_sql($$select public.add_video_source('f0000000-0000-0000-0000-000000000001', 'Sans rien', 'dahua', 'camera')$$) like '%check%', 'Dahua sans numéro de série ni adresse refusé');
+select pg_temp.check(pg_temp.try_sql($$select public.add_video_source('f0000000-0000-0000-0000-000000000001', 'Injection', 'dahua', 'camera', p_serial => 'AB;drop table')$$) like '%check%', 'numéro de série invalide refusé');
+select pg_temp.as_service();
+select pg_temp.check((select username = 'admin' and password = 'TEST1234' from public.video_source_secrets where source_id = (select id from t_qr)), 'QR code : code de sécurité rangé dans le coffre, identifiant admin');
+update public.video_sources set host = '192.168.1.45', mac = 'aa:bb:cc:00:11:22' where id = (select id from t_qr);
+select pg_temp.check((select host = '192.168.1.45' from public.video_sources where id = (select id from t_qr)), 'le boîtier enregistre l''adresse trouvée');
