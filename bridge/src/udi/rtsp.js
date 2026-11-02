@@ -61,7 +61,7 @@ function rtspRequest(socket, { method, url, cseq, headers = {} }) {
  * ou passés à part ; ils ne sont jamais renvoyés.
  * @returns {Promise<{ok:boolean, status?:number, error?:string, video?:any, audio?:any}>}
  */
-export async function probeRtsp(rawUrl, { username, password, timeoutMs = 6000, connect = (opts) => net.connect(opts) } = {}) {
+export async function probeRtsp(rawUrl, { username, password, basicFirst = false, timeoutMs = 6000, connect = (opts) => net.connect(opts) } = {}) {
   let u;
   try {
     u = new URL(rawUrl);
@@ -96,7 +96,9 @@ export async function probeRtsp(rawUrl, { username, password, timeoutMs = 6000, 
 
   let stage = 'connexion';
   try {
-    let res = await describe(1);
+    // basicFirst : identifiants envoyés dès la première demande (certaines caméras Dahua grand
+    // public coupent la connexion au lieu de répondre 401).
+    let res = await describe(1, basicFirst && user ? { Authorization: basicHeader(user, pass) } : {});
     if (res.status === 401 && user) {
       stage = 'identification';
       const challenge = parseChallenge(res.headers['www-authenticate']);

@@ -576,6 +576,21 @@ describe('Dahua : ajout par QR code', () => {
     assert.equal(moved.located().host, '192.168.1.77');
   });
 
+  test('pilote : Hero qui coupe sans identifiants, flux « authbasic » avec Basic d\'emblée', async () => {
+    const seen = [];
+    const probe = async (url, opts) => {
+      seen.push({ url, basicFirst: opts.basicFirst === true });
+      return opts.basicFirst && url.includes('&authbasic=') ? { ok: true, status: 200, video: { codec: 'H265' } } : { ok: false, error: 'La caméra coupe le flux RTSP dès la première demande' };
+    };
+    const d = new DahuaDriver({ id: 'q7', serial: 'S1', host: '192.168.1.45', password: 'TEST1234' }, { probe, fetchImpl: async () => new Response('', { status: 404 }), onvif: () => assert.fail('ONVIF inutile') });
+    await d.connect();
+    const b64 = Buffer.from('admin:TEST1234').toString('base64');
+    assert.equal(d.streams().main, `rtsp://192.168.1.45:554/cam/realmonitor?channel=1&subtype=0&authbasic=${b64}`);
+    assert.equal(seen[1].basicFirst, true);
+    await d.ping();
+    assert.equal(seen.at(-1).basicFirst, true);
+  });
+
   test('pilote : adresse Dahua standard coupée, flux trouvé par ONVIF', async () => {
     const onvifUrl = 'rtsp://192.168.1.45:554/cam/realmonitor?channel=1&subtype=0&unicast=true&proto=Onvif';
     const probe = async (url) => (url === onvifUrl ? { ok: true, status: 200, video: { codec: 'H264' } } : { ok: false, error: 'La caméra coupe le flux RTSP dès la première demande' });

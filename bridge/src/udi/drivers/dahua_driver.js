@@ -14,6 +14,10 @@ import { OnvifDriver } from './onvif_driver.js';
 
 export const dahuaRtsp = (host, subtype, port = 554) => `rtsp://${host}:${port}/cam/realmonitor?channel=1&subtype=${subtype}`;
 
+/** Variante « authbasic » (Dahua grand public) : identifiants dans l'adresse, lue seulement sur le réseau local. */
+export const dahuaRtspAuthBasic = (host, subtype, { username, password }) =>
+  `${dahuaRtsp(host, subtype)}&authbasic=${Buffer.from(`${username}:${password}`).toString('base64')}`;
+
 export class DahuaDriver {
   /**
    * @param {{id:string, host?:string|null, serial?:string|null, model?:string|null, username?:string, password?:string}} source
@@ -69,6 +73,14 @@ export class DahuaDriver {
       if ((await this.#find()) && this.host !== before) check = await this.#probe();
     }
     // Adresse RTSP standard refusée : on demande à la caméra elle-même (ONVIF) où est son flux.
+    // Certaines Hero coupent toute demande sans identifiants : on les envoie d'emblée.
+    if (!check.ok && check.status !== 401) {
+      const basic = await this.probe(dahuaRtspAuthBasic(this.host, 0, this.creds), { ...this.creds, basicFirst: true });
+      if (basic.ok) {
+        check = basic;
+        this.alt = { main: dahuaRtspAuthBasic(this.host, 0, this.creds), sub: dahuaRtspAuthBasic(this.host, 1, this.creds) };
+      }
+    }
     if (!check.ok && check.status !== 401) {
       const alt = await this.#viaOnvif();
       if (alt.check?.ok) check = alt.check;
@@ -155,7 +167,7 @@ export class DahuaDriver {
   }
 
   async ping() {
-    const check = this.alt?.main ? await this.probe(this.alt.main, this.creds) : await this.#probe();
+    const check = this.alt?.main ? await this.probe(this.alt.main, { ...this.creds, basicFirst: this.alt.main.includes('authbasic=') }) : await this.#probe();
     if (!check.ok) throw new UdiError(check.error, check.status === 401 ? 'auth' : 'unreachable');
   }
 
