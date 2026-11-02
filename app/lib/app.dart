@@ -41,6 +41,9 @@ class _FlowItAppState extends State<FlowItApp> {
         ));
     });
     widget.state.addListener(_onState);
+    // Le lien de l'e-mail peut être traité avant l'affichage de la première page :
+    // on vérifie donc aussi une fois l'écran prêt.
+    WidgetsBinding.instance.addPostFrameCallback((_) => _onState());
   }
 
   void _onState() {

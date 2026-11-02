@@ -1,7 +1,10 @@
 import 'dart:async';
 import 'dart:typed_data';
 
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:supabase_flutter/supabase_flutter.dart';
+
+import '../core/config.dart';
 
 import '../core/climate.dart';
 import '../core/home_modes.dart';
@@ -23,6 +26,10 @@ class SupabaseBackend implements Backend {
   bool get isDemo => false;
 
   GoTrueClient get _auth => _client.auth;
+
+  /// Où le lien de l'e-mail ramène : la page web actuelle (app.solea-dz.com…)
+  /// ou l'app installée sur le téléphone (lien solea://).
+  static String get authRedirect => kIsWeb ? '${Uri.base.origin}${Uri.base.path}' : AppConfig.authRedirectMobile;
 
   Future<T> _guard<T>(Future<T> Function() run) async {
     try {
@@ -95,14 +102,15 @@ class SupabaseBackend implements Backend {
 
   @override
   Future<void> signUp(String email, String password, String displayName) => _guard(() async {
-        await _auth.signUp(email: email.trim(), password: password, data: {'display_name': displayName.trim()});
+        await _auth.signUp(
+            email: email.trim(), password: password, data: {'display_name': displayName.trim()}, emailRedirectTo: authRedirect);
       });
 
   @override
-  Future<void> resetPassword(String email) => _guard(() => _auth.resetPasswordForEmail(email.trim()));
+  Future<void> resetPassword(String email) => _guard(() => _auth.resetPasswordForEmail(email.trim(), redirectTo: authRedirect));
 
   @override
-  Future<void> resendConfirmation(String email) => _guard(() => _auth.resend(type: OtpType.signup, email: email.trim()));
+  Future<void> resendConfirmation(String email) => _guard(() => _auth.resend(type: OtpType.signup, email: email.trim(), emailRedirectTo: authRedirect));
 
   @override
   Future<void> updatePassword(String newPassword) =>
