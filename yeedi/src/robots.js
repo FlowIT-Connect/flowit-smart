@@ -15,11 +15,21 @@ const CLEANING = new Set(['auto', 'spot', 'spot_area', 'custom_area', 'edge', 'a
 const NO_ERROR = new Set([undefined, null, '', '0', '100', 0, 100]);
 
 /**
+ * Codes de liaison (coupure réseau, délai, « Robot not reachable ») : ce n'est pas une
+ * panne du robot, et la bibliothèque les garde jusqu'à la commande réussie suivante.
+ */
+export const LINK_ERRORS = new Set(['-1', '500', '4200']);
+const isError = (code) => !NO_ERROR.has(code) && !LINK_ERRORS.has(String(code));
+
+/** Interrogations qui rafraîchissent tout l'état du robot. */
+const REFRESH = ['GetBatteryState', 'GetCleanState', 'GetChargeState', 'GetCleanSpeed'];
+
+/**
  * État Solea à partir des derniers messages du robot.
  * status : cleaning | paused | returning | charging | idle | error
  */
 export function robotStatus({ cleanReport, chargeStatus, errorCode }) {
-  if (!NO_ERROR.has(errorCode)) return 'error';
+  if (isError(errorCode)) return 'error';
   if (cleanReport === 'returning' || chargeStatus === 'returning') return 'returning';
   if (CLEANING.has(cleanReport)) return 'cleaning';
   if (cleanReport === 'pause') return 'paused';
@@ -52,9 +62,11 @@ export class RobotHub {
   /**
    * @param {Cloud} cloud connexion au cloud yeedi (voir cloud.js), remplaçable dans les tests
    */
-  constructor(cloud, { log = () => {} } = {}) {
+  constructor(cloud, { log = () => {}, refreshMs = 60_000 } = {}) {
     this.cloud = cloud;
     this.log = log;
+    this.refreshMs = refreshMs;
+    this.timer = null;
     /** @type {Map<string, {robot:Robot, online:boolean, raw:object, waiters:Set<Function>}>} */
     this.robots = new Map();
   }
@@ -63,9 +75,27 @@ export class RobotHub {
     await this.cloud.login();
     for (const robot of await this.cloud.robots()) this.#attach(robot);
     this.log('yeedi.robots', { count: this.robots.size });
+    // Interrogation régulière : l'état reste juste même si un message du robot s'est perdu,
+    // et une erreur de liaison passagère s'efface toute seule.
+    this.timer = setInterval(() => this.refresh(), this.refreshMs);
+    this.timer.unref?.();
+  }
+
+  refresh() {
+    for (const e of this.robots.values()) {
+      if (!e.online) continue;
+      for (const cmd of REFRESH) {
+        try {
+          e.robot.bot.run(cmd);
+        } catch (err) {
+          this.log('yeedi.refresh_failed', { robot: e.robot.name, error: err.message });
+        }
+      }
+    }
   }
 
   async stop() {
+    clearInterval(this.timer);
     for (const r of this.robots.values()) {
       try {
         await r.robot.bot.disconnectAsync?.();
@@ -83,16 +113,18 @@ export class RobotHub {
       Object.assign(entry.raw, patch);
       for (const w of entry.waiters) w();
     };
+    // Une nouvelle réponse du robot prouve que la liaison est revenue.
+    const fresh = (patch) => update(LINK_ERRORS.has(String(entry.raw.errorCode)) ? { ...patch, errorCode: '0', errorText: null } : patch);
     bot.on('ready', () => {
       entry.online = true;
       this.log('yeedi.ready', { robot: robot.name });
-      for (const cmd of ['GetBatteryState', 'GetCleanState', 'GetChargeState', 'GetCleanSpeed']) bot.run(cmd);
+      for (const cmd of REFRESH) bot.run(cmd);
       update({});
     });
-    bot.on('BatteryInfo', (v) => update({ battery: Math.round(Number(v)) }));
-    bot.on('CleanReport', (v) => update({ cleanReport: v }));
-    bot.on('ChargeState', (v) => update({ chargeStatus: v }));
-    bot.on('CleanSpeed', (v) => update({ cleanSpeed: Number(v) }));
+    bot.on('BatteryInfo', (v) => fresh({ battery: Math.round(Number(v)) }));
+    bot.on('CleanReport', (v) => fresh({ cleanReport: v }));
+    bot.on('ChargeState', (v) => fresh({ chargeStatus: v }));
+    bot.on('CleanSpeed', (v) => fresh({ cleanSpeed: Number(v) }));
     bot.on('ErrorCode', (v) => update({ errorCode: String(v) }));
     bot.on('Error', (v) => update({ errorText: v }));
     bot.on('disconnect', () => {
