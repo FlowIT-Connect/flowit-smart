@@ -115,3 +115,27 @@ test('formulaire et .env de la passerelle', () => {
   const env = setEnvLines('# Solea\nADAPTER=tuya_cloud\nYEEDI_TOKEN=ancien\n', { YEEDI_URL: 'http://127.0.0.1:8790', YEEDI_TOKEN: 'nouveau' });
   assert.equal(env, '# Solea\nADAPTER=tuya_cloud\nYEEDI_TOKEN=nouveau\nYEEDI_URL=http://127.0.0.1:8790\n');
 });
+
+test('coupure passagère (« Robot not reachable ») : pas d\'erreur affichée, effacée par la réponse suivante', async () => {
+  const bot = new FakeBot();
+  const hub = new RobotHub(
+    { login: async () => {}, robots: async () => [{ did: 'r1', name: 'Idir', model: '04z443', bot }] },
+    { refreshMs: 30 },
+  );
+  await hub.start();
+  await new Promise((r) => setTimeout(r, 30));
+  bot.emit('ErrorCode', '4200');
+  bot.emit('Error', 'Robot not reachable');
+  assert.equal(hub.list()[0].state.status, 'charging', 'pas « En erreur » pour une coupure');
+  assert.equal(hub.list()[0].state.error, null);
+  const before = bot.sent.filter((c) => c[0] === 'GetBatteryState').length;
+  await new Promise((r) => setTimeout(r, 80));
+  assert.ok(bot.sent.filter((c) => c[0] === 'GetBatteryState').length > before, 'interrogation régulière');
+  assert.equal(hub.list()[0].state.error, null);
+  // Une vraie panne reste visible.
+  bot.emit('ErrorCode', '102');
+  bot.emit('Error', 'Roue bloquée');
+  assert.equal(hub.list()[0].state.status, 'error');
+  assert.equal(hub.list()[0].state.error, 'Roue bloquée');
+  await hub.stop();
+});
