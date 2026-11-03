@@ -71,24 +71,22 @@ String vacuumRoomName(BuildContext context, String name) {
   return key == null ? name : (context.tryTr('vacuum.room.$key') ?? name);
 }
 
-/// Passage entre les coordonnées du robot et celles de l'écran.
+/// Passage entre les coordonnées du robot et celles de l'écran. L'axe Y du robot monte, celui
+/// de l'écran descend : on le retourne, pour voir le plan dans le même sens que l'appli yeedi.
 class _MapFrame {
   _MapFrame(this.bounds, this.size) {
     final s = math.min(size.width / bounds.width, size.height / bounds.height);
     scale = s.isFinite && s > 0 ? s : 1;
-    offset = Offset(
-      (size.width - bounds.width * scale) / 2 - bounds.left * scale,
-      (size.height - bounds.height * scale) / 2 - bounds.top * scale,
-    );
+    origin = Offset((size.width - bounds.width * scale) / 2, (size.height - bounds.height * scale) / 2);
   }
 
   final Rect bounds;
   final Size size;
   late final double scale;
-  late final Offset offset;
+  late final Offset origin;
 
-  Offset toScreen(Offset p) => p * scale + offset;
-  Offset toMap(Offset s) => (s - offset) / scale;
+  Offset toScreen(Offset p) => Offset((p.dx - bounds.left) * scale, (bounds.bottom - p.dy) * scale) + origin;
+  Offset toMap(Offset s) => Offset((s.dx - origin.dx) / scale + bounds.left, bounds.bottom - (s.dy - origin.dy) / scale);
 }
 
 Rect _bounds(List<VacuumRoom> rooms, List<Offset?> extra) {
