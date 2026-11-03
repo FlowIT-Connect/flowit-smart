@@ -20,19 +20,78 @@ try {
 export function decodeBoundary(value, compressed) {
   if (typeof value !== 'string' || !value) return '';
   if (!compressed && /^[-\d.,;\s]+$/.test(value)) return value;
-  if (!lzma) return '';
+  const text = decodeLzmaText(value, (t) => /\d+,-?\d+/.test(t));
+  return text;
+}
+
+/** Bloc lzma en base64 (en-tête Ecovacs de 9 octets, ou 13) → texte ('' si illisible ou refusé par accept). */
+export function decodeLzmaText(value, accept = (t) => t.length > 0) {
+  if (typeof value !== 'string' || !value || !lzma) return '';
   const bytes = Buffer.from(value, 'base64');
   const signed = [...new Int8Array(bytes.buffer, bytes.byteOffset, bytes.length)];
   for (const input of [[...signed.slice(0, 9), 0, 0, 0, 0, ...signed.slice(9)], signed]) {
     try {
       const out = lzma.decompress(input);
       const text = typeof out === 'string' ? out : Buffer.from(Array.from(out ?? [], (b) => b & 0xff)).toString('utf8');
-      if (/\d+,-?\d+/.test(text)) return text;
+      if (accept(text)) return text;
     } catch {
       // essai suivant
     }
   }
   return '';
+}
+
+/** Forme d'une valeur pour les journaux, sans son contenu : n, s12, a3, o, null… */
+function shapeOf(v) {
+  if (v === null || v === undefined) return String(v);
+  if (typeof v === 'number') return 'n';
+  if (typeof v === 'string') return `s${v.length}`;
+  if (Array.isArray(v)) return `a${v.length}`;
+  return typeof v === 'object' ? 'o' : typeof v;
+}
+
+/**
+ * Pièces de la réponse « getMapSet_V2 » (format des robots récents : « subsets » compressé,
+ * une entrée par pièce). Le format exact varie selon les modèles : on prend l'identifiant en
+ * tête d'entrée (ou mssid) et le plus long contour « x,y;x,y… » trouvé dans l'entrée.
+ * @returns {{rooms: {id:string, pts:number[][]}[], shape: object}}
+ */
+export function roomsFromMapSetV2(subsets) {
+  let list = subsets;
+  let decoded = false;
+  if (typeof list === 'string') {
+    const text = /^\s*[[{]/.test(list) ? list : decodeLzmaText(list, (t) => /^\s*[[{]/.test(t));
+    decoded = text !== list;
+    try {
+      list = JSON.parse(text);
+    } catch {
+      return { rooms: [], shape: { subsets: shapeOf(subsets), decoded: false } };
+    }
+  }
+  if (!Array.isArray(list)) return { rooms: [], shape: { subsets: shapeOf(list), decoded } };
+  const rooms = [];
+  for (const e of list) {
+    const parts = Array.isArray(e) ? e : e && typeof e === 'object' ? Object.values(e) : [];
+    const rawId = Array.isArray(e) ? e[0] : (e?.mssid ?? e?.id);
+    if (rawId === undefined || rawId === null || rawId === '') continue;
+    let best = [];
+    for (const part of parts) {
+      const text = typeof part === 'string' ? (/^[-\d.,;\s]+$/.test(part) ? part : decodeBoundary(part, true)) : '';
+      const pts = text ? parseBoundary(text) : [];
+      if (pts.length > best.length) best = pts;
+    }
+    rooms.push({ id: String(rawId), pts: best.length >= 3 ? best : [] });
+  }
+  const first = list[0];
+  return {
+    rooms,
+    shape: {
+      subsets: shapeOf(subsets),
+      decoded,
+      entries: list.length,
+      first: Array.isArray(first) ? first.map(shapeOf).join(',') : first && typeof first === 'object' ? Object.keys(first).join(',') : shapeOf(first),
+    },
+  };
 }
 
 /** Puissances d'aspiration Solea → niveaux de la bibliothèque (1 silencieux … 4 maximum). */
@@ -245,6 +304,44 @@ export class RobotHub {
     };
   }
 
+  /**
+   * Réponse « getMapSet_V2 » : la bibliothèque la traite comme l'ancien getMapSet et ne lit pas
+   * son « subsets » compressé. On la lit nous-mêmes pour les contours des pièces.
+   */
+  #watchMapSetV2(robot, entry, fresh) {
+    const client = robot.bot.ecovacs;
+    if (!client || typeof client.handleMessagePayload !== 'function') return;
+    const original = client.handleMessagePayload.bind(client);
+    client.handleMessagePayload = async (command, payload) => {
+      if (/^_*(get|on)MapSet_V2/i.test(String(command)) && (payload?.type ?? 'ar') === 'ar') {
+        try {
+          const { rooms, shape } = roomsFromMapSetV2(payload?.subsets);
+          const sameMap = payload?.mid == null || String(payload.mid) === entry.map.mapId;
+          let drawn = 0;
+          if (sameMap) {
+            for (const r of rooms) {
+              if (!r.pts.length) continue;
+              drawn++;
+              const i = entry.map.rooms.findIndex((x) => x.id === r.id);
+              if (i >= 0) entry.map.rooms[i] = { ...entry.map.rooms[i], pts: r.pts };
+              else entry.map.rooms.push({ id: r.id, name: /^\d+$/.test(r.id) ? String.fromCharCode(65 + Number(r.id)) : r.id, pts: r.pts });
+            }
+            entry.map.rooms.sort((a, b) => Number(a.id) - Number(b.id));
+          }
+          // Diagnostic sans contenu : forme de la réponse et nombre de pièces dessinées.
+          this.log('yeedi.mapset_v2', { robot: robot.name, keys: Object.keys(payload ?? {}).join(','), same_map: sameMap, rooms: rooms.length, drawn, ...shape });
+          if (drawn) fresh({});
+        } catch (err) {
+          this.log('yeedi.mapset_v2_failed', { robot: robot.name, error: err.message });
+        }
+        // Ancien format (liste d'objets { mssid }) : la bibliothèque sait encore le lire.
+        const subsets = payload?.subsets;
+        if (!Array.isArray(subsets) || subsets.some((x) => !x || typeof x !== 'object' || Array.isArray(x))) return;
+      }
+      return original(command, payload);
+    };
+  }
+
   #attach(robot) {
     const entry = { robot, online: false, raw: {}, map: { mapId: null, rooms: [], bot: null, charger: null }, waiters: new Set() };
     this.robots.set(robot.did, entry);
@@ -256,6 +353,7 @@ export class RobotHub {
     };
     // Une nouvelle réponse du robot prouve que la liaison est revenue.
     const fresh = (patch) => update(LINK_ERRORS.has(String(entry.raw.errorCode)) ? { ...patch, errorCode: '0', errorText: null } : patch);
+    this.#watchMapSetV2(robot, entry, fresh);
     bot.on('ready', () => {
       entry.online = true;
       this.log('yeedi.ready', { robot: robot.name });
@@ -279,6 +377,9 @@ export class RobotHub {
       entry.map.askedAt = Date.now();
       try {
         bot.run('GetSpotAreas', entry.map.mapId);
+        // Robots récents : contours des pièces dans getMapSet_V2 (getMapSubSet les renvoie vides).
+        const SetV2 = bot.vacBotCommand?.GetMapSet_V2;
+        if (SetV2 && typeof bot.sendCommand === 'function') bot.sendCommand(new SetV2(entry.map.mapId, 'ar'));
       } catch (err) {
         this.log('yeedi.map_failed', { robot: robot.name, error: err.message });
       }
