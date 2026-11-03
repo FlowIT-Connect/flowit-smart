@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 import '../../core/icons.dart';
 import '../../core/l10n.dart';
@@ -9,18 +10,33 @@ import '../../state/app_state.dart';
 import '../widgets/action_editor.dart';
 import '../widgets/common.dart';
 import '../widgets/device_controls.dart';
+import '../widgets/organize.dart';
 
 /// Scènes : exécution, activation, édition, historique des exécutions (§5.9).
-class ScenesScreen extends StatelessWidget {
+class ScenesScreen extends StatefulWidget {
   const ScenesScreen({super.key});
+
+  @override
+  State<ScenesScreen> createState() => _ScenesScreenState();
+}
+
+class _ScenesScreenState extends State<ScenesScreen> {
+  /// Mode organisation : appui long sur une scène, glisser pour changer l'ordre.
+  bool _organizing = false;
+
+  void _startOrganizing() {
+    if (_organizing) return;
+    HapticFeedback.mediumImpact();
+    setState(() => _organizing = true);
+  }
 
   @override
   Widget build(BuildContext context) {
     final state = AppScope.of(context);
-    final scenes = state.scenes;
+    final scenes = state.orderedScenes;
     return Scaffold(
       backgroundColor: Colors.transparent,
-      floatingActionButton: state.canManage
+      floatingActionButton: state.canManage && !_organizing
           ? FloatingActionButton.extended(
               heroTag: 'scene-add',
               onPressed: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => const SceneEditor())),
@@ -32,19 +48,53 @@ class ScenesScreen extends StatelessWidget {
           ? ListView(children: [
               EmptyState(icon: Icons.auto_awesome_rounded, title: context.tr('scene.emptyTitle'), message: context.tr('scene.emptyHelp')),
             ])
-          : ListView(
-              padding: const EdgeInsets.fromLTRB(16, 8, 16, 104),
-              children: [
-                for (final s in scenes) Padding(padding: const EdgeInsets.only(bottom: 12), child: _SceneCard(scene: s)),
-                if (state.sceneRuns.isNotEmpty) ...[
-                  SectionHeader(context.tr('scene.history')),
-                  Card(
-                    clipBehavior: Clip.antiAlias,
-                    child: Column(children: [for (final r in state.sceneRuns.take(15)) _RunTile(run: r)]),
-                  ),
-                ],
-              ],
-            ),
+          : _organizing
+              ? PopScope(
+                  canPop: false,
+                  onPopInvokedWithResult: (didPop, _) {
+                    if (!didPop) setState(() => _organizing = false);
+                  },
+                  child: Stack(children: [
+                    ReorderableListView.builder(
+                      key: const ValueKey('scenes-organize'),
+                      padding: const EdgeInsets.fromLTRB(16, 8, 16, 120),
+                      itemCount: scenes.length,
+                      onReorderItem: (from, to) {
+                        final ids = [for (final s in scenes) s.id];
+                        ids.insert(to, ids.removeAt(from));
+                        state.saveOrder('scenes', ids);
+                      },
+                      itemBuilder: (context, i) => Padding(
+                        key: ValueKey('scene-order-${scenes[i].id}'),
+                        padding: const EdgeInsets.only(bottom: 12),
+                        child: Wiggle(enabled: true, seed: i, child: AbsorbPointer(child: _SceneCard(scene: scenes[i]))),
+                      ),
+                    ),
+                    Positioned(
+                      left: 12,
+                      right: 12,
+                      bottom: 16,
+                      child: SafeArea(top: false, child: OrganizeBar(onDone: () => setState(() => _organizing = false))),
+                    ),
+                  ]),
+                )
+              : ListView(
+                  padding: const EdgeInsets.fromLTRB(16, 8, 16, 104),
+                  children: [
+                    for (final s in scenes)
+                      Padding(
+                        padding: const EdgeInsets.only(bottom: 12),
+                        child: GestureDetector(onLongPress: _startOrganizing, child: _SceneCard(scene: s)),
+                      ),
+                    if (state.sceneRuns.isNotEmpty) ...[
+                      SectionHeader(context.tr('scene.history')),
+                      Card(
+                        clipBehavior: Clip.antiAlias,
+                        child: Column(children: [for (final r in state.sceneRuns.take(15)) _RunTile(run: r)]),
+                      ),
+                    ],
+                  ],
+                ),
     );
   }
 }

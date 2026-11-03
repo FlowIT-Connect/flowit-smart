@@ -319,6 +319,92 @@ class SupabaseBackend implements Backend {
       });
 
   @override
+  Future<Map<String, List<String>>> getLayouts(String homeId) => _guard(() async {
+        final uid = _client.auth.currentUser?.id;
+        if (uid == null) return <String, List<String>>{};
+        final rows = await _client.from('device_layouts').select('section, item_ids').eq('home_id', homeId).eq('user_id', uid);
+        return {for (final r in rows) r['section'] as String: [for (final id in (r['item_ids'] as List? ?? const [])) id.toString()]};
+      });
+
+  @override
+  Future<void> saveLayout(String homeId, String section, List<String> ids) => _guard(() async {
+        final uid = _client.auth.currentUser?.id;
+        if (uid == null) return;
+        await _client.from('device_layouts').upsert({'user_id': uid, 'home_id': homeId, 'section': section, 'item_ids': ids});
+      });
+
+  @override
+  Future<DeviceRemoval> removeDevice(String deviceId, {required bool unlink}) => _guard(() async {
+        final r = await _client.rpc('remove_device', params: {'p_device_id': deviceId, 'p_mode': unlink ? 'unlink' : 'home'});
+        return DeviceRemoval.fromJson(r is Map ? Map<String, dynamic>.from(r) : null);
+      });
+
+  @override
+  Future<List<RemovedDevice>> listRemovedDevices(String homeId) => _guard(() async {
+        final rows = await _client.rpc('list_removed_devices', params: {'p_home_id': homeId});
+        return [for (final r in (rows as List)) RemovedDevice.fromJson(Map<String, dynamic>.from(r as Map))];
+      });
+
+  @override
+  Future<void> restoreDevice(String deviceId) => _guard(() => _client.rpc('restore_device', params: {'p_device_id': deviceId}));
+
+  @override
+  Future<List<ExcludedDevice>> listExcludedDevices(String homeId) => _guard(() async {
+        final rows = await _client
+            .from('device_exclusions')
+            .select('id, home_id, device_name, vendor, model, created_at')
+            .eq('home_id', homeId)
+            .order('created_at', ascending: false);
+        return rows.map(ExcludedDevice.fromJson).toList();
+      });
+
+  @override
+  Future<void> allowExcludedDevice(String exclusionId) =>
+      _guard(() => _client.rpc('allow_excluded_device', params: {'p_exclusion_id': exclusionId}));
+
+  @override
+  Future<void> setDeviceIdentity(String deviceId, {String? serialNumber, String? qrCodeType}) => _guard(() async {
+        final patch = {'serial_number': ?serialNumber, 'qr_code_type': ?qrCodeType};
+        if (patch.isEmpty) return;
+        await _client.from('devices').update(patch).eq('id', deviceId);
+      });
+
+  @override
+  Future<String?> recordQrScan(String homeId, QrScanRecord scan) => _guard(() async {
+        final row = await _client
+            .from('device_qr_scans')
+            .insert({
+              'home_id': homeId,
+              'user_id': _client.auth.currentUser?.id,
+              'raw_payload': scan.rawPayload,
+              'qr_code_type': scan.qrCodeType,
+              'parser_type': scan.parserType,
+              'manufacturer': scan.manufacturer,
+              'product_id': scan.productId,
+              'model': scan.model,
+              'serial_number': scan.serialNumber,
+              'protocol': scan.protocol,
+              'recognition_status': scan.recognitionStatus,
+              if (scan.reported) 'reported_at': DateTime.now().toUtc().toIso8601String(),
+              'device_id': scan.deviceId,
+            })
+            .select('id')
+            .single();
+        return row['id'] as String?;
+      });
+
+  @override
+  Future<void> updateQrScan(String scanId, {String? status, bool reported = false, String? deviceId}) => _guard(() async {
+        final patch = <String, dynamic>{
+          'recognition_status': ?status,
+          if (reported) 'reported_at': DateTime.now().toUtc().toIso8601String(),
+          'device_id': ?deviceId,
+        };
+        if (patch.isEmpty) return;
+        await _client.from('device_qr_scans').update(patch).eq('id', scanId);
+      });
+
+  @override
   Future<void> setDeviceSecurity(String deviceId, bool enabled) =>
       _guard(() => _client.rpc('set_device_security', params: {'p_device_id': deviceId, 'p_enabled': enabled}));
 

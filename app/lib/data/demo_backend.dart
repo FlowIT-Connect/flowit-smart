@@ -708,7 +708,10 @@ class DemoBackend implements Backend {
   @override
   Future<List<Device>> listDevices(String homeId) async {
     await _wait();
-    return _devices.values.where((d) => d['home_id'] == homeId).map((d) => Device.fromJson(_deviceRow(d['id'] as String))).toList()
+    return _devices.values
+        .where((d) => d['home_id'] == homeId && d['removed_at'] == null)
+        .map((d) => Device.fromJson(_deviceRow(d['id'] as String)))
+        .toList()
       ..sort((a, b) => a.name.compareTo(b.name));
   }
 
@@ -723,6 +726,144 @@ class DemoBackend implements Backend {
     if (isHidden != null) d['is_hidden'] = isHidden;
     d['updated_at'] = _now();
     _events.add(RealtimeEvent('devices', 'UPDATE', Map<String, dynamic>.from(d)));
+  }
+
+  // ------------------------------------------------------------------ Organisation et suppression
+  final _layouts = <String, Map<String, List<String>>>{};
+  final _exclusions = <Map<String, dynamic>>[];
+  final _qrScans = <String, Map<String, dynamic>>{};
+
+  /// QR codes enregistrés (tests).
+  List<Map<String, dynamic>> get qrScans => _qrScans.values.toList();
+
+  @override
+  Future<Map<String, List<String>>> getLayouts(String homeId) async {
+    await _wait();
+    return {for (final e in (_layouts[homeId] ?? const <String, List<String>>{}).entries) e.key: List.of(e.value)};
+  }
+
+  @override
+  Future<void> saveLayout(String homeId, String section, List<String> ids) async {
+    await _wait();
+    (_layouts[homeId] ??= {})[section] = List.of(ids);
+  }
+
+  @override
+  Future<DeviceRemoval> removeDevice(String deviceId, {required bool unlink}) async {
+    await _wait();
+    final d = _devices[deviceId];
+    if (d == null || d['removed_at'] != null) throw const BackendException('invalid', 'Appareil introuvable');
+    final homeId = d['home_id'] as String;
+    _requireManager(homeId);
+    var scenes = 0;
+    for (final s in _scenes.values.where((s) => s['home_id'] == homeId)) {
+      final actions = (s['scene_actions'] as List).cast<Map<String, dynamic>>();
+      final before = actions.length;
+      actions.removeWhere((a) => a['device_id'] == deviceId);
+      scenes += before - actions.length;
+    }
+    var zones = 0;
+    for (final z in _climateZones.values.where((z) => z['home_id'] == homeId)) {
+      final list = (z['devices'] as List?)?.cast<Object?>();
+      if (list != null && list.remove(deviceId)) zones++;
+    }
+    var paused = 0;
+    for (final a in _automations.values.where((a) => a['home_id'] == homeId && a['enabled'] == true)) {
+      if ('${a['trigger']}${a['conditions']}${a['actions']}'.contains(deviceId)) {
+        a['enabled'] = false;
+        paused++;
+      }
+    }
+    for (final l in (_layouts[homeId] ?? const <String, List<String>>{}).values) {
+      l.remove(deviceId);
+    }
+    if (unlink) {
+      _exclusions.add({'id': newUuid(), 'home_id': homeId, 'device_name': d['name'], 'vendor': d['vendor'], 'model': d['model'], 'created_at': _now()});
+      _devices.remove(deviceId);
+      _caps.removeWhere((c) => c['device_id'] == deviceId);
+      _log(homeId, 'device_unlinked', result: 'unlink', details: {'name': d['name']});
+      _events.add(RealtimeEvent('devices', 'DELETE', {'id': deviceId}));
+    } else {
+      d['removed_at'] = _now();
+      d['is_pinned'] = false;
+      _log(homeId, 'device_removed', deviceId: deviceId, result: 'home', details: {'name': d['name']});
+      _events.add(RealtimeEvent('devices', 'DELETE', {'id': deviceId}));
+    }
+    return DeviceRemoval(scenes: scenes, climateZones: zones, automationsPaused: paused);
+  }
+
+  @override
+  Future<List<RemovedDevice>> listRemovedDevices(String homeId) async {
+    await _wait();
+    _requireManager(homeId);
+    return [
+      for (final d in _devices.values.where((d) => d['home_id'] == homeId && d['removed_at'] != null)) RemovedDevice.fromJson(d),
+    ];
+  }
+
+  @override
+  Future<void> restoreDevice(String deviceId) async {
+    await _wait();
+    final d = _devices[deviceId];
+    if (d == null) throw const BackendException('invalid', 'Appareil introuvable');
+    final homeId = d['home_id'] as String;
+    _requireManager(homeId);
+    final limit = _limitOf(homeId);
+    if (_countDevices(homeId) >= limit) throw BackendException('limit', 'LIMITE_APPAREILS : $limit');
+    d['removed_at'] = null;
+    _events.add(RealtimeEvent('devices', 'INSERT', _deviceRow(deviceId)));
+  }
+
+  @override
+  Future<List<ExcludedDevice>> listExcludedDevices(String homeId) async {
+    await _wait();
+    return [for (final x in _exclusions.where((x) => x['home_id'] == homeId)) ExcludedDevice.fromJson(x)];
+  }
+
+  @override
+  Future<void> allowExcludedDevice(String exclusionId) async {
+    await _wait();
+    final x = _exclusions.firstWhere((x) => x['id'] == exclusionId, orElse: () => throw const BackendException('invalid', 'Introuvable'));
+    _requireManager(x['home_id'] as String);
+    _exclusions.remove(x);
+  }
+
+  @override
+  Future<void> setDeviceIdentity(String deviceId, {String? serialNumber, String? qrCodeType}) async {
+    await _wait();
+    final d = _devices[deviceId];
+    if (d == null) return;
+    if (serialNumber != null) d['serial_number'] = serialNumber;
+    if (qrCodeType != null) d['qr_code_type'] = qrCodeType;
+  }
+
+  @override
+  Future<String?> recordQrScan(String homeId, QrScanRecord scan) async {
+    await _wait();
+    final id = newUuid();
+    _qrScans[id] = {
+      'id': id,
+      'home_id': homeId,
+      'raw_payload': scan.rawPayload,
+      'qr_code_type': scan.qrCodeType,
+      'parser_type': scan.parserType,
+      'manufacturer': scan.manufacturer,
+      'serial_number': scan.serialNumber,
+      'recognition_status': scan.recognitionStatus,
+      'reported_at': scan.reported ? _now() : null,
+      'device_id': scan.deviceId,
+    };
+    return id;
+  }
+
+  @override
+  Future<void> updateQrScan(String scanId, {String? status, bool reported = false, String? deviceId}) async {
+    await _wait();
+    final s = _qrScans[scanId];
+    if (s == null) return;
+    if (status != null) s['recognition_status'] = status;
+    if (reported) s['reported_at'] = _now();
+    if (deviceId != null) s['device_id'] = deviceId;
   }
 
   // ------------------------------------------------------------------ Commandes
@@ -902,7 +1043,7 @@ class DemoBackend implements Backend {
 
   // ------------------------------------------------------------------ Offre du logement
   int _limitOf(String homeId) => _deviceLimits[homeId] ?? demoDeviceLimit;
-  int _countDevices(String homeId) => _devices.values.where((d) => d['home_id'] == homeId).length;
+  int _countDevices(String homeId) => _devices.values.where((d) => d['home_id'] == homeId && d['removed_at'] == null).length;
 
   /// Change la limite d'un logement (tests et démonstration).
   void setDeviceLimit(String homeId, int limit) => _deviceLimits[homeId] = limit;

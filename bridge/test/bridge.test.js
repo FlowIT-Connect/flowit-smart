@@ -53,6 +53,20 @@ test('synchronisation : appareils, capacités, disponibilité, intégration conn
   assert.deepEqual(store.caps(store.deviceByName('Thermostat').id).map((c) => c.capability_key), ['target_temperature', 'hvac_mode', 'current_temperature']);
 });
 
+test('appareil dissocié dans l\'application : jamais recréé', async () => {
+  const lamp = store.deviceByName('Plafonnier');
+  const binding = store.bindings.find((b) => b.device_id === lamp.id);
+  store.devices.delete(lamp.id);
+  store.bindings.splice(store.bindings.indexOf(binding), 1);
+  store.exclusions.push({ integration_id: 'integ-1', external_id: binding.external_id });
+  await bridge.syncInventory();
+  assert.equal(store.deviceByName('Plafonnier'), undefined);
+  assert.equal(store.devices.size, 10);
+  store.exclusions.length = 0; // autorisé de nouveau
+  await bridge.syncInventory();
+  assert.ok(store.deviceByName('Plafonnier'));
+});
+
 test('commande confirmée seulement après retour d\'état réel', async () => {
   const plug = store.deviceByName('Prise café');
   const c = await cmd(plug, 'switch', true);

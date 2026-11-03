@@ -5,7 +5,9 @@ import '../../models/models.dart';
 import '../../state/app_state.dart';
 import '../widgets/common.dart';
 import '../widgets/device_controls.dart';
-import 'add_device_screen.dart';
+import '../widgets/device_removal.dart';
+import '../widgets/organize.dart';
+import 'add_device_menu.dart';
 
 enum _Filter { all, available, unavailable, hidden }
 
@@ -20,6 +22,21 @@ class DevicesScreen extends StatefulWidget {
 class _DevicesScreenState extends State<DevicesScreen> {
   _Filter _filter = _Filter.all;
   String _query = '';
+  final _organize = OrganizeController();
+
+  @override
+  void initState() {
+    super.initState();
+    _organize.addListener(_onOrganize);
+  }
+
+  void _onOrganize() => setState(() {});
+
+  @override
+  void dispose() {
+    _organize.dispose();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -36,15 +53,23 @@ class _DevicesScreenState extends State<DevicesScreen> {
 
     return Scaffold(
       backgroundColor: Colors.transparent,
-      floatingActionButton: state.canManage
+      floatingActionButton: state.canManage && !_organize.editing
           ? FloatingActionButton.extended(
               heroTag: 'device-add',
-              onPressed: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => const AddDeviceScreen())),
+              onPressed: () => showAddDeviceMenu(context),
               icon: const Icon(Icons.add_rounded),
               label: Text(context.tr('pair.add')),
             )
           : null,
-      body: CustomScrollView(slivers: [
+      body: OrganizeFrame(
+      controller: _organize,
+      onDropToRoom: state.role.canConfigureDevices
+          ? (id, roomId) {
+              final d = state.devices[id];
+              if (d != null) state.moveDeviceToRoom(d, roomId);
+            }
+          : null,
+      child: CustomScrollView(slivers: [
       SliverToBoxAdapter(
         child: Padding(
           padding: const EdgeInsets.fromLTRB(16, 8, 16, 12),
@@ -72,6 +97,13 @@ class _DevicesScreenState extends State<DevicesScreen> {
                     onSelected: (_) => setState(() => _filter = f),
                   ),
                 ),
+            if (state.canManage)
+              ActionChip(
+                key: const ValueKey('removed-devices'),
+                avatar: const Icon(Icons.inventory_2_outlined, size: 18),
+                label: Text(context.tr('remove.listTitle')),
+                onPressed: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => const RemovedDevicesScreen())),
+              ),
           ]),
         ),
       ),
@@ -86,9 +118,10 @@ class _DevicesScreenState extends State<DevicesScreen> {
           ),
         )
       else
-        DeviceGrid(devices),
-      const SliverToBoxAdapter(child: SizedBox(height: 104)),
+        OrganizableDeviceGrid(state.ordered('devices', devices), section: 'devices', enabled: _filter == _Filter.all && q.isEmpty),
+      const SliverToBoxAdapter(child: SizedBox(height: 120)),
     ]),
+    ),
     );
   }
 }

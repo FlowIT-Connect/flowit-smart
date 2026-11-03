@@ -3,8 +3,10 @@ import 'package:flutter/material.dart';
 import '../../core/icons.dart';
 import '../../core/l10n.dart';
 import '../../core/theme.dart';
+import '../../models/models.dart';
 import '../../state/app_state.dart';
 import '../widgets/common.dart';
+import '../widgets/organize.dart';
 import '../widgets/device_controls.dart';
 import '../widgets/room_visual.dart';
 import 'room_editor.dart';
@@ -143,10 +145,33 @@ class _ReorderSheet extends StatelessWidget {
 }
 
 /// Appareils d'une pièce, sous sa photo.
-class RoomPage extends StatelessWidget {
+class RoomPage extends StatefulWidget {
   const RoomPage({super.key, required this.roomId});
 
   final String? roomId;
+
+  @override
+  State<RoomPage> createState() => _RoomPageState();
+}
+
+class _RoomPageState extends State<RoomPage> {
+  final _organize = OrganizeController();
+
+  String? get roomId => widget.roomId;
+
+  @override
+  void initState() {
+    super.initState();
+    _organize.addListener(_onOrganize);
+  }
+
+  void _onOrganize() => setState(() {});
+
+  @override
+  void dispose() {
+    _organize.dispose();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -159,7 +184,16 @@ class RoomPage extends StatelessWidget {
 
     return Scaffold(
       backgroundColor: Colors.transparent,
-      body: CustomScrollView(slivers: [
+      body: OrganizeFrame(
+        controller: _organize,
+        currentRoomId: roomId,
+        onDropToRoom: state.role.canConfigureDevices
+            ? (id, target) {
+                final d = state.devices[id];
+                if (d != null) state.moveDeviceToRoom(d, target);
+              }
+            : null,
+        child: CustomScrollView(slivers: [
         SliverAppBar(
           pinned: true,
           expandedHeight: 240,
@@ -219,10 +253,11 @@ class RoomPage extends StatelessWidget {
           )
         else ...[
           const SliverToBoxAdapter(child: SizedBox(height: 12)),
-          DeviceGrid(devices, showRoom: false),
-          const SliverToBoxAdapter(child: SizedBox(height: 24)),
+          OrganizableDeviceGrid(devices, section: AppState.roomSection(roomId), showRoom: false),
+          SliverToBoxAdapter(child: SizedBox(height: _organize.editing ? 200 : 24)),
         ],
       ]),
+      ),
     );
   }
 }

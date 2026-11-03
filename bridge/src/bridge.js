@@ -176,12 +176,15 @@ export class Bridge {
 
   async #syncInventory() {
     const bindings = new Map((await this.store.listBindings(this.config.integrationId)).map((b) => [b.external_id, b.device_id]));
+    // Appareils « dissociés définitivement » dans l'application : jamais recréés.
+    const excluded = new Set((await this.store.listExclusions?.(this.config.integrationId)) ?? []);
     const seen = new Set();
     const now = this.clock().toISOString();
     let waiting = 0;
     for (const desc of this.adapter.devices()) {
       const snap = this.adapter.snapshot(desc.externalId);
       let deviceId = bindings.get(desc.externalId);
+      if (!deviceId && excluded.has(desc.externalId)) continue;
       const common = {
         vendor: desc.vendor,
         model: desc.model,

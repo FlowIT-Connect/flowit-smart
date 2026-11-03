@@ -3,7 +3,7 @@
 <plist version="1.0">
 <dict>
 	<key>NSCameraUsageDescription</key>
-	<string>Prendre en photo vos appareils pour les reconnaître dans Solea.</string>
+	<string>Prendre en photo vos appareils et scanner leur QR code pour les ajouter à Solea.</string>
 	<key>NSLocationWhenInUseUsageDescription</key>
 	<string>Savoir si vous êtes à la maison pour mettre le chauffage et la clim en Absence quand tout le monde est parti (seulement si vous l'activez ; votre position n'est pas gardée).</string>
 	<key>NSPhotoLibraryUsageDescription</key>

@@ -291,6 +291,9 @@ class Device {
   /// Activation par le propriétaire d'un appareil de sécurité (serrure) ; null = bloqué.
   final DateTime? securityValidatedAt;
 
+  /// Numéro de série lu sur le QR code à l'ajout (repère les doublons).
+  final String? serialNumber;
+
   const Device({
     required this.id,
     required this.homeId,
@@ -311,6 +314,7 @@ class Device {
     this.imageUrl,
     this.photoPath,
     this.securityValidatedAt,
+    this.serialNumber,
   });
 
   factory Device.fromJson(Map<String, dynamic> j, {List<Capability>? capabilities}) => Device(
@@ -332,6 +336,7 @@ class Device {
         imageUrl: j['image_url'] as String?,
         photoPath: j['photo_path'] as String?,
         securityValidatedAt: _date(j['security_validated_at']),
+        serialNumber: j['serial_number'] as String?,
         capabilities: capabilities ??
             ((j['device_capabilities'] as List?) ?? const [])
                 .map((c) => Capability.fromJson(Map<String, dynamic>.from(c as Map)))
@@ -355,6 +360,7 @@ class Device {
     bool clearPhoto = false,
     DateTime? securityValidatedAt,
     bool clearSecurity = false,
+    String? serialNumber,
   }) =>
       Device(
         id: id,
@@ -376,6 +382,7 @@ class Device {
         imageUrl: imageUrl,
         photoPath: clearPhoto ? null : (photoPath ?? this.photoPath),
         securityValidatedAt: clearSecurity ? null : (securityValidatedAt ?? this.securityValidatedAt),
+        serialNumber: serialNumber ?? this.serialNumber,
       );
 
   Capability? capability(String key) {
@@ -1034,4 +1041,88 @@ class HomeSummary {
         deviceCount: (j['device_count'] as num).toInt(),
         deviceLimit: (j['device_limit'] as num).toInt(),
       );
+}
+
+/// Appareil retiré du logement (« Retirer de ma résidence ») : peut être remis.
+class RemovedDevice {
+  const RemovedDevice({required this.id, required this.name, this.vendor, this.model, required this.protocol, this.removedAt});
+
+  final String id;
+  final String name;
+  final String? vendor;
+  final String? model;
+  final String protocol;
+  final DateTime? removedAt;
+
+  factory RemovedDevice.fromJson(Map<String, dynamic> j) => RemovedDevice(
+        id: j['id'] as String,
+        name: j['name'] as String,
+        vendor: j['vendor'] as String?,
+        model: j['model'] as String?,
+        protocol: (j['protocol'] as String?) ?? 'other',
+        removedAt: _date(j['removed_at']),
+      );
+}
+
+/// Appareil dissocié définitivement : la passerelle ne le recrée plus, sauf nouvelle autorisation.
+class ExcludedDevice {
+  const ExcludedDevice({required this.id, required this.name, this.vendor, this.model, this.createdAt});
+
+  final String id;
+  final String name;
+  final String? vendor;
+  final String? model;
+  final DateTime? createdAt;
+
+  factory ExcludedDevice.fromJson(Map<String, dynamic> j) => ExcludedDevice(
+        id: j['id'] as String,
+        name: j['device_name'] as String,
+        vendor: j['vendor'] as String?,
+        model: j['model'] as String?,
+        createdAt: _date(j['created_at']),
+      );
+}
+
+/// Ce qui a été nettoyé en supprimant un appareil.
+class DeviceRemoval {
+  const DeviceRemoval({this.scenes = 0, this.climateZones = 0, this.automationsPaused = 0});
+
+  final int scenes;
+  final int climateZones;
+  final int automationsPaused;
+
+  factory DeviceRemoval.fromJson(Map<String, dynamic>? j) => DeviceRemoval(
+        scenes: (j?['scenes'] as num?)?.toInt() ?? 0,
+        climateZones: (j?['climate_zones'] as num?)?.toInt() ?? 0,
+        automationsPaused: (j?['automations_paused'] as num?)?.toInt() ?? 0,
+      );
+}
+
+/// QR code lu, à enregistrer (texte déjà masqué : jamais de secret).
+class QrScanRecord {
+  const QrScanRecord({
+    required this.rawPayload,
+    required this.qrCodeType,
+    required this.parserType,
+    required this.recognitionStatus,
+    this.manufacturer,
+    this.productId,
+    this.model,
+    this.serialNumber,
+    this.protocol,
+    this.reported = false,
+    this.deviceId,
+  });
+
+  final String rawPayload;
+  final String qrCodeType;
+  final String parserType;
+  final String recognitionStatus;
+  final String? manufacturer;
+  final String? productId;
+  final String? model;
+  final String? serialNumber;
+  final String? protocol;
+  final bool reported;
+  final String? deviceId;
 }

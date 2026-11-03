@@ -17,7 +17,11 @@ import 'qr_scan_screen.dart';
 /// Les identifiants partent directement dans un coffre lisible par le boîtier seulement :
 /// l'application ne peut plus les relire ensuite. Renvoie l'identifiant de l'équipement ajouté.
 class AddVideoDeviceScreen extends StatefulWidget {
-  const AddVideoDeviceScreen({super.key});
+  const AddVideoDeviceScreen({super.key, this.initialQr, this.initialName});
+
+  /// QR code déjà lu (scanner « Ajouter un appareil ») : le formulaire QR est prérempli.
+  final DeviceQr? initialQr;
+  final String? initialName;
 
   @override
   State<AddVideoDeviceScreen> createState() => _AddVideoDeviceScreenState();
@@ -48,6 +52,19 @@ class _AddVideoDeviceScreenState extends State<AddVideoDeviceScreen> {
   VideoScan? _scan;
   bool _scanning = false;
   String? _scanError;
+
+  @override
+  void initState() {
+    super.initState();
+    final qr = widget.initialQr;
+    if (qr != null) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted) return;
+        if ((widget.initialName ?? '').trim().isNotEmpty) _qrName.text = widget.initialName!.trim();
+        _useQr(qr, host: null);
+      });
+    }
+  }
 
   @override
   void dispose() {
