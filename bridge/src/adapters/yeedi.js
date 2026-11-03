@@ -9,6 +9,7 @@ import { log } from '../log.js';
 
 export const VACUUM_ACTIONS = ['start', 'pause', 'resume', 'stop', 'charge'];
 export const SUCTION_OPTIONS = ['quiet', 'standard', 'strong', 'max'];
+export const WATER_OPTIONS = ['low', 'medium', 'high', 'max'];
 
 export class YeediClient {
   /** @param {{url:string, token:string, fetchImpl?:typeof fetch}} opts */
@@ -55,11 +56,21 @@ export function buildVacuumDevice(robot) {
     capabilities: [
       { capability_key: 'vacuum_action', type: 'enum', writable: true, metadata: { kind: 'vacuum', options: VACUUM_ACTIONS } },
       { capability_key: 'vacuum_state', type: 'sensor', writable: false, metadata: { kind: 'vacuum_state' } },
+      // Nettoyage des pièces choisies ou d'une zone dessinée sur la carte.
+      { capability_key: 'vacuum_clean', type: 'string', writable: true, metadata: { kind: 'vacuum_clean', options: ['rooms', 'zone'] } },
+      { capability_key: 'vacuum_map', type: 'sensor', writable: false, metadata: { kind: 'vacuum_map', unit: 'mm' } },
       { capability_key: 'suction', type: 'enum', writable: true, metadata: { options: SUCTION_OPTIONS } },
+      { capability_key: 'water_level', type: 'enum', writable: true, metadata: { options: WATER_OPTIONS } },
       { capability_key: 'battery', type: 'sensor', writable: false, metadata: { unit: '%' } },
       { capability_key: 'vacuum_error', type: 'sensor', writable: false, metadata: { kind: 'text' } },
     ],
   };
+}
+
+/** {mode:'rooms', rooms, passes} | {mode:'zone', zone, passes} → commande du module yeedi. */
+function vacuumCleanCommand(value) {
+  const passes = value.passes === 2 ? 2 : 1;
+  return value.mode === 'rooms' ? { rooms: value.rooms.map(String), passes } : { zone: value.zone, passes };
 }
 
 /** État FlowIT d'un robot lu dans le module. */
@@ -70,6 +81,11 @@ export function vacuumState(robot) {
   if (Number.isFinite(s.battery)) state.battery = s.battery;
   if (s.suction) state.suction = s.suction;
   if (s.error) state.vacuum_error = s.error;
+  if (s.water) state.water_level = s.water;
+  const m = robot.map;
+  if (m && (m.rooms?.length || m.bot || m.charger)) {
+    state.vacuum_map = { rooms: m.rooms ?? [], bot: m.bot ?? null, charger: m.charger ?? null };
+  }
   return state;
 }
 
@@ -120,7 +136,12 @@ export function addYeedi(adapter, client, { pollMs = 15_000 } = {}) {
   // Un robot met souvent plus de temps qu'une prise à annoncer son nouvel état.
   const execute = async (desc, key, value, timeoutMs) => {
     timeoutMs = Math.max(timeoutMs ?? 0, 30_000);
-    const cmd = key === 'vacuum_action' ? { action: value } : key === 'suction' ? { suction: value } : null;
+    const cmd =
+      key === 'vacuum_action' ? { action: value }
+      : key === 'suction' ? { suction: value }
+      : key === 'water_level' ? { water: value }
+      : key === 'vacuum_clean' ? vacuumCleanCommand(value)
+      : null;
     if (!cmd) return { status: 'failed', error: 'Capacité absente côté yeedi' };
     try {
       const r = await client.command(desc.robotId, cmd, timeoutMs);

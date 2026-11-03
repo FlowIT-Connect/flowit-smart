@@ -160,11 +160,14 @@ class DemoBackend implements Backend {
           ['power', 'sensor', false, {'unit': 'W'}],
         ]);
     device('Robot aspirateur', cuisine, 'wifi', 'cloud',
-        vendor: 'yeedi', model: '2 hybrid', state: {'vacuum_state': 'charging', 'battery': 92, 'suction': 'standard'},
+        vendor: 'yeedi', model: '2 hybrid', state: {'vacuum_state': 'charging', 'battery': 92, 'suction': 'standard', 'water_level': 'medium', 'vacuum_map': _demoVacuumMap},
         caps: [
           ['vacuum_action', 'enum', true, {'kind': 'vacuum', 'options': ['start', 'pause', 'resume', 'stop', 'charge']}],
           ['vacuum_state', 'sensor', false, {'kind': 'vacuum_state'}],
+          ['vacuum_clean', 'string', true, {'kind': 'vacuum_clean', 'options': ['rooms', 'zone']}],
+          ['vacuum_map', 'sensor', false, {'kind': 'vacuum_map', 'unit': 'mm'}],
           ['suction', 'enum', true, {'options': ['quiet', 'standard', 'strong', 'max']}],
+          ['water_level', 'enum', true, {'options': ['low', 'medium', 'high', 'max']}],
           ['battery', 'sensor', false, {'unit': '%'}],
           ['vacuum_error', 'sensor', false, {'kind': 'text'}],
         ]);
@@ -928,6 +931,8 @@ class DemoBackend implements Backend {
         final state = Map<String, dynamic>.from(d['state'] as Map);
         if (row['capability_key'] == 'ekey') {
           state['ekeys'] = _demoKeys((state['ekeys'] as List?) ?? const [], Map<String, dynamic>.from(row['value'] as Map));
+        } else if (row['capability_key'] == 'vacuum_clean') {
+          state['vacuum_state'] = 'cleaning'; // pièces ou zone : le robot simulé part nettoyer
         } else if (row['capability_key'] == 'vacuum_action') {
           // Robot simulé : l'action devient son nouvel état, comme le confirmerait le vrai robot.
           state['vacuum_state'] = switch (row['value']) {
@@ -1744,3 +1749,15 @@ class DemoBackend implements Backend {
     });
   }
 }
+
+/// Carte du robot de démonstration (millimètres, comme la carte d'un vrai robot yeedi).
+const _demoVacuumMap = {
+  'rooms': [
+    {'id': '0', 'name': 'Living room', 'pts': [[-4000, -2500], [500, -2500], [500, 1500], [-4000, 1500]]},
+    {'id': '1', 'name': 'Kitchen', 'pts': [[500, -2500], [3500, -2500], [3500, 0], [500, 0]]},
+    {'id': '2', 'name': 'Chambre Idir', 'pts': [[500, 0], [3500, 0], [3500, 3500], [500, 3500]]},
+    {'id': '3', 'name': 'Corridor', 'pts': [[-4000, 1500], [500, 1500], [500, 3500], [-4000, 3500]]},
+  ],
+  'bot': [-3500, 3000],
+  'charger': [-3500, 3200],
+};

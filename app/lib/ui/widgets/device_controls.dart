@@ -13,6 +13,7 @@ import 'common.dart';
 import 'device_removal.dart';
 import 'device_visual.dart';
 import 'organize.dart';
+import 'vacuum_map.dart';
 
 String capabilityLabel(BuildContext context, String key) => context.tryTr('cap.$key') ?? key.replaceAll('_', ' ');
 
@@ -718,6 +719,9 @@ class _CapabilityControlState extends State<_CapabilityControl> {
         );
       case CapabilityType.string:
       case CapabilityType.sensor:
+        if (cap.metadata['kind'] == 'vacuum_clean') {
+          return VacuumMapPanel(device: d, cap: cap, enabled: enabled, indicator: indicator, showIndicator: pending != null, send: send);
+        }
         return ListTile(
           leading: TileIcon(capabilityIcon(cap.key)),
           title: title,

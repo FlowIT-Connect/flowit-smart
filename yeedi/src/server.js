@@ -1,7 +1,8 @@
 // API locale lue par la passerelle Solea (HTTP, adresse locale, jeton partagé).
 //
 //   GET  /robots                      → [{id, name, model, online, state}]
-//   POST /robots/:id/command          {action} ou {suction}  → {status, error?, robot?}
+//   POST /robots/:id/command          {action} | {suction} | {water} | {rooms, passes?} | {zone, passes?}
+//                                     → {status, error?, robot?}
 //
 // Copyright (C) 2026 FlowIT Connect
 // Ce programme est un logiciel libre : GPL version 3 ou ultérieure (voir LICENSE).
@@ -46,7 +47,12 @@ export function yeediServer(hub, { token, commandTimeoutMs = 15_000 }) {
         } catch {
           return json(res, 400, { error: 'Requête invalide' });
         }
-        const cmd = body.suction !== undefined ? { suction: body.suction } : { action: body.action };
+        const cmd =
+          body.rooms !== undefined ? { rooms: body.rooms, passes: body.passes }
+          : body.zone !== undefined ? { zone: body.zone, passes: body.passes }
+          : body.water !== undefined ? { water: body.water }
+          : body.suction !== undefined ? { suction: body.suction }
+          : { action: body.action };
         return json(res, 200, await hub.command(decodeURIComponent(m[1]), cmd, commandTimeoutMs));
       }
       return json(res, 404, { error: 'Introuvable' });

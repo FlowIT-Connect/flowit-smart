@@ -25,10 +25,29 @@ export function validateValue(cap, value) {
     case 'string':
       if (meta.kind === 'access_code') return validateAccessCode(value, meta.options ?? []);
       if (meta.kind === 'ekey') return validateKey(value, meta.options ?? []);
+      if (meta.kind === 'vacuum_clean') return validateVacuumClean(value, meta.options ?? []);
       return 'Type de capacité non pilotable';
     default:
       return 'Type de capacité non pilotable';
   }
+}
+
+/** Nettoyage ciblé d'un robot : {mode:'rooms', rooms:[id…], passes?} ou {mode:'zone', zone:[x1,y1,x2,y2], passes?}. */
+function validateVacuumClean(value, options) {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return 'Demande de nettoyage invalide';
+  if (Object.keys(value).some((k) => !['mode', 'rooms', 'zone', 'passes'].includes(k))) return 'Demande de nettoyage invalide';
+  if (!options.includes(value.mode)) return 'Mode de nettoyage non pris en charge';
+  if (value.passes != null && value.passes !== 1 && value.passes !== 2) return 'Une ou deux passes';
+  if (value.mode === 'rooms') {
+    const ok = Array.isArray(value.rooms) && value.rooms.length > 0 && value.rooms.length <= 30
+      && value.rooms.every((id) => /^\d{1,3}$/.test(String(id)));
+    return ok ? null : 'Choisissez au moins une pièce';
+  }
+  const z = value.zone;
+  const ok = Array.isArray(z) && z.length === 4 && z.every((n) => typeof n === 'number' && Number.isFinite(n) && Math.abs(n) <= 100_000);
+  if (!ok) return 'Zone invalide';
+  if (Math.abs(z[2] - z[0]) < 300 || Math.abs(z[3] - z[1]) < 300) return 'Zone trop petite (30 cm au moins)';
+  return null;
 }
 
 const MAX_PERIOD_MS = 366 * 24 * 3600_000;

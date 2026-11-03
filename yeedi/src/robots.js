@@ -9,6 +9,15 @@ const SUCTION_NAMES = Object.fromEntries(Object.entries(SUCTION_LEVELS).map(([k,
 
 export const ACTIONS = ['start', 'pause', 'resume', 'stop', 'charge'];
 
+/** Débit d'eau de la serpillière Solea → niveaux de la bibliothèque (1 faible … 4 maximum). */
+export const WATER_LEVELS = { low: 1, medium: 2, high: 3, max: 4 };
+const WATER_NAMES = Object.fromEntries(Object.entries(WATER_LEVELS).map(([k, v]) => [v, k]));
+
+/** Points gardés au plus par pièce : la carte reste légère dans l'état de l'appareil. */
+const MAX_ROOM_POINTS = 48;
+/** La carte (pièces) est relue toutes les N interrogations régulières. */
+const MAP_EVERY = 10;
+
 const CLEANING = new Set(['auto', 'spot', 'spot_area', 'custom_area', 'edge', 'area', 'singlePoint', 'move', 'comeClean']);
 
 /** Codes « pas d'erreur » des robots Ecovacs. */
@@ -22,7 +31,38 @@ export const LINK_ERRORS = new Set(['-1', '500', '4200']);
 const isError = (code) => !NO_ERROR.has(code) && !LINK_ERRORS.has(String(code));
 
 /** Interrogations qui rafraîchissent tout l'état du robot. */
-const REFRESH = ['GetBatteryState', 'GetCleanState', 'GetChargeState', 'GetCleanSpeed'];
+const REFRESH = ['GetBatteryState', 'GetCleanState', 'GetChargeState', 'GetCleanSpeed', 'GetWaterLevel', 'GetPosition'];
+
+/** « x,y;x,y;… » (millimètres) → [[x,y], …] arrondis, allégés à MAX_ROOM_POINTS points. */
+export function parseBoundary(text) {
+  const pts = String(text ?? '')
+    .split(';')
+    .map((p) => p.split(',').map(Number))
+    .filter((p) => p.length >= 2 && Number.isFinite(p[0]) && Number.isFinite(p[1]))
+    .map(([x, y]) => [Math.round(x), Math.round(y)]);
+  if (pts.length <= MAX_ROOM_POINTS) return pts;
+  const step = pts.length / MAX_ROOM_POINTS;
+  return Array.from({ length: MAX_ROOM_POINTS }, (_, i) => pts[Math.floor(i * step)]);
+}
+
+/** « x,y,angle » → [x,y] (null si illisible). */
+export function parsePosition(text) {
+  const [x, y] = String(text ?? '').split(',').map(Number);
+  return Number.isFinite(x) && Number.isFinite(y) ? [Math.round(x), Math.round(y)] : null;
+}
+
+/** Pièces de la carte en cours, à partir de l'objet « MapDataObject » de la bibliothèque. */
+export function roomsFromMaps(maps) {
+  const list = Array.isArray(maps) ? maps : [];
+  const current = list.find((m) => m?.mapIsCurrentMap) ?? list[0];
+  return (current?.mapSpotAreas ?? [])
+    .map((a) => ({
+      id: String(a.mapSpotAreaID),
+      name: String(a.mapSpotAreaName ?? a.mapSpotAreaID),
+      pts: parseBoundary(a.mapSpotAreaBoundaries),
+    }))
+    .filter((r) => r.pts.length >= 3);
+}
 
 /**
  * État Solea à partir des derniers messages du robot.
@@ -67,6 +107,7 @@ export class RobotHub {
     this.log = log;
     this.refreshMs = refreshMs;
     this.timer = null;
+    this.ticks = 0;
     /** @type {Map<string, {robot:Robot, online:boolean, raw:object, waiters:Set<Function>}>} */
     this.robots = new Map();
   }
@@ -82,6 +123,7 @@ export class RobotHub {
   }
 
   refresh() {
+    const withMap = ++this.ticks % MAP_EVERY === 0;
     for (const e of this.robots.values()) {
       if (!e.online) continue;
       for (const cmd of REFRESH) {
@@ -91,6 +133,16 @@ export class RobotHub {
           this.log('yeedi.refresh_failed', { robot: e.robot.name, error: err.message });
         }
       }
+      if (withMap) this.#askMap(e);
+    }
+  }
+
+  /** Demande la carte (pièces seulement : l'image de la carte demanderait le module « canvas »). */
+  #askMap(entry) {
+    try {
+      entry.robot.bot.run('GetMaps', true, false);
+    } catch (err) {
+      this.log('yeedi.map_failed', { robot: entry.robot.name, error: err.message });
     }
   }
 
@@ -106,7 +158,7 @@ export class RobotHub {
   }
 
   #attach(robot) {
-    const entry = { robot, online: false, raw: {}, waiters: new Set() };
+    const entry = { robot, online: false, raw: {}, map: { rooms: [], bot: null, charger: null }, waiters: new Set() };
     this.robots.set(robot.did, entry);
     const bot = robot.bot;
     const update = (patch) => {
@@ -119,12 +171,28 @@ export class RobotHub {
       entry.online = true;
       this.log('yeedi.ready', { robot: robot.name });
       for (const cmd of REFRESH) bot.run(cmd);
+      this.#askMap(entry);
       update({});
     });
     bot.on('BatteryInfo', (v) => fresh({ battery: Math.round(Number(v)) }));
     bot.on('CleanReport', (v) => fresh({ cleanReport: v }));
     bot.on('ChargeState', (v) => fresh({ chargeStatus: v }));
     bot.on('CleanSpeed', (v) => fresh({ cleanSpeed: Number(v) }));
+    bot.on('WaterLevel', (v) => fresh({ waterLevel: Number(v) }));
+    bot.on('MapDataObject', (maps) => {
+      const rooms = roomsFromMaps(maps);
+      if (rooms.length || !entry.map.rooms.length) entry.map.rooms = rooms;
+      this.log('yeedi.map', { robot: robot.name, rooms: rooms.length });
+      fresh({});
+    });
+    bot.on('DeebotPosition', (v) => {
+      entry.map.bot = parsePosition(v) ?? entry.map.bot;
+      fresh({});
+    });
+    bot.on('ChargePosition', (v) => {
+      entry.map.charger = parsePosition(v) ?? entry.map.charger;
+      fresh({});
+    });
     bot.on('ErrorCode', (v) => update({ errorCode: String(v) }));
     bot.on('Error', (v) => update({ errorText: v }));
     bot.on('disconnect', () => {
@@ -139,7 +207,7 @@ export class RobotHub {
     return [...this.robots.values()].map((e) => this.#view(e));
   }
 
-  #view({ robot, online, raw }) {
+  #view({ robot, online, raw, map }) {
     const status = robotStatus(raw);
     return {
       id: robot.did,
@@ -151,7 +219,9 @@ export class RobotHub {
         battery: Number.isFinite(raw.battery) ? raw.battery : null,
         suction: SUCTION_NAMES[raw.cleanSpeed] ?? null,
         error: status === 'error' ? raw.errorText || `Erreur ${raw.errorCode}` : null,
+        water: WATER_NAMES[raw.waterLevel] ?? null,
       },
+      map: { rooms: map.rooms, bot: map.bot, charger: map.charger },
     };
   }
 
@@ -159,13 +229,42 @@ export class RobotHub {
    * Envoie une commande et attend que le robot la confirme dans son état.
    * @returns {Promise<{status:'confirmed'|'timeout'|'failed', error?:string, robot?:object}>}
    */
-  async command(did, { action, suction }, timeoutMs = 15_000) {
+  async command(did, { action, suction, water, rooms, zone, passes }, timeoutMs = 15_000) {
     const entry = this.robots.get(did);
     if (!entry) return { status: 'failed', error: 'Robot inconnu' };
     if (!entry.online) return { status: 'failed', error: 'Robot hors ligne' };
     const bot = entry.robot.bot;
     let reached;
-    if (suction !== undefined) {
+    const cleanings = passes === 2 ? 2 : 1;
+    const afterClean = () =>
+      setTimeout(() => {
+        bot.run('GetCleanState');
+        bot.run('GetChargeState');
+      }, 2_000).unref?.();
+    if (rooms !== undefined) {
+      // Nettoyage des pièces choisies sur la carte.
+      const known = new Set(entry.map.rooms.map((r) => r.id));
+      if (!Array.isArray(rooms) || !rooms.length || rooms.some((id) => !known.has(String(id)))) {
+        return { status: 'failed', error: 'Pièce inconnue sur la carte' };
+      }
+      bot.run('SpotArea', 'start', rooms.map(String).join(','), cleanings);
+      afterClean();
+      reached = () => robotStatus(entry.raw) === 'cleaning' && entry.raw.cleanReport === 'spot_area';
+    } else if (zone !== undefined) {
+      // Zone personnalisée dessinée sur la carte : rectangle x1,y1,x2,y2 en millimètres.
+      if (!Array.isArray(zone) || zone.length !== 4 || !zone.every(Number.isFinite)) {
+        return { status: 'failed', error: 'Zone invalide' };
+      }
+      bot.run('CustomArea', 'start', zone.map(Math.round).join(','), cleanings);
+      afterClean();
+      reached = () => robotStatus(entry.raw) === 'cleaning' && entry.raw.cleanReport === 'custom_area';
+    } else if (water !== undefined) {
+      const level = WATER_LEVELS[water];
+      if (!level) return { status: 'failed', error: 'Débit d\'eau inconnu' };
+      bot.run('SetWaterLevel', level);
+      setTimeout(() => bot.run('GetWaterLevel'), 1_500).unref?.();
+      reached = () => entry.raw.waterLevel === level;
+    } else if (suction !== undefined) {
       const level = SUCTION_LEVELS[suction];
       if (!level) return { status: 'failed', error: 'Puissance inconnue' };
       bot.run('SetCleanSpeed', level);
@@ -175,10 +274,7 @@ export class RobotHub {
       if (!ACTIONS.includes(action)) return { status: 'failed', error: 'Action inconnue' };
       const run = { start: 'Clean', pause: 'Pause', resume: 'Resume', stop: 'Stop', charge: 'Charge' }[action];
       bot.run(run);
-      setTimeout(() => {
-        bot.run('GetCleanState');
-        bot.run('GetChargeState');
-      }, 2_000).unref?.();
+      afterClean();
       reached = () => actionReached(action, robotStatus(entry.raw));
     }
     const ok = await this.#waitFor(entry, reached, timeoutMs);

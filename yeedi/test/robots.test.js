@@ -2,9 +2,22 @@ import assert from 'node:assert/strict';
 import { EventEmitter } from 'node:events';
 import { test } from 'node:test';
 
-import { actionReached, RobotHub, robotStatus } from '../src/robots.js';
+import { actionReached, parseBoundary, RobotHub, roomsFromMaps, robotStatus } from '../src/robots.js';
 import { yeediServer } from '../src/server.js';
 import { readForm, setEnvLines } from '../src/setup.js';
+
+/** Carte telle que la bibliothèque la livre (objet « MapDataObject »). */
+const MAPS = [
+  { mapID: '9', mapIsCurrentMap: false, mapSpotAreas: [{ mapSpotAreaID: '0', mapSpotAreaName: 'Vieille', mapSpotAreaBoundaries: '0,0;1,0;1,1' }] },
+  {
+    mapID: '1',
+    mapIsCurrentMap: true,
+    mapSpotAreas: [
+      { mapSpotAreaID: '0', mapSpotAreaName: 'Living room', mapSpotAreaBoundaries: '-2000,-1500;2000.4,-1500;2000,1500;-2000,1500' },
+      { mapSpotAreaID: '1', mapSpotAreaName: 'Cuisine', mapSpotAreaBoundaries: '2000,-1500;4000,-1500;4000,1500;2000,1500' },
+    ],
+  },
+];
 
 /** Robot simulé : répond aux commandes comme le cloud yeedi (messages d'état après coup). */
 class FakeBot extends EventEmitter {
@@ -27,6 +40,20 @@ class FakeBot extends EventEmitter {
     if (cmd === 'Clean' || cmd === 'Resume') later('CleanReport', 'auto');
     if (cmd === 'Pause') later('CleanReport', 'pause');
     if (cmd === 'Charge') later('ChargeState', 'returning');
+    if (cmd === 'GetWaterLevel') later('WaterLevel', this.water ?? 2);
+    if (cmd === 'SetWaterLevel') {
+      this.water = args[0];
+      later('WaterLevel', args[0]);
+    }
+    if (cmd === 'GetPosition') {
+      later('DeebotPosition', '120,-340,90');
+      later('ChargePosition', '0,0,0');
+    }
+    if (cmd === 'GetMaps') later('MapDataObject', MAPS);
+    if (cmd === 'SpotArea' || cmd === 'CustomArea') {
+      later('ChargeState', 'idle');
+      later('CleanReport', cmd === 'SpotArea' ? 'spot_area' : 'custom_area');
+    }
     if (cmd === 'SetCleanSpeed') {
       this.speed = args[0];
       later('CleanSpeed', args[0]);
@@ -60,7 +87,11 @@ test('liste des robots : batterie, état, puissance', async () => {
   const [r] = hub.list();
   assert.equal(r.id, 'r1');
   assert.equal(r.online, true);
-  assert.deepEqual(r.state, { status: 'charging', battery: 87, suction: 'standard', error: null });
+  assert.deepEqual(r.state, { status: 'charging', battery: 87, suction: 'standard', error: null, water: 'medium' });
+  assert.deepEqual(r.map.rooms.map((x) => [x.id, x.name]), [['0', 'Living room'], ['1', 'Cuisine']], 'carte en cours seulement');
+  assert.deepEqual(r.map.rooms[0].pts[1], [2000, -1500], 'coordonnées arrondies');
+  assert.deepEqual(r.map.bot, [120, -340]);
+  assert.deepEqual(r.map.charger, [0, 0]);
 });
 
 test('commande confirmée seulement quand le robot change d\'état', async () => {
@@ -73,6 +104,30 @@ test('commande confirmée seulement quand le robot change d\'état', async () =>
   assert.equal((await hub.command('r1', { action: 'pause' }, 500)).status, 'confirmed');
   assert.equal((await hub.command('r1', { suction: 'max' }, 500)).robot.state.suction, 'max');
   assert.deepEqual(bot.sent.find((c) => c[0] === 'SetCleanSpeed'), ['SetCleanSpeed', 4]);
+});
+
+test('pièces, zone et débit d\'eau : confirmés par le mode de nettoyage du robot', async () => {
+  const bot = new FakeBot();
+  const hub = await hubWith(bot);
+  const rooms = await hub.command('r1', { rooms: ['1', '0'], passes: 2 }, 500);
+  assert.equal(rooms.status, 'confirmed');
+  assert.deepEqual(bot.sent.find((c) => c[0] === 'SpotArea'), ['SpotArea', 'start', '1,0', 2]);
+  const zone = await hub.command('r1', { zone: [-500.6, -500, 500, 800] }, 500);
+  assert.equal(zone.status, 'confirmed');
+  assert.deepEqual(bot.sent.find((c) => c[0] === 'CustomArea'), ['CustomArea', 'start', '-501,-500,500,800', 1]);
+  assert.equal((await hub.command('r1', { water: 'max' }, 500)).robot.state.water, 'max');
+  assert.equal((await hub.command('r1', { rooms: ['7'] }, 50)).error, 'Pièce inconnue sur la carte');
+  assert.equal((await hub.command('r1', { rooms: [] }, 50)).status, 'failed');
+  assert.equal((await hub.command('r1', { zone: [1, 2, 3] }, 50)).error, 'Zone invalide');
+  assert.equal((await hub.command('r1', { water: 'déluge' }, 50)).status, 'failed');
+});
+
+test('contours de pièces allégés', () => {
+  const many = Array.from({ length: 500 }, (_, i) => `${i},${i * 2}`).join(';');
+  assert.equal(parseBoundary(many).length, 48);
+  assert.deepEqual(parseBoundary('1,2;x,3;;4.6,5'), [[1, 2], [5, 5]]);
+  assert.deepEqual(roomsFromMaps(null), []);
+  assert.deepEqual(roomsFromMaps([{ mapSpotAreas: [{ mapSpotAreaID: 3, mapSpotAreaBoundaries: '0,0;1,1' }] }]), [], 'moins de 3 points : ignorée');
 });
 
 test('robot muet : délai dépassé ; action ou robot inconnus refusés', async () => {
@@ -102,6 +157,8 @@ test('API locale : jeton obligatoire, liste et commande', async () => {
     assert.equal(list[0].name, 'Yeedi salon');
     const res = await (await fetch(`${base}/robots/r1/command`, { method: 'POST', headers: auth, body: JSON.stringify({ action: 'charge' }) })).json();
     assert.equal(res.status, 'confirmed');
+    const zone = await (await fetch(`${base}/robots/r1/command`, { method: 'POST', headers: auth, body: JSON.stringify({ zone: [0, 0, 900, 900], passes: 2 }) })).json();
+    assert.equal(zone.status, 'confirmed');
     assert.equal((await fetch(`${base}/robots/r1/command`, { method: 'POST', headers: auth, body: '{pas du json' })).status, 400);
   } finally {
     server.close();
