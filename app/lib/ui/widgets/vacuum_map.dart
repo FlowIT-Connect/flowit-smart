@@ -76,7 +76,10 @@ class _MapFrame {
   _MapFrame(this.bounds, this.size) {
     final s = math.min(size.width / bounds.width, size.height / bounds.height);
     scale = s.isFinite && s > 0 ? s : 1;
-    offset = Offset((size.width - bounds.width * scale) / 2 - bounds.left * scale, (size.height - bounds.height * scale) / 2 - bounds.top * scale);
+    offset = Offset(
+      (size.width - bounds.width * scale) / 2 - bounds.left * scale,
+      (size.height - bounds.height * scale) / 2 - bounds.top * scale,
+    );
   }
 
   final Rect bounds;
@@ -89,7 +92,10 @@ class _MapFrame {
 }
 
 Rect _bounds(List<VacuumRoom> rooms, List<Offset?> extra) {
-  final pts = [for (final r in rooms) ...r.points, ...extra.whereType<Offset>()];
+  // Cadrage sur les pièces dessinées : le robot ou la base, parfois loin (position pas encore
+  // recalée sur la carte), rendraient la carte minuscule.
+  final roomPts = [for (final r in rooms) ...r.points];
+  final pts = roomPts.isNotEmpty ? roomPts : extra.whereType<Offset>().toList();
   if (pts.isEmpty) return const Rect.fromLTWH(-2000, -2000, 4000, 4000);
   var minX = pts.first.dx, maxX = minX, minY = pts.first.dy, maxY = minY;
   for (final p in pts) {
@@ -104,6 +110,9 @@ Rect _bounds(List<VacuumRoom> rooms, List<Offset?> extra) {
   final cx = (minX + maxX) / 2, cy = (minY + maxY) / 2;
   return Rect.fromCenter(center: Offset(cx, cy), width: w + 2 * pad, height: h + 2 * pad);
 }
+
+/// Robot ou base affichés seulement s'ils tombent dans le cadre de la carte.
+Offset? _inside(Rect bounds, Offset? p) => p != null && bounds.contains(p) ? p : null;
 
 /// Carte du robot : nettoyage des pièces choisies (« Pièces ») ou d'une zone dessinée au doigt
 /// (« Zone »), en une ou deux passes.
@@ -147,6 +156,21 @@ class _VacuumMapPanelState extends State<VacuumMapPanel> {
 
   bool get _zoneBigEnough => (_zone?.width ?? 0) >= 300 && (_zone?.height ?? 0) >= 300;
 
+  Widget _roomChips(BuildContext context, List<VacuumRoom> rooms) => Wrap(
+    spacing: 8,
+    runSpacing: 8,
+    children: [
+      for (final r in rooms)
+        FilterChip(
+          key: ValueKey('vacuum-room-${r.id}'),
+          avatar: const Icon(Icons.meeting_room_rounded, size: 18),
+          label: Text(vacuumRoomName(context, r.name)),
+          selected: _selected.contains(r.id),
+          onSelected: (on) => setState(() => on ? _selected.add(r.id) : _selected.remove(r.id)),
+        ),
+    ],
+  );
+
   void _start() {
     if (_mode == 'rooms') {
       widget.send({'mode': 'rooms', 'rooms': _selected.toList(), 'passes': _passes});
@@ -171,8 +195,14 @@ class _VacuumMapPanelState extends State<VacuumMapPanel> {
     final drawn = rooms.where((r) => r.hasOutline).toList();
     // Robot qui ne donne pas le dessin des pièces : liste des pièces, pas de zone à dessiner.
     final listOnly = hasMap && drawn.isEmpty;
-    if (listOnly) _mode = 'rooms';
+    // Un seul contour pour plusieurs pièces : c'est le plan du logement, pas une pièce. Il sert
+    // de fond, et les pièces se choisissent sous la carte.
+    final houseOnly = drawn.length == 1 && rooms.length > 1;
+    final tappable = houseOnly ? const <VacuumRoom>[] : drawn;
+    final noZone = listOnly || houseOnly;
+    if (noZone) _mode = 'rooms';
     final bounds = _bounds(drawn, [bot, charger]);
+    final undrawn = houseOnly ? rooms : rooms.where((r) => !r.hasOutline).toList();
     final ready = widget.enabled && (_mode == 'rooms' ? _selected.isNotEmpty : _zoneBigEnough);
 
     return Padding(
@@ -185,7 +215,10 @@ class _VacuumMapPanelState extends State<VacuumMapPanel> {
               const TileIcon(Icons.map_rounded),
               const SizedBox(width: 14),
               Expanded(
-                child: Text(context.tr('cap.vacuum_clean'), style: Theme.of(context).textTheme.bodyLarge?.copyWith(fontWeight: FontWeight.w600)),
+                child: Text(
+                  context.tr('cap.vacuum_clean'),
+                  style: Theme.of(context).textTheme.bodyLarge?.copyWith(fontWeight: FontWeight.w600),
+                ),
               ),
               if (widget.showIndicator) widget.indicator,
             ],
@@ -195,7 +228,7 @@ class _VacuumMapPanelState extends State<VacuumMapPanel> {
             Text(context.tr('vacuum.noMap'), style: Theme.of(context).textTheme.bodyMedium?.copyWith(color: f.inkSoft)),
           ] else ...[
             const SizedBox(height: 12),
-            if (!listOnly && _offers('rooms') && _offers('zone'))
+            if (!noZone && _offers('rooms') && _offers('zone'))
               SegmentedButton<String>(
                 segments: [
                   ButtonSegment(value: 'rooms', icon: const Icon(Icons.meeting_room_rounded), label: Text(context.tr('vacuum.mode.rooms'))),
@@ -206,26 +239,13 @@ class _VacuumMapPanelState extends State<VacuumMapPanel> {
               ),
             const SizedBox(height: 10),
             Text(
-              context.tr(listOnly ? 'vacuum.hint.list' : (_mode == 'rooms' ? 'vacuum.hint.rooms' : 'vacuum.hint.zone')),
+              context.tr(noZone ? 'vacuum.hint.list' : (_mode == 'rooms' ? 'vacuum.hint.rooms' : 'vacuum.hint.zone')),
               style: Theme.of(context).textTheme.bodySmall?.copyWith(color: f.inkSoft),
             ),
             const SizedBox(height: 8),
             if (listOnly)
-              Wrap(
-                spacing: 8,
-                runSpacing: 8,
-                children: [
-                  for (final r in rooms)
-                    FilterChip(
-                      key: ValueKey('vacuum-room-${r.id}'),
-                      avatar: const Icon(Icons.meeting_room_rounded, size: 18),
-                      label: Text(vacuumRoomName(context, r.name)),
-                      selected: _selected.contains(r.id),
-                      onSelected: (on) => setState(() => on ? _selected.add(r.id) : _selected.remove(r.id)),
-                    ),
-                ],
-              )
-            else
+              _roomChips(context, rooms)
+            else ...[
               AspectRatio(
                 aspectRatio: (bounds.width / bounds.height).clamp(.8, 1.6),
                 child: ClipRRect(
@@ -239,14 +259,14 @@ class _VacuumMapPanelState extends State<VacuumMapPanel> {
                     child: LayoutBuilder(
                       builder: (context, box) {
                         final frame = _MapFrame(bounds, box.biggest);
-                        final names = {for (final r in drawn) r.id: vacuumRoomName(context, r.name)};
+                        final names = {for (final r in tappable) r.id: vacuumRoomName(context, r.name)};
                         return GestureDetector(
                           key: const ValueKey('vacuum-map'),
                           behavior: HitTestBehavior.opaque,
                           onTapUp: _mode == 'rooms'
                               ? (e) {
                                   final p = frame.toMap(e.localPosition);
-                                  for (final r in drawn.reversed) {
+                                  for (final r in tappable.reversed) {
                                     if ((Path()..addPolygon(r.points, true)).contains(p)) {
                                       setState(() => _selected.contains(r.id) ? _selected.remove(r.id) : _selected.add(r.id));
                                       return;
@@ -265,12 +285,13 @@ class _VacuumMapPanelState extends State<VacuumMapPanel> {
                             size: box.biggest,
                             painter: _MapPainter(
                               frame: frame,
-                              rooms: drawn,
+                              rooms: tappable,
+                              house: houseOnly ? drawn.first : null,
                               names: names,
                               selected: _mode == 'rooms' ? _selected : const {},
                               zone: _mode == 'zone' ? _zone : null,
-                              bot: bot,
-                              charger: charger,
+                              bot: _inside(bounds, bot),
+                              charger: _inside(bounds, charger),
                               colors: f,
                               textStyle: Theme.of(context).textTheme.labelMedium!,
                             ),
@@ -281,6 +302,9 @@ class _VacuumMapPanelState extends State<VacuumMapPanel> {
                   ),
                 ),
               ),
+              // Pièces dont le robot n'a pas encore envoyé le dessin : choix sous la carte.
+              if (_mode == 'rooms' && undrawn.isNotEmpty) ...[const SizedBox(height: 10), _roomChips(context, undrawn)],
+            ],
             const SizedBox(height: 12),
             Wrap(
               spacing: 8,
@@ -289,7 +313,11 @@ class _VacuumMapPanelState extends State<VacuumMapPanel> {
               children: [
                 Text(context.tr('vacuum.passes'), style: Theme.of(context).textTheme.bodyMedium),
                 for (final n in const [1, 2])
-                  ChoiceChip(label: Text(context.tr('vacuum.passes.$n')), selected: _passes == n, onSelected: (_) => setState(() => _passes = n)),
+                  ChoiceChip(
+                    label: Text(context.tr('vacuum.passes.$n')),
+                    selected: _passes == n,
+                    onSelected: (_) => setState(() => _passes = n),
+                  ),
               ],
             ),
             const SizedBox(height: 10),
@@ -317,6 +345,7 @@ class _MapPainter extends CustomPainter {
   _MapPainter({
     required this.frame,
     required this.rooms,
+    this.house,
     required this.names,
     required this.selected,
     required this.zone,
@@ -328,6 +357,7 @@ class _MapPainter extends CustomPainter {
 
   final _MapFrame frame;
   final List<VacuumRoom> rooms;
+  final VacuumRoom? house;
   final Map<String, String> names;
   final Set<String> selected;
   final Rect? zone;
@@ -338,6 +368,17 @@ class _MapPainter extends CustomPainter {
   @override
   void paint(Canvas canvas, Size size) {
     final palette = [colors.blue, colors.cyan, colors.violet, colors.amber, colors.pink, colors.orange];
+    if (house != null) {
+      final path = Path()..addPolygon([for (final p in house!.points) frame.toScreen(p)], true);
+      canvas.drawPath(path, Paint()..color = colors.ink.withValues(alpha: .10));
+      canvas.drawPath(
+        path,
+        Paint()
+          ..style = PaintingStyle.stroke
+          ..strokeWidth = 1.6
+          ..color = colors.ink.withValues(alpha: .45),
+      );
+    }
     for (final (i, r) in rooms.indexed) {
       final path = Path()..addPolygon([for (final p in r.points) frame.toScreen(p)], true);
       final on = selected.contains(r.id);
