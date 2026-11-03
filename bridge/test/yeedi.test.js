@@ -38,6 +38,8 @@ class FakeYeediModule {
       if (!robot) return Response.json({ status: 'failed', error: 'Robot inconnu' });
       const body = JSON.parse(init.body);
       if (body.suction) robot.state.suction = body.suction;
+      else if (body.water) robot.state.water = body.water;
+      else if (body.rooms || body.zone) robot.state.status = 'cleaning';
       else if (body.action === 'start') robot.state.status = 'cleaning';
       else if (body.action === 'charge') robot.state.status = 'returning';
       else if (body.action === 'pause') return Response.json({ status: 'timeout', error: 'Le robot n\'a pas confirmé' });
@@ -68,6 +70,25 @@ describe('Robots aspirateurs yeedi', () => {
     assert.equal(validateValue(d.capabilities.find((c) => c.capability_key === 'suction'), 'max'), null);
     assert.notEqual(validateValue(d.capabilities.find((c) => c.capability_key === 'battery'), 50), null, 'batterie en lecture seule');
     assert.deepEqual(vacuumState({ state: { status: 'error', battery: 10, suction: null, error: 'Roue bloquée' } }), { vacuum_state: 'error', battery: 10, vacuum_error: 'Roue bloquée' });
+    const map = { rooms: [{ id: '0', name: 'Salon', pts: [[0, 0], [1000, 0], [1000, 1000]] }], bot: [10, 20], charger: null };
+    assert.deepEqual(vacuumState({ state: { status: 'idle', water: 'high' }, map }), { vacuum_state: 'idle', water_level: 'high', vacuum_map: map });
+    assert.deepEqual(vacuumState({ state: {}, map: { rooms: [], bot: null, charger: null } }), {}, 'pas de carte vide');
+  });
+
+  test('nettoyage ciblé : pièces ou zone, validés avant envoi', () => {
+    const clean = buildVacuumDevice({ id: 'E1' }).capabilities.find((c) => c.capability_key === 'vacuum_clean');
+    assert.equal(validateValue(clean, { mode: 'rooms', rooms: ['0', '3'], passes: 2 }), null);
+    assert.equal(validateValue(clean, { mode: 'zone', zone: [-1000, -1000, 500, 800] }), null);
+    assert.notEqual(validateValue(clean, { mode: 'rooms', rooms: [] }), null);
+    assert.notEqual(validateValue(clean, { mode: 'rooms', rooms: ['1;rm'] }), null);
+    assert.notEqual(validateValue(clean, { mode: 'zone', zone: [0, 0, 100, 100] }), null, 'trop petite');
+    assert.notEqual(validateValue(clean, { mode: 'zone', zone: [0, 0, 1000] }), null);
+    assert.notEqual(validateValue(clean, { mode: 'rooms', rooms: ['1'], passes: 3 }), null);
+    assert.notEqual(validateValue(clean, { mode: 'partout' }), null);
+    assert.notEqual(validateValue(clean, 'salon'), null);
+    const water = buildVacuumDevice({ id: 'E1' }).capabilities.find((c) => c.capability_key === 'water_level');
+    assert.equal(validateValue(water, 'max'), null);
+    assert.notEqual(validateValue(water, 'deluge'), null);
   });
 
   test('configuration : YEEDI_URL active le module, le jeton est obligatoire', () => {
@@ -120,6 +141,19 @@ describe('Robots aspirateurs yeedi', () => {
       assert.ok(await until(() => pause.status === 'timeout'));
       const bad = await cmd(robot, 'vacuum_action', 'voler');
       assert.ok(await until(() => bad.status === 'rejected'));
+    });
+
+    test('pièces, zone et débit d\'eau transmis au module', async () => {
+      const robot = store.deviceByName('Yeedi salon');
+      const rooms = await cmd(robot, 'vacuum_clean', { mode: 'rooms', rooms: ['0', '2'], passes: 2 });
+      assert.ok(await until(() => rooms.status === 'confirmed'));
+      assert.deepEqual(mod.calls.filter((c) => c.method === 'POST').at(-1).body, { rooms: ['0', '2'], passes: 2 });
+      const zone = await cmd(robot, 'vacuum_clean', { mode: 'zone', zone: [0, 0, 1200, 900] });
+      assert.ok(await until(() => zone.status === 'confirmed'));
+      assert.deepEqual(mod.calls.filter((c) => c.method === 'POST').at(-1).body, { zone: [0, 0, 1200, 900], passes: 1 });
+      const water = await cmd(robot, 'water_level', 'high');
+      assert.ok(await until(() => water.status === 'confirmed'));
+      assert.equal(store.devices.get(robot.id).state.water_level, 'high');
     });
 
     test('module arrêté : robot hors ligne, puis de retour', async () => {

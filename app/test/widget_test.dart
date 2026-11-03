@@ -172,12 +172,63 @@ void main() {
     await tester.tap(find.widgetWithText(OutlinedButton, 'Base'));
     await tester.pump(const Duration(milliseconds: 400));
     expect(robot().state['vacuum_state'], 'returning');
-    await tester.scrollUntilVisible(find.text('Maximum'), 200, scrollable: find.byType(Scrollable).last);
+    await tester.scrollUntilVisible(find.text('Maximum').first, 200, scrollable: find.byType(Scrollable).last);
     await tester.pumpAndSettle();
-    await tester.tap(find.text('Maximum'));
+    await tester.tap(find.text('Maximum').first);
     await tester.pump(const Duration(milliseconds: 400));
     await tester.pump(const Duration(milliseconds: 400));
     expect(robot().state['suction'], 'max');
+    await tester.pump(const Duration(seconds: 3));
+  });
+
+  testWidgets('robot aspirateur : carte, pièces choisies puis zone dessinée', (tester) async {
+    final state = await pumpApp(tester);
+    await signIn(tester);
+    await tester.tap(find.text('Appareils').last);
+    await tester.pumpAndSettle();
+    await tester.enterText(find.byType(TextField).first, 'robot');
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Robot aspirateur'));
+    await tester.pumpAndSettle();
+    expect(find.text('Nettoyage intelligent'), findsOneWidget);
+    final map = find.byKey(const ValueKey('vacuum-map'));
+    await tester.scrollUntilVisible(find.text('Choisis une pièce'), 200, scrollable: find.byType(Scrollable).last);
+    await tester.pumpAndSettle();
+    expect(find.byWidgetPredicate((w) => w is CustomPaint && w.painter != null && w.painter.runtimeType.toString() == '_MapPainter'), findsOneWidget);
+    expect(find.text('Salon'), findsNothing, reason: 'nom dessiné sur la carte, pas un widget texte');
+    await tester.ensureVisible(map);
+    await tester.pumpAndSettle();
+    // Centre de la carte : le salon.
+    await tester.tap(map);
+    await tester.pumpAndSettle();
+    expect(find.text('Nettoyer 1 pièce'), findsOneWidget);
+    await tester.tap(find.text('2 fois'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Nettoyer 1 pièce'));
+    await tester.pump(const Duration(milliseconds: 400));
+    await tester.pump(const Duration(milliseconds: 400));
+    Device robot() => state.devices.values.firstWhere((d) => d.name == 'Robot aspirateur');
+    expect(robot().state['vacuum_state'], 'cleaning');
+    expect(state.pendingFor(robot().id, 'vacuum_clean')?.value, {'mode': 'rooms', 'rooms': ['0'], 'passes': 2});
+    await tester.pumpAndSettle();
+    // Zone : trop petite d'abord, puis assez grande.
+    // (le haut de la fiche couvre le sélecteur une fois la carte défilée : on le choisit directement)
+    tester.widget<SegmentedButton<String>>(find.byType(SegmentedButton<String>)).onSelectionChanged!({'zone'});
+    await tester.pumpAndSettle();
+    expect(find.text('Dessine une zone'), findsOneWidget);
+    await tester.ensureVisible(map);
+    await tester.pumpAndSettle();
+    final c = tester.getCenter(map);
+    await tester.dragFrom(c, const Offset(4, 4));
+    await tester.pumpAndSettle();
+    expect(find.text('Dessine une zone'), findsOneWidget, reason: 'zone de quelques centimètres refusée');
+    await tester.dragFrom(c - const Offset(60, 40), const Offset(120, 80));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Nettoyer la zone'));
+    await tester.pump(const Duration(milliseconds: 400));
+    final zone = state.pendingFor(robot().id, 'vacuum_clean')!.value as Map;
+    expect(zone['mode'], 'zone');
+    expect((zone['zone'] as List).length, 4);
     await tester.pump(const Duration(seconds: 3));
   });
 
