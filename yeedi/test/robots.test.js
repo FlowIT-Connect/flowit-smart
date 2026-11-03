@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { EventEmitter } from 'node:events';
 import { test } from 'node:test';
 
-import { actionReached, parseBoundary, RobotHub, roomFromInfo, robotStatus } from '../src/robots.js';
+import { actionReached, decodeBoundary, parseBoundary, RobotHub, roomFromInfo, robotStatus } from '../src/robots.js';
 import { yeediServer } from '../src/server.js';
 import { readForm, setEnvLines } from '../src/setup.js';
 
@@ -132,6 +132,31 @@ test('robot yeedi qui ne répond qu\'à getMapInfo_V2 : carte quand même', asyn
   const hub = await hubWith(bot);
   assert.deepEqual(hub.list()[0].map.rooms.map((r) => r.id), ['0', '1']);
   assert.equal(bot.sent.filter((c) => c[0] === 'GetSpotAreas').length, 1, 'pas de doublon');
+});
+
+test('contour compressé (lzma, en-tête 9 ou 13 octets) ou en clair', async () => {
+  const { createRequire } = await import('node:module');
+  const lzma = createRequire(import.meta.url)('lzma');
+  const txt = '-1000,200;3000,200;3000,4000';
+  const std = Buffer.from(lzma.compress(txt, 9).map((b) => b & 0xff));
+  const eco = Buffer.concat([std.subarray(0, 9), std.subarray(13)]);
+  assert.equal(decodeBoundary(eco.toString('base64'), true), txt, 'format Ecovacs');
+  assert.equal(decodeBoundary(std.toString('base64'), true), txt, 'format lzma standard');
+  assert.equal(decodeBoundary('1,2;3,4;5,6', false), '1,2;3,4;5,6');
+  assert.equal(decodeBoundary('', true), '');
+  assert.equal(decodeBoundary('pas-du-base64!!', true), '');
+});
+
+test('réponse brute getMapSubSet : contour perdu par la bibliothèque, décodé par le module', async () => {
+  const bot = new FakeBot();
+  bot.handleMapSubset = async (payload) => ({ mapsubsetEvent: 'MapSpotAreaInfo', mapsubsetData: { mapID: payload.mid, mapSpotAreaID: payload.mssid, mapSpotAreaBoundaries: '' } });
+  const logs = [];
+  const hub = new RobotHub({ login: async () => {}, robots: async () => [{ did: 'r1', name: 'Idir', model: '04z443', bot }] }, { log: (e, d) => logs.push([e, d]) });
+  await hub.start();
+  const res = await bot.handleMapSubset({ type: 'ar', mid: '1', mssid: '4', value: '0,0;100,0;100,100', compress: false });
+  assert.equal(res.mapsubsetData.mapSpotAreaBoundaries, '0,0;100,0;100,100');
+  assert.ok(logs.some(([e, d]) => e === 'yeedi.room_raw' && d.decoded_points === 3 && !('value' in d)), 'journal sans la valeur brute');
+  await hub.stop();
 });
 
 test('contours de pièces allégés', () => {

@@ -3,6 +3,38 @@
 // Copyright (C) 2026 FlowIT Connect
 // Ce programme est un logiciel libre : GPL version 3 ou ultérieure (voir LICENSE).
 
+import { createRequire } from 'node:module';
+
+const require = createRequire(import.meta.url);
+let lzma = null;
+try {
+  lzma = require('lzma'); // dépendance de ecovacs-deebot
+} catch {
+  // absent : les contours compressés restent illisibles
+}
+
+/**
+ * Contour d'une pièce tel que le robot l'envoie (« value » de getMapSubSet) → texte « x,y;x,y… ».
+ * Texte en clair, ou compressé en lzma (base64) avec un en-tête de 9 octets (Ecovacs) ou 13 octets.
+ */
+export function decodeBoundary(value, compressed) {
+  if (typeof value !== 'string' || !value) return '';
+  if (!compressed && /^[-\d.,;\s]+$/.test(value)) return value;
+  if (!lzma) return '';
+  const bytes = Buffer.from(value, 'base64');
+  const signed = [...new Int8Array(bytes.buffer, bytes.byteOffset, bytes.length)];
+  for (const input of [[...signed.slice(0, 9), 0, 0, 0, 0, ...signed.slice(9)], signed]) {
+    try {
+      const out = lzma.decompress(input);
+      const text = typeof out === 'string' ? out : Buffer.from(Array.from(out ?? [], (b) => b & 0xff)).toString('utf8');
+      if (/\d+,-?\d+/.test(text)) return text;
+    } catch {
+      // essai suivant
+    }
+  }
+  return '';
+}
+
 /** Puissances d'aspiration Solea → niveaux de la bibliothèque (1 silencieux … 4 maximum). */
 export const SUCTION_LEVELS = { quiet: 1, standard: 2, strong: 3, max: 4 };
 const SUCTION_NAMES = Object.fromEntries(Object.entries(SUCTION_LEVELS).map(([k, v]) => [v, k]));
@@ -166,10 +198,53 @@ export class RobotHub {
     }
   }
 
+  /**
+   * Contours des pièces : la bibliothèque perd parfois le contour (format compressé de certains
+   * robots yeedi). On garde la réponse brute de getMapSubSet pour le décoder nous-mêmes.
+   */
+  #watchSubsets(robot) {
+    const bot = robot.bot;
+    if (typeof bot.handleMapSubset !== 'function') return;
+    const original = bot.handleMapSubset.bind(bot);
+    bot.handleMapSubset = async (payload) => {
+      let res;
+      try {
+        res = await original(payload);
+      } catch (err) {
+        res = null;
+        this.log('yeedi.room_decode_failed', { robot: robot.name, error: err.message });
+      }
+      if (payload?.type !== 'ar') return res ?? { mapsubsetEvent: 'error' };
+      const info = res?.mapsubsetData;
+      const have = typeof info?.mapSpotAreaBoundaries === 'string' ? info.mapSpotAreaBoundaries : '';
+      if (!/\d+,-?\d+/.test(have)) {
+        const text = decodeBoundary(payload.value, !!payload.compress);
+        this.log('yeedi.room_raw', {
+          robot: robot.name,
+          id: String(payload.mssid),
+          keys: Object.keys(payload).join(','),
+          compress: payload.compress ?? null,
+          value_type: typeof payload.value,
+          value_length: payload.value?.length ?? 0,
+          decoded_points: text ? text.split(';').length : 0,
+        });
+        if (text && info) info.mapSpotAreaBoundaries = text;
+        if (!info && text) {
+          return {
+            mapsubsetEvent: 'MapSpotAreaInfo',
+            mapsubsetData: { mapID: payload.mid ?? bot.currentMapMID, mapSpotAreaID: payload.mssid, mapSpotAreaName: payload.name || String(payload.mssid), mapSpotAreaBoundaries: text },
+          };
+        }
+      }
+      return res ?? { mapsubsetEvent: 'error' };
+    };
+  }
+
   #attach(robot) {
     const entry = { robot, online: false, raw: {}, map: { mapId: null, rooms: [], bot: null, charger: null }, waiters: new Set() };
     this.robots.set(robot.did, entry);
     const bot = robot.bot;
+    this.#watchSubsets(robot);
     const update = (patch) => {
       Object.assign(entry.raw, patch);
       for (const w of entry.waiters) w();
