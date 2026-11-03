@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { EventEmitter } from 'node:events';
 import { test } from 'node:test';
 
-import { actionReached, decodeBoundary, parseBoundary, RobotHub, roomFromInfo, robotStatus } from '../src/robots.js';
+import { actionReached, decodeBoundary, parseBoundary, RobotHub, roomFromInfo, roomsFromMapSetV2, robotStatus } from '../src/robots.js';
 import { yeediServer } from '../src/server.js';
 import { readForm, setEnvLines } from '../src/setup.js';
 
@@ -15,7 +15,17 @@ const AREAS = {
 
 /** Robot simulé : répond aux commandes comme le cloud yeedi (messages d'état après coup). */
 class FakeBot extends EventEmitter {
-  vacBotCommand = { GetMapInfo_V2: class { name = 'getMapInfo_V2'; } };
+  vacBotCommand = {
+    GetMapInfo_V2: class { name = 'getMapInfo_V2'; },
+    GetMapSet_V2: class {
+      name = 'getMapSet_V2';
+      constructor(mid, type) {
+        this.args = { mid, type };
+      }
+    },
+  };
+  /** Client MQTT de la bibliothèque : reçoit les réponses brutes. */
+  ecovacs = { handled: [], handleMessagePayload: async (command, payload) => this.ecovacs.handled.push([command, payload]) };
 
   constructor() {
     super();
@@ -62,6 +72,7 @@ class FakeBot extends EventEmitter {
   sendCommand(cmd) {
     this.sent.push(['sendCommand', cmd.name]);
     if (this.v2Only && cmd.name === 'getMapInfo_V2') setTimeout(() => this.emit('Maps', MAPS), 5);
+    if (cmd.name === 'getMapSet_V2' && this.mapSetV2) setTimeout(() => this.ecovacs.handleMessagePayload('getMapSet_V2', { mid: cmd.args.mid, type: 'ar', subsets: this.mapSetV2 }), 15);
   }
   async disconnectAsync() {}
 }
@@ -243,5 +254,45 @@ test('coupure passagère (« Robot not reachable ») : pas d\'erreur affichée, 
   bot.emit('Error', 'Roue bloquée');
   assert.equal(hub.list()[0].state.status, 'error');
   assert.equal(hub.list()[0].state.error, 'Roue bloquée');
+  await hub.stop();
+});
+
+/** « subsets » compressé comme le cloud Ecovacs (lzma, en-tête de 9 octets, base64). */
+async function ecoLzma(text) {
+  const { createRequire } = await import('node:module');
+  const lzma = createRequire(import.meta.url)('lzma');
+  const std = Buffer.from(lzma.compress(text, 9).map((b) => b & 0xff));
+  return Buffer.concat([std.subarray(0, 9), std.subarray(13)]).toString('base64');
+}
+
+test('getMapSet_V2 : contours des pièces lus dans « subsets » compressé', async () => {
+  const subsets = [
+    ['0', '', '', '', '', '', '-2000,-1500;0,-1500;0,1500;-2000,1500'],
+    ['1', '', '', '', '', '', '0,-1500;2000,-1500;2000,1500;0,1500'],
+    ['2', '', '', '', '', '', ''],
+  ];
+  const { rooms, shape } = roomsFromMapSetV2(await ecoLzma(JSON.stringify(subsets)));
+  assert.deepEqual(rooms.map((r) => [r.id, r.pts.length]), [['0', 4], ['1', 4], ['2', 0]]);
+  assert.equal(shape.decoded, true);
+  assert.equal(shape.entries, 3);
+  assert.equal(shape.first, 's1,s0,s0,s0,s0,s0,s37', 'forme seulement, pas de contenu');
+  assert.deepEqual(roomsFromMapSetV2([{ mssid: '3', value: '0,0;10,0;10,10' }]).rooms, [{ id: '3', pts: [[0, 0], [10, 0], [10, 10]] }], 'liste d\'objets');
+  assert.deepEqual(roomsFromMapSetV2('illisible').rooms, []);
+
+  // De bout en bout : le robot renvoie des pièces vides par getMapSubSet, mais leurs contours par getMapSet_V2.
+  const bot = new FakeBot();
+  bot.noOutline = true;
+  bot.mapSetV2 = await ecoLzma(JSON.stringify([['0', '-2000,-1500;0,-1500;0,1500;-2000,1500'], ['1', '0,-1500;2000,-1500;2000,1500;0,1500']]));
+  const logs = [];
+  const hub = new RobotHub({ login: async () => {}, robots: async () => [{ did: 'r1', name: 'Idir', model: '04z443', bot }] }, { log: (e, d) => logs.push([e, d]) });
+  await hub.start();
+  await new Promise((r) => setTimeout(r, 80));
+  assert.ok(bot.sent.some((c) => c[0] === 'sendCommand' && c[1] === 'getMapSet_V2'));
+  const [r] = hub.list();
+  assert.deepEqual(r.map.rooms.map((x) => [x.id, x.pts.length]), [['0', 4], ['1', 4]]);
+  const log = logs.find(([e]) => e === 'yeedi.mapset_v2')?.[1];
+  assert.equal(log.drawn, 2);
+  assert.ok(!JSON.stringify(log).includes('-2000'), 'aucun contour dans les journaux');
+  assert.equal(bot.ecovacs.handled.length, 0, 'format compressé non transmis à la bibliothèque');
   await hub.stop();
 });
