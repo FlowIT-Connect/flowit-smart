@@ -51,17 +51,10 @@ export function parsePosition(text) {
   return Number.isFinite(x) && Number.isFinite(y) ? [Math.round(x), Math.round(y)] : null;
 }
 
-/** Pièces de la carte en cours, à partir de l'objet « MapDataObject » de la bibliothèque. */
-export function roomsFromMaps(maps) {
-  const list = Array.isArray(maps) ? maps : [];
-  const current = list.find((m) => m?.mapIsCurrentMap) ?? list[0];
-  return (current?.mapSpotAreas ?? [])
-    .map((a) => ({
-      id: String(a.mapSpotAreaID),
-      name: String(a.mapSpotAreaName ?? a.mapSpotAreaID),
-      pts: parseBoundary(a.mapSpotAreaBoundaries),
-    }))
-    .filter((r) => r.pts.length >= 3);
+/** Pièce Solea à partir d'un « MapSpotAreaInfo » de la bibliothèque (null si contour illisible). */
+export function roomFromInfo(a) {
+  const room = { id: String(a?.mapSpotAreaID), name: String(a?.mapSpotAreaName ?? a?.mapSpotAreaID), pts: parseBoundary(a?.mapSpotAreaBoundaries) };
+  return room.pts.length >= 3 ? room : null;
 }
 
 /**
@@ -137,10 +130,14 @@ export class RobotHub {
     }
   }
 
-  /** Demande la carte (pièces seulement : l'image de la carte demanderait le module « canvas »). */
+  /**
+   * Demande la carte, puis (événements « Maps » → « MapSpotAreas » → « MapSpotAreaInfo »)
+   * les pièces une à une. On n'utilise pas l'objet « MapDataObject » de la bibliothèque :
+   * il n'est jamais livré quand la réponse des murs virtuels arrive en dernier.
+   */
   #askMap(entry) {
     try {
-      entry.robot.bot.run('GetMaps', true, false);
+      entry.robot.bot.run('GetMaps');
     } catch (err) {
       this.log('yeedi.map_failed', { robot: entry.robot.name, error: err.message });
     }
@@ -158,7 +155,7 @@ export class RobotHub {
   }
 
   #attach(robot) {
-    const entry = { robot, online: false, raw: {}, map: { rooms: [], bot: null, charger: null }, waiters: new Set() };
+    const entry = { robot, online: false, raw: {}, map: { mapId: null, rooms: [], bot: null, charger: null }, waiters: new Set() };
     this.robots.set(robot.did, entry);
     const bot = robot.bot;
     const update = (patch) => {
@@ -179,10 +176,40 @@ export class RobotHub {
     bot.on('ChargeState', (v) => fresh({ chargeStatus: v }));
     bot.on('CleanSpeed', (v) => fresh({ cleanSpeed: Number(v) }));
     bot.on('WaterLevel', (v) => fresh({ waterLevel: Number(v) }));
-    bot.on('MapDataObject', (maps) => {
-      const rooms = roomsFromMaps(maps);
-      if (rooms.length || !entry.map.rooms.length) entry.map.rooms = rooms;
-      this.log('yeedi.map', { robot: robot.name, rooms: rooms.length });
+    bot.on('Maps', (data) => {
+      const maps = Array.isArray(data?.maps) ? data.maps : [];
+      const current = maps.find((m) => m?.mapIsCurrentMap) ?? maps[0];
+      this.log('yeedi.maps', { robot: robot.name, maps: maps.length, current: current?.mapID ?? null });
+      if (!current) return;
+      entry.map.mapId = String(current.mapID);
+      try {
+        bot.run('GetSpotAreas', entry.map.mapId);
+      } catch (err) {
+        this.log('yeedi.map_failed', { robot: robot.name, error: err.message });
+      }
+    });
+    bot.on('MapSpotAreas', (data) => {
+      if (String(data?.mapID) !== entry.map.mapId) return;
+      const ids = (data.mapSpotAreas ?? []).map((a) => String(a.mapSpotAreaID));
+      this.log('yeedi.map', { robot: robot.name, rooms: ids.length });
+      entry.map.rooms = entry.map.rooms.filter((r) => ids.includes(r.id));
+      for (const id of ids) {
+        try {
+          bot.run('GetSpotAreaInfo', entry.map.mapId, id);
+        } catch (err) {
+          this.log('yeedi.map_failed', { robot: robot.name, error: err.message });
+        }
+      }
+      fresh({});
+    });
+    bot.on('MapSpotAreaInfo', (info) => {
+      if (String(info?.mapID) !== entry.map.mapId) return;
+      const room = roomFromInfo(info);
+      if (!room) return;
+      const i = entry.map.rooms.findIndex((r) => r.id === room.id);
+      if (i >= 0) entry.map.rooms[i] = room;
+      else entry.map.rooms.push(room);
+      entry.map.rooms.sort((a, b) => Number(a.id) - Number(b.id));
       fresh({});
     });
     bot.on('DeebotPosition', (v) => {

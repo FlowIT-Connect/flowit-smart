@@ -2,22 +2,16 @@ import assert from 'node:assert/strict';
 import { EventEmitter } from 'node:events';
 import { test } from 'node:test';
 
-import { actionReached, parseBoundary, RobotHub, roomsFromMaps, robotStatus } from '../src/robots.js';
+import { actionReached, parseBoundary, RobotHub, roomFromInfo, robotStatus } from '../src/robots.js';
 import { yeediServer } from '../src/server.js';
 import { readForm, setEnvLines } from '../src/setup.js';
 
-/** Carte telle que la bibliothèque la livre (objet « MapDataObject »). */
-const MAPS = [
-  { mapID: '9', mapIsCurrentMap: false, mapSpotAreas: [{ mapSpotAreaID: '0', mapSpotAreaName: 'Vieille', mapSpotAreaBoundaries: '0,0;1,0;1,1' }] },
-  {
-    mapID: '1',
-    mapIsCurrentMap: true,
-    mapSpotAreas: [
-      { mapSpotAreaID: '0', mapSpotAreaName: 'Living room', mapSpotAreaBoundaries: '-2000,-1500;2000.4,-1500;2000,1500;-2000,1500' },
-      { mapSpotAreaID: '1', mapSpotAreaName: 'Cuisine', mapSpotAreaBoundaries: '2000,-1500;4000,-1500;4000,1500;2000,1500' },
-    ],
-  },
-];
+/** Cartes et pièces telles que la bibliothèque les annonce (événements Maps, MapSpotAreas, MapSpotAreaInfo). */
+const MAPS = { maps: [{ mapID: '9', mapIsCurrentMap: false }, { mapID: '1', mapIsCurrentMap: true }] };
+const AREAS = {
+  '0': { mapSpotAreaName: 'Living room', mapSpotAreaBoundaries: '-2000,-1500;2000.4,-1500;2000,1500;-2000,1500' },
+  '1': { mapSpotAreaName: 'Cuisine', mapSpotAreaBoundaries: '2000,-1500;4000,-1500;4000,1500;2000,1500' },
+};
 
 /** Robot simulé : répond aux commandes comme le cloud yeedi (messages d'état après coup). */
 class FakeBot extends EventEmitter {
@@ -49,7 +43,10 @@ class FakeBot extends EventEmitter {
       later('DeebotPosition', '120,-340,90');
       later('ChargePosition', '0,0,0');
     }
-    if (cmd === 'GetMaps') later('MapDataObject', MAPS);
+    if (cmd === 'GetMaps') later('Maps', MAPS);
+    if (cmd === 'GetSpotAreas') later('MapSpotAreas', { mapID: args[0], mapSpotAreas: Object.keys(AREAS).map((id) => ({ mapSpotAreaID: id })) });
+    // Réponses dans le désordre, comme sur le vrai robot.
+    if (cmd === 'GetSpotAreaInfo') setTimeout(() => this.emit('MapSpotAreaInfo', { mapID: args[0], mapSpotAreaID: args[1], ...AREAS[args[1]] }), args[1] === '0' ? 9 : 3);
     if (cmd === 'SpotArea' || cmd === 'CustomArea') {
       later('ChargeState', 'idle');
       later('CleanReport', cmd === 'SpotArea' ? 'spot_area' : 'custom_area');
@@ -65,7 +62,7 @@ class FakeBot extends EventEmitter {
 async function hubWith(bot) {
   const hub = new RobotHub({ login: async () => {}, robots: async () => [{ did: 'r1', name: 'Yeedi salon', model: 'yeedi 2 hybrid', bot }] });
   await hub.start();
-  await new Promise((r) => setTimeout(r, 30));
+  await new Promise((r) => setTimeout(r, 60));
   return hub;
 }
 
@@ -126,8 +123,9 @@ test('contours de pièces allégés', () => {
   const many = Array.from({ length: 500 }, (_, i) => `${i},${i * 2}`).join(';');
   assert.equal(parseBoundary(many).length, 48);
   assert.deepEqual(parseBoundary('1,2;x,3;;4.6,5'), [[1, 2], [5, 5]]);
-  assert.deepEqual(roomsFromMaps(null), []);
-  assert.deepEqual(roomsFromMaps([{ mapSpotAreas: [{ mapSpotAreaID: 3, mapSpotAreaBoundaries: '0,0;1,1' }] }]), [], 'moins de 3 points : ignorée');
+  assert.equal(roomFromInfo(null), null);
+  assert.equal(roomFromInfo({ mapSpotAreaID: 3, mapSpotAreaBoundaries: '0,0;1,1' }), null, 'moins de 3 points : ignorée');
+  assert.deepEqual(roomFromInfo({ mapSpotAreaID: 3, mapSpotAreaName: 'B', mapSpotAreaBoundaries: '0,0;1,0;1,1' }), { id: '3', name: 'B', pts: [[0, 0], [1, 0], [1, 1]] });
 });
 
 test('robot muet : délai dépassé ; action ou robot inconnus refusés', async () => {
