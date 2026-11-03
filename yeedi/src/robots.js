@@ -34,8 +34,14 @@ const isError = (code) => !NO_ERROR.has(code) && !LINK_ERRORS.has(String(code));
 const REFRESH = ['GetBatteryState', 'GetCleanState', 'GetChargeState', 'GetCleanSpeed', 'GetWaterLevel', 'GetPosition'];
 
 /** « x,y;x,y;… » (millimètres) → [[x,y], …] arrondis, allégés à MAX_ROOM_POINTS points. */
-export function parseBoundary(text) {
-  const pts = String(text ?? '')
+export function parseBoundary(value) {
+  // Contour parfois livré décompressé en octets (tableau ou Buffer) au lieu d'un texte.
+  const text =
+    typeof value === 'string' ? value
+    : value && typeof value === 'object' && typeof value.length === 'number' ? Buffer.from(Array.from(value, (b) => b & 0xff)).toString('utf8')
+    : String(value ?? '');
+  const pts = text
+    .replace(/\s+/g, '')
     .split(';')
     .map((p) => p.split(',').map(Number))
     .filter((p) => p.length >= 2 && Number.isFinite(p[0]) && Number.isFinite(p[1]))
@@ -212,9 +218,20 @@ export class RobotHub {
       fresh({});
     });
     bot.on('MapSpotAreaInfo', (info) => {
-      if (String(info?.mapID) !== entry.map.mapId) return;
+      const raw = info?.mapSpotAreaBoundaries;
       const room = roomFromInfo(info);
+      // Diagnostic sans donnée sensible : pièce, carte, nombre de points, forme du contour reçu.
+      this.log('yeedi.room', {
+        robot: robot.name,
+        id: String(info?.mapSpotAreaID),
+        same_map: String(info?.mapID) === entry.map.mapId,
+        points: room?.pts.length ?? 0,
+        raw: Array.isArray(raw) ? 'array' : typeof raw,
+        raw_length: raw?.length ?? 0,
+      });
       if (!room) return;
+      // Carte en cours seulement ; une réponse sans référence de carte vaut pour la carte en cours.
+      if (info?.mapID != null && String(info.mapID) !== entry.map.mapId && entry.map.mapId) return;
       const i = entry.map.rooms.findIndex((r) => r.id === room.id);
       if (i >= 0) entry.map.rooms[i] = room;
       else entry.map.rooms.push(room);

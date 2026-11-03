@@ -138,6 +138,8 @@ test('contours de pièces allégés', () => {
   const many = Array.from({ length: 500 }, (_, i) => `${i},${i * 2}`).join(';');
   assert.equal(parseBoundary(many).length, 48);
   assert.deepEqual(parseBoundary('1,2;x,3;;4.6,5'), [[1, 2], [5, 5]]);
+  assert.deepEqual(parseBoundary([...Buffer.from('10,20;30,40;50,60')]), [[10, 20], [30, 40], [50, 60]], 'contour en octets');
+  assert.deepEqual(parseBoundary(Buffer.from('1,1; 2,2;\n3,3')), [[1, 1], [2, 2], [3, 3]]);
   assert.equal(roomFromInfo(null), null);
   assert.equal(roomFromInfo({ mapSpotAreaID: 3, mapSpotAreaBoundaries: '0,0;1,1' }), null, 'moins de 3 points : ignorée');
   assert.deepEqual(roomFromInfo({ mapSpotAreaID: 3, mapSpotAreaName: 'B', mapSpotAreaBoundaries: '0,0;1,0;1,1' }), { id: '3', name: 'B', pts: [[0, 0], [1, 0], [1, 1]] });
