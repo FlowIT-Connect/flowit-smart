@@ -300,7 +300,7 @@ test('getMapSet_V2 : contours des pièces lus dans « subsets » compressé', as
 
 test('onMapInfo_V2 : contours des pièces du yeedi (entrée « 2 », dans l\'ordre des pièces)', async () => {
   const json = JSON.stringify([
-    ['1', '0,0,1;10,0,1;10,10,1'],
+    ['1', '0;0,0,1;10,0,3-1-0;10,10,2'],
     ['2', '-2000,-1500;0,-1500;0,1500;-2000,1500;', '0,-1500;2000,-1500;2000,1500;0,1500;'],
     ['3', '1,1;2,2'],
   ]);
