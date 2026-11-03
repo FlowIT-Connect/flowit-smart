@@ -71,13 +71,20 @@ export function roomsFromMapInfoV2(payload) {
     return null;
   }
   if (!Array.isArray(list)) return null;
-  const entry = list.find((e) => Array.isArray(e) && String(e[0]) === '2');
+  // Entrée « 1 » : contour net de chaque pièce (murs, « x,y,? »), celui que montre l'appli yeedi.
+  // Entrée « 2 » : surface nettoyée (contour irrégulier), gardée en secours.
+  const find = (label) => list.find((e) => Array.isArray(e) && String(e[0]) === label)?.slice(1) ?? [];
+  const walls = find('1'), cleaned = find('2');
   const shape = { entries: list.length, labels: list.map((e) => (Array.isArray(e) ? String(e[0]) : shapeOf(e))).join(',') };
-  if (!entry) return { rooms: [], shape };
-  const rooms = entry.slice(1).map((v, i) => {
+  const read = (v) => {
     const pts = typeof v === 'string' ? parseBoundary(v) : [];
-    return { id: String(i), pts: pts.length >= 3 ? pts : [] };
-  });
+    return pts.length >= 3 ? pts : [];
+  };
+  const rooms = [];
+  for (let i = 0; i < Math.max(walls.length, cleaned.length); i++) {
+    const w = read(walls[i]);
+    rooms.push({ id: String(i), pts: w.length ? w : read(cleaned[i]) });
+  }
   return { rooms, shape };
 }
 
