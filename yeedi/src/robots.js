@@ -51,6 +51,37 @@ function shapeOf(v) {
 }
 
 /**
+ * Contours des pièces dans le message « onMapInfo_V2 » des robots yeedi (réponse à
+ * getMapInfo_V2) : « info » est un JSON compressé (lzma), tableau d'entrées [étiquette, …textes].
+ * L'entrée « 2 » donne un contour « x,y;… » par pièce, dans l'ordre des identifiants (0, 1, 2…).
+ * @returns {{rooms: {id:string, pts:number[][]}[], shape: object}|null} null si le message n'est pas exploitable
+ */
+export function roomsFromMapInfoV2(payload) {
+  const info = payload?.info;
+  if (typeof info !== 'string' || !info) return null;
+  // Réponse en plusieurs parties jamais vue : on ne lit qu'un message complet.
+  if (Number(payload.index ?? 0) > 0) return null;
+  const text = /^\s*\[/.test(info) ? info : decodeLzmaText(info, (t) => /^\s*\[/.test(t));
+  if (!text) return null;
+  if (payload.infoSize != null && Number(payload.infoSize) !== text.length) return null;
+  let list;
+  try {
+    list = JSON.parse(text);
+  } catch {
+    return null;
+  }
+  if (!Array.isArray(list)) return null;
+  const entry = list.find((e) => Array.isArray(e) && String(e[0]) === '2');
+  const shape = { entries: list.length, labels: list.map((e) => (Array.isArray(e) ? String(e[0]) : shapeOf(e))).join(',') };
+  if (!entry) return { rooms: [], shape };
+  const rooms = entry.slice(1).map((v, i) => {
+    const pts = typeof v === 'string' ? parseBoundary(v) : [];
+    return { id: String(i), pts: pts.length >= 3 ? pts : [] };
+  });
+  return { rooms, shape };
+}
+
+/**
  * Pièces de la réponse « getMapSet_V2 » (format des robots récents : « subsets » compressé,
  * une entrée par pièce). Le format exact varie selon les modèles : on prend l'identifiant en
  * tête d'entrée (ou mssid) et le plus long contour « x,y;x,y… » trouvé dans l'entrée.
@@ -313,6 +344,29 @@ export class RobotHub {
     if (!client || typeof client.handleMessagePayload !== 'function') return;
     const original = client.handleMessagePayload.bind(client);
     client.handleMessagePayload = async (command, payload) => {
+      if (/MapInfo_V2/i.test(String(command)) && payload?.info) {
+        try {
+          const res = roomsFromMapInfoV2(payload);
+          const sameMap = payload?.mid == null || !entry.map.mapId || String(payload.mid) === entry.map.mapId;
+          let drawn = 0;
+          if (res && sameMap) {
+            const known = new Set(entry.map.rooms.map((r) => r.id));
+            for (const r of res.rooms) {
+              // Seulement les pièces annoncées par la carte (identifiants 0, 1, 2…).
+              if (!r.pts.length || (known.size && !known.has(r.id))) continue;
+              drawn++;
+              const i = entry.map.rooms.findIndex((x) => x.id === r.id);
+              if (i >= 0) entry.map.rooms[i] = { ...entry.map.rooms[i], pts: r.pts };
+              else entry.map.rooms.push({ id: r.id, name: String.fromCharCode(65 + Number(r.id)), pts: r.pts });
+            }
+            entry.map.rooms.sort((a, b) => Number(a.id) - Number(b.id));
+          }
+          this.log('yeedi.mapinfo_v2', { robot: robot.name, type: payload?.type ?? null, same_map: sameMap, readable: !!res, rooms: res?.rooms.length ?? 0, drawn, ...(res?.shape ?? {}) });
+          if (drawn) fresh({});
+        } catch (err) {
+          this.log('yeedi.mapinfo_v2_failed', { robot: robot.name, error: err.message });
+        }
+      }
       if (/^_*(get|on)MapSet_V2/i.test(String(command)) && (payload?.type ?? 'ar') === 'ar') {
         try {
           const { rooms, shape } = roomsFromMapSetV2(payload?.subsets);
