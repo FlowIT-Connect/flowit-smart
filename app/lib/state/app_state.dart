@@ -907,6 +907,54 @@ class AppState extends ChangeNotifier {
     return _stableSort(scenes, _byLayout<Scene>(order, (s) => s.id));
   }
 
+  /// Pièces dans l'ordre choisi par l'utilisateur (sinon l'ordre du logement).
+  List<Room> get orderedRooms {
+    final order = layouts['rooms'];
+    if (order == null || order.isEmpty) return rooms;
+    return _stableSort(rooms, _byLayout<Room>(order, (r) => r.id));
+  }
+
+  /// Supprime une pièce : ses appareils vont d'abord dans [moveTo] (null : sans pièce),
+  /// puis la pièce est effacée et retirée des ordres enregistrés.
+  Future<bool> deleteRoom(Room room, {String? moveTo}) async {
+    if (moveTo == room.id) moveTo = null;
+    final inside = [for (final d in devices.values) if (d.roomId == room.id) d];
+    final ok = await run(() async {
+      // Sans pièce : la base s'en charge (room_id passe à null quand la pièce disparaît).
+      if (moveTo != null) {
+        for (final d in inside) {
+          await backend.updateDevice(d.id, roomId: moveTo);
+        }
+      }
+      await backend.deleteRoom(room.id);
+    });
+    if (!ok) {
+      unawaited(refreshHome(silent: true));
+      return false;
+    }
+    devices = {
+      for (final e in devices.entries) e.key: e.value.roomId == room.id ? e.value.copyWith(roomId: moveTo, clearRoom: moveTo == null) : e.value,
+    };
+    rooms = [for (final r in rooms) if (r.id != room.id) r];
+    final section = roomSection(room.id);
+    final order = layouts['rooms'];
+    layouts = {
+      for (final e in layouts.entries)
+        if (e.key != section) e.key: e.value,
+    };
+    if (order != null && order.contains(room.id)) {
+      unawaited(saveOrder('rooms', [for (final id in order) if (id != room.id) id]));
+    }
+    final target = moveTo == null ? tr('room.none') : (roomById(moveTo)?.name ?? tr('room.none'));
+    notify([
+      tr('room.deleted', {'name': room.name}),
+      if (inside.isNotEmpty) tr('room.devicesMoved', {'n': inside.length, 'room': target}),
+    ].join(' '));
+    notifyListeners();
+    unawaited(refreshHome(silent: true));
+    return true;
+  }
+
   /// Section d'ordre d'une pièce (null : appareils sans pièce).
   static String roomSection(String? roomId) => 'room:${roomId ?? 'none'}';
 

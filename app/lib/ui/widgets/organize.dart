@@ -71,6 +71,7 @@ class ReorderableTileGrid<T> extends StatefulWidget {
     this.enabled = true,
     this.maxCrossAxisExtent = 210,
     this.mainAxisExtent = 164,
+    this.childAspectRatio,
     this.spacing = 12,
     this.padding = const EdgeInsets.symmetric(horizontal: 16),
   });
@@ -87,6 +88,9 @@ class ReorderableTileGrid<T> extends StatefulWidget {
   final bool enabled;
   final double maxCrossAxisExtent;
   final double mainAxisExtent;
+
+  /// Largeur / hauteur des tuiles (remplace [mainAxisExtent] quand il est donné).
+  final double? childAspectRatio;
   final double spacing;
   final EdgeInsetsGeometry padding;
 
@@ -163,7 +167,8 @@ class _ReorderableTileGridState<T> extends State<ReorderableTileGrid<T>> {
           final s = widget.spacing;
           final cols = math.max(1, (box.maxWidth / (widget.maxCrossAxisExtent + s)).ceil());
           final w = (box.maxWidth - s * (cols - 1)) / cols;
-          final h = widget.mainAxisExtent;
+          final ratio = widget.childAspectRatio;
+          final h = ratio != null && ratio > 0 ? w / ratio : widget.mainAxisExtent;
           final rows = (_order.length / cols).ceil();
           final height = rows == 0 ? 0.0 : rows * h + (rows - 1) * s;
           final rtl = Directionality.of(context) == TextDirection.rtl;
@@ -316,7 +321,16 @@ class _WiggleState extends State<Wiggle> with SingleTickerProviderStateMixin {
 /// Cadre d'un écran organisable : affiche la barre « Organisation des appareils » en bas et,
 /// pendant un déplacement d'appareil, les pièces où le déposer.
 class OrganizeFrame extends StatelessWidget {
-  const OrganizeFrame({super.key, required this.controller, required this.child, this.onDropToRoom, this.currentRoomId, this.bottom = 16});
+  const OrganizeFrame({
+    super.key,
+    required this.controller,
+    required this.child,
+    this.onDropToRoom,
+    this.currentRoomId,
+    this.bottom = 16,
+    this.title = 'organize.title',
+    this.hint = 'organize.hint',
+  });
 
   final OrganizeController controller;
   final Widget child;
@@ -327,6 +341,10 @@ class OrganizeFrame extends StatelessWidget {
   /// Pièce affichée (pas proposée comme cible).
   final String? currentRoomId;
   final double bottom;
+
+  /// Clés de traduction du bandeau (« Organisation des appareils » par défaut).
+  final String title;
+  final String hint;
 
   @override
   Widget build(BuildContext context) => ListenableBuilder(listenable: controller, builder: (context, _) => _build(context));
@@ -353,7 +371,7 @@ class OrganizeFrame extends StatelessWidget {
                     _RoomTargets(currentRoomId: currentRoomId, onDrop: onDropToRoom!),
                     const SizedBox(height: 8),
                   ],
-                  OrganizeBar(onDone: controller.stop),
+                  OrganizeBar(onDone: controller.stop, title: title, hint: hint),
                 ]),
               ),
             ),
@@ -364,9 +382,11 @@ class OrganizeFrame extends StatelessWidget {
 }
 
 class OrganizeBar extends StatelessWidget {
-  const OrganizeBar({super.key, required this.onDone});
+  const OrganizeBar({super.key, required this.onDone, this.title = 'organize.title', this.hint = 'organize.hint'});
 
   final VoidCallback onDone;
+  final String title;
+  final String hint;
 
   @override
   Widget build(BuildContext context) {
@@ -380,8 +400,8 @@ class OrganizeBar extends StatelessWidget {
         const SizedBox(width: 10),
         Expanded(
           child: Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisSize: MainAxisSize.min, children: [
-            Text(context.tr('organize.title'), style: TextStyle(fontWeight: FontWeight.w800, color: f.ink)),
-            Text(context.tr('organize.hint'), maxLines: 2, overflow: TextOverflow.ellipsis, style: TextStyle(fontSize: 12, color: f.inkSoft)),
+            Text(context.tr(title), style: TextStyle(fontWeight: FontWeight.w800, color: f.ink)),
+            Text(context.tr(hint), maxLines: 2, overflow: TextOverflow.ellipsis, style: TextStyle(fontSize: 12, color: f.inkSoft)),
           ]),
         ),
         const SizedBox(width: 8),

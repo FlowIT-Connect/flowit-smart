@@ -69,7 +69,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
     final pinned = all.where((d) => d.isPinned).toList();
     final attention = all.where((d) => d.availability == Availability.unavailable).toList();
     final scenes = state.orderedScenes.where((s) => s.enabled).toList();
-    final rooms = state.rooms;
+    final rooms = state.orderedRooms;
 
     return OrganizeFrame(
       controller: _organize,

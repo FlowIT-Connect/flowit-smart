@@ -10,6 +10,7 @@ import '../../core/theme.dart';
 import '../../models/models.dart';
 import '../../state/app_state.dart';
 import '../widgets/common.dart';
+import '../widgets/room_removal.dart';
 import '../widgets/room_visual.dart';
 import 'device_detail.dart' show photoContentType;
 
@@ -138,15 +139,8 @@ class _RoomEditorScreenState extends State<RoomEditorScreen> {
   }
 
   Future<void> _delete() async {
-    final state = AppScope.read(context);
     final room = widget.room!;
-    final ok = await confirmDialog(context,
-        title: context.tr('room.deleteTitle', {'name': room.name}), message: context.tr('room.deleteMessage'), destructive: true, confirmLabel: context.tr('common.delete'));
-    if (!ok || !mounted) return;
-    if (await state.run(() => state.backend.deleteRoom(room.id))) {
-      await state.refreshHome(silent: true);
-      if (mounted) Navigator.of(context).pop();
-    }
+    if (await confirmRoomRemoval(context, room) && mounted) Navigator.of(context).pop();
   }
 
   @override

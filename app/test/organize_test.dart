@@ -3,6 +3,7 @@ import 'package:flowit_smart/data/demo_backend.dart';
 import 'package:flowit_smart/models/models.dart';
 import 'package:flowit_smart/state/app_state.dart';
 import 'package:flowit_smart/ui/screens/qr_device_flow_screen.dart';
+import 'package:flowit_smart/ui/widgets/room_visual.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -85,6 +86,45 @@ void main() {
       expect(excluded.single.name, 'Prise café');
       expect(await state.allowExcludedDevice(excluded.single), isTrue);
       expect(await state.loadExcludedDevices(), isEmpty);
+    });
+
+    test('pièces : ordre personnel, suppression avec déplacement des appareils', () async {
+      final backend = DemoBackend(latency: Duration.zero, liveSensors: false);
+      final state = await signedIn(backend);
+      expect(state.rooms.length, greaterThan(1));
+      final reversed = [for (final r in state.rooms.reversed) r.id];
+      await state.saveOrder('rooms', reversed);
+      expect([for (final r in state.orderedRooms) r.id], reversed);
+
+      final room = state.rooms.firstWhere((r) => state.devices.values.any((d) => d.roomId == r.id));
+      final target = state.rooms.firstWhere((r) => r.id != room.id);
+      final inside = [for (final d in state.devices.values) if (d.roomId == room.id) d.id];
+      await state.saveOrder(AppState.roomSection(room.id), inside);
+      expect(await state.deleteRoom(room, moveTo: target.id), isTrue);
+      expect(state.rooms.any((r) => r.id == room.id), isFalse);
+      for (final id in inside) {
+        expect(state.devices[id]!.roomId, target.id, reason: 'appareil rangé dans la pièce choisie');
+      }
+      expect(state.layouts['rooms'], isNot(contains(room.id)));
+      expect(state.layouts.containsKey(AppState.roomSection(room.id)), isFalse);
+      await state.refreshHome(silent: true);
+      expect(state.rooms.any((r) => r.id == room.id), isFalse, reason: 'supprimée sur le serveur');
+      for (final id in inside) {
+        expect(state.devices[id]!.roomId, target.id);
+      }
+    });
+
+    test('pièces : suppression sans destination, appareils gardés sans pièce', () async {
+      final backend = DemoBackend(latency: Duration.zero, liveSensors: false);
+      final state = await signedIn(backend);
+      final room = state.rooms.firstWhere((r) => state.devices.values.any((d) => d.roomId == r.id));
+      final inside = [for (final d in state.devices.values) if (d.roomId == room.id) d.id];
+      expect(await state.deleteRoom(room), isTrue);
+      await state.refreshHome(silent: true);
+      for (final id in inside) {
+        expect(state.devices.containsKey(id), isTrue);
+        expect(state.devices[id]!.roomId, isNull);
+      }
     });
   });
 
@@ -176,6 +216,61 @@ void main() {
       }
       await tester.tap(find.byKey(const ValueKey('organize-done')));
       await tester.pumpAndSettle();
+    });
+
+    testWidgets('pièces : appui long, déplacement, puis suppression avec confirmation', (tester) async {
+      final state = await pumpApp(tester);
+      await signIn(tester);
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Pièces').last);
+      await tester.pumpAndSettle();
+      final rooms = state.orderedRooms;
+      final first = rooms[0];
+      final second = rooms[1];
+      Finder card(String name) => find.ancestor(of: find.text(name).first, matching: find.byType(RoomPhotoCard)).first;
+
+      final gesture = await longPressDrag(tester, card(first.name));
+      expect(find.text('Organisation des pièces'), findsOneWidget);
+      await gesture.moveTo(tester.getCenter(card(second.name)));
+      for (var i = 0; i < 6; i++) {
+        await tester.pump(const Duration(milliseconds: 60));
+      }
+      await gesture.up();
+      await tester.pump(const Duration(milliseconds: 300));
+      expect(state.layouts['rooms']!.indexOf(first.id), 1);
+      expect(state.orderedRooms.first.id, second.id);
+
+      // Poubelle : confirmation, Annuler puis Supprimer en rangeant les appareils.
+      final inside = [for (final d in state.devices.values) if (d.roomId == first.id) d.id];
+      await tester.tap(find.byKey(ValueKey('remove-${first.id}')));
+      await tester.pump(const Duration(milliseconds: 300));
+      expect(find.text('Voulez-vous vraiment supprimer cette pièce de votre installation SOLEA ?'), findsOneWidget);
+      await tester.tap(find.byKey(const ValueKey('room-remove-cancel')));
+      await tester.pump(const Duration(milliseconds: 300));
+      expect(state.rooms.any((r) => r.id == first.id), isTrue);
+
+      await tester.tap(find.byKey(ValueKey('remove-${first.id}')));
+      await tester.pump(const Duration(milliseconds: 300));
+      if (inside.isNotEmpty) {
+        await tester.tap(find.byKey(const ValueKey('room-remove-target')));
+        await tester.pump(const Duration(milliseconds: 500));
+        await tester.tap(find.text(second.name).last);
+        await tester.pump(const Duration(milliseconds: 500));
+      }
+      await tester.tap(find.byKey(const ValueKey('room-remove-confirm')));
+      for (var i = 0; i < 5; i++) {
+        await tester.pump(const Duration(milliseconds: 100));
+      }
+      expect(state.rooms.any((r) => r.id == first.id), isFalse);
+      for (final id in inside) {
+        expect(state.devices[id]!.roomId, second.id);
+      }
+      for (var i = 0; i < 40; i++) {
+        await tester.pump(const Duration(milliseconds: 500));
+      }
+      await tester.tap(find.byKey(const ValueKey('organize-done')));
+      await tester.pumpAndSettle();
+      expect(find.text('Organisation des pièces'), findsNothing);
     });
 
     Future<AppState> openFlow(WidgetTester tester, String raw) async {
