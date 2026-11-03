@@ -15,6 +15,8 @@ const AREAS = {
 
 /** Robot simulé : répond aux commandes comme le cloud yeedi (messages d'état après coup). */
 class FakeBot extends EventEmitter {
+  vacBotCommand = { GetMapInfo_V2: class { name = 'getMapInfo_V2'; } };
+
   constructor() {
     super();
     this.sent = [];
@@ -43,7 +45,7 @@ class FakeBot extends EventEmitter {
       later('DeebotPosition', '120,-340,90');
       later('ChargePosition', '0,0,0');
     }
-    if (cmd === 'GetMaps') later('Maps', MAPS);
+    if (cmd === 'GetMaps' && !this.v2Only) later('Maps', MAPS);
     if (cmd === 'GetSpotAreas') later('MapSpotAreas', { mapID: args[0], mapSpotAreas: Object.keys(AREAS).map((id) => ({ mapSpotAreaID: id })) });
     // Réponses dans le désordre, comme sur le vrai robot.
     if (cmd === 'GetSpotAreaInfo') setTimeout(() => this.emit('MapSpotAreaInfo', { mapID: args[0], mapSpotAreaID: args[1], ...AREAS[args[1]] }), args[1] === '0' ? 9 : 3);
@@ -55,6 +57,11 @@ class FakeBot extends EventEmitter {
       this.speed = args[0];
       later('CleanSpeed', args[0]);
     }
+  }
+  /** Comme un robot yeedi : ne répond qu'à getMapInfo_V2 (pas à GetMaps). */
+  sendCommand(cmd) {
+    this.sent.push(['sendCommand', cmd.name]);
+    if (this.v2Only && cmd.name === 'getMapInfo_V2') setTimeout(() => this.emit('Maps', MAPS), 5);
   }
   async disconnectAsync() {}
 }
@@ -117,6 +124,14 @@ test('pièces, zone et débit d\'eau : confirmés par le mode de nettoyage du ro
   assert.equal((await hub.command('r1', { rooms: [] }, 50)).status, 'failed');
   assert.equal((await hub.command('r1', { zone: [1, 2, 3] }, 50)).error, 'Zone invalide');
   assert.equal((await hub.command('r1', { water: 'déluge' }, 50)).status, 'failed');
+});
+
+test('robot yeedi qui ne répond qu\'à getMapInfo_V2 : carte quand même', async () => {
+  const bot = new FakeBot();
+  bot.v2Only = true;
+  const hub = await hubWith(bot);
+  assert.deepEqual(hub.list()[0].map.rooms.map((r) => r.id), ['0', '1']);
+  assert.equal(bot.sent.filter((c) => c[0] === 'GetSpotAreas').length, 1, 'pas de doublon');
 });
 
 test('contours de pièces allégés', () => {

@@ -136,8 +136,14 @@ export class RobotHub {
    * il n'est jamais livré quand la réponse des murs virtuels arrive en dernier.
    */
   #askMap(entry) {
+    const bot = entry.robot.bot;
     try {
-      entry.robot.bot.run('GetMaps');
+      bot.run('GetMaps');
+      // Les robots yeedi (compte yeedi.com) répondent souvent seulement à « getMapInfo_V2 » ;
+      // la bibliothèque ne l'envoie que pour deux modèles. On le demande aussi.
+      const V2 = bot.vacBotCommand?.GetMapInfo_V2;
+      if (V2 && typeof bot.sendCommand === 'function') bot.sendCommand(new V2());
+      this.log('yeedi.map_asked', { robot: entry.robot.name });
     } catch (err) {
       this.log('yeedi.map_failed', { robot: entry.robot.name, error: err.message });
     }
@@ -181,7 +187,10 @@ export class RobotHub {
       const current = maps.find((m) => m?.mapIsCurrentMap) ?? maps[0];
       this.log('yeedi.maps', { robot: robot.name, maps: maps.length, current: current?.mapID ?? null });
       if (!current) return;
-      entry.map.mapId = String(current.mapID);
+      const mapId = String(current.mapID);
+      if (entry.map.mapId === mapId && Date.now() - (entry.map.askedAt ?? 0) < 5_000) return; // doublon GetMaps / V2
+      entry.map.mapId = mapId;
+      entry.map.askedAt = Date.now();
       try {
         bot.run('GetSpotAreas', entry.map.mapId);
       } catch (err) {
