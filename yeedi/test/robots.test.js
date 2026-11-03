@@ -300,13 +300,14 @@ test('getMapSet_V2 : contours des pièces lus dans « subsets » compressé', as
 
 test('onMapInfo_V2 : contours des pièces du yeedi (entrée « 2 », dans l\'ordre des pièces)', async () => {
   const json = JSON.stringify([
-    ['1', '0,0,1;10,0,1;10,10,1'],
+    ['1', '0;0,0,1;10,0,3-1-0;10,10,2'],
     ['2', '-2000,-1500;0,-1500;0,1500;-2000,1500;', '0,-1500;2000,-1500;2000,1500;0,1500;'],
     ['3', '1,1;2,2'],
   ]);
   const info = await ecoLzma(json);
   const res = roomsFromMapInfoV2({ mid: '1', type: '0', index: 0, infoSize: json.length, info });
-  assert.deepEqual(res.rooms.map((r) => [r.id, r.pts.length]), [['0', 4], ['1', 4]]);
+  assert.deepEqual(res.rooms.map((r) => [r.id, r.pts.length]), [['0', 3], ['1', 4]], 'murs (entrée 1) d\'abord, surface nettoyée sinon');
+  assert.deepEqual(res.rooms[0].pts, [[0, 0], [10, 0], [10, 10]], 'troisième valeur ignorée');
   assert.equal(res.shape.labels, '1,2,3');
   assert.equal(roomsFromMapInfoV2({ info, index: 1 }), null, 'partie suivante ignorée');
   assert.equal(roomsFromMapInfoV2({ info, infoSize: 3 }), null, 'taille incohérente ignorée');
@@ -320,7 +321,7 @@ test('onMapInfo_V2 : contours des pièces du yeedi (entrée « 2 », dans l\'ord
   await hub.start();
   await new Promise((r) => setTimeout(r, 80));
   const [r] = hub.list();
-  assert.deepEqual(r.map.rooms.map((x) => [x.id, x.pts.length]), [['0', 4], ['1', 4]]);
+  assert.deepEqual(r.map.rooms.map((x) => [x.id, x.pts.length]), [['0', 3], ['1', 4]]);
   assert.equal(r.map.rooms[0].name, 'Living room', 'nom de la fiche gardé');
   const log = logs.find(([e]) => e === 'yeedi.mapinfo_v2')?.[1];
   assert.equal(log.drawn, 2);
