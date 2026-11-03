@@ -9,6 +9,8 @@ import '../../state/app_state.dart';
 import '../widgets/common.dart';
 import '../widgets/device_controls.dart';
 import '../widgets/device_visual.dart';
+import '../widgets/organize.dart';
+import 'add_device_menu.dart';
 import '../widgets/weather_widgets.dart';
 import 'device_detail.dart';
 import '../widgets/home_modes_bar.dart';
@@ -17,10 +19,33 @@ import '../widgets/room_visual.dart';
 import 'rooms_screen.dart';
 
 /// Accueil : synthèse de la maison, scènes rapides, pièces, favoris, appareils à surveiller.
-class DashboardScreen extends StatelessWidget {
+class DashboardScreen extends StatefulWidget {
   const DashboardScreen({super.key, required this.onNavigate});
 
   final void Function(int index) onNavigate;
+
+  @override
+  State<DashboardScreen> createState() => _DashboardScreenState();
+}
+
+class _DashboardScreenState extends State<DashboardScreen> {
+  final _organize = OrganizeController();
+
+  void Function(int index) get onNavigate => widget.onNavigate;
+
+  @override
+  void initState() {
+    super.initState();
+    _organize.addListener(_onOrganize);
+  }
+
+  void _onOrganize() => setState(() {});
+
+  @override
+  void dispose() {
+    _organize.dispose();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -43,10 +68,18 @@ class DashboardScreen extends StatelessWidget {
     }
     final pinned = all.where((d) => d.isPinned).toList();
     final attention = all.where((d) => d.availability == Availability.unavailable).toList();
-    final scenes = state.scenes.where((s) => s.enabled).toList();
+    final scenes = state.orderedScenes.where((s) => s.enabled).toList();
     final rooms = state.rooms;
 
-    return CustomScrollView(slivers: [
+    return OrganizeFrame(
+      controller: _organize,
+      onDropToRoom: state.role.canConfigureDevices
+          ? (id, roomId) {
+              final d = state.devices[id];
+              if (d != null) state.moveDeviceToRoom(d, roomId);
+            }
+          : null,
+      child: CustomScrollView(slivers: [
       SliverToBoxAdapter(
         child: Padding(
           padding: const EdgeInsets.fromLTRB(16, 4, 16, 0),
@@ -82,7 +115,7 @@ class DashboardScreen extends StatelessWidget {
           ),
         )
       else
-        DeviceGrid(pinned),
+        OrganizableDeviceGrid(pinned, section: 'favorites', fromFavorites: true),
       if (attention.isNotEmpty) ...[
         SliverToBoxAdapter(child: SectionHeader(context.tr('dashboard.attention'))),
         SliverToBoxAdapter(
@@ -136,8 +169,9 @@ class DashboardScreen extends StatelessWidget {
           for (final r in rooms) RoomPhotoCard(key: ValueKey('home-room-${r.id}'), room: r, devices: state.devicesInRoom(r.id), onTap: () => openRoom(context, r.id)),
         ]),
       ],
-      const SliverToBoxAdapter(child: SizedBox(height: 32)),
-    ]);
+      SliverToBoxAdapter(child: SizedBox(height: _organize.editing ? 120 : 32)),
+    ]),
+    );
   }
 }
 
@@ -153,7 +187,16 @@ class _StatusPills extends StatelessWidget {
     final weather = AppScope.of(context).weather;
     final unavailable = devices.where((d) => d.availability == Availability.unavailable).length;
     final power = devices.where((d) => d.isOnline && d.state['power'] is num).fold<double>(0, (sum, d) => sum + (d.state['power'] as num));
+    final canAdd = AppScope.of(context).canManage;
     return Wrap(spacing: 8, runSpacing: 8, children: [
+      if (canAdd)
+        _HeroPill(
+          key: const ValueKey('add-device'),
+          icon: Icons.add_rounded,
+          label: context.tr('add.menu.button'),
+          onTap: () => showAddDeviceMenu(context),
+          strong: true,
+        ),
       if (weather != null)
         _HeroPill(
           icon: weatherIcon(weather),
@@ -173,7 +216,7 @@ class _StatusPills extends StatelessWidget {
 }
 
 class _HeroPill extends StatelessWidget {
-  const _HeroPill({required this.icon, required this.label, this.onTap, this.strong = false});
+  const _HeroPill({super.key, required this.icon, required this.label, this.onTap, this.strong = false});
 
   final IconData icon;
   final String label;

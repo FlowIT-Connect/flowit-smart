@@ -79,6 +79,29 @@ abstract class Backend {
   Future<List<Device>> listDevices(String homeId);
   Future<void> updateDevice(String deviceId, {String? name, String? roomId, bool clearRoom = false, bool? isPinned, bool? isHidden});
 
+  // --- Organisation et suppression des appareils
+  /// Ordres d'affichage de l'utilisateur connecté pour ce logement (section → identifiants).
+  /// Sections : favorites, devices, scenes, `room:<id>`, `room:none`.
+  Future<Map<String, List<String>>> getLayouts(String homeId);
+  Future<void> saveLayout(String homeId, String section, List<String> ids);
+
+  /// « Retirer de ma résidence » ([unlink] false, réversible) ou « Dissocier définitivement ».
+  /// Propriétaire ou administrateur ; nettoie favoris, scènes, zones climat, automatisations.
+  Future<DeviceRemoval> removeDevice(String deviceId, {required bool unlink});
+  Future<List<RemovedDevice>> listRemovedDevices(String homeId);
+  Future<void> restoreDevice(String deviceId);
+  Future<List<ExcludedDevice>> listExcludedDevices(String homeId);
+
+  /// Autorise de nouveau un appareil dissocié (la passerelle le recrée au prochain inventaire).
+  Future<void> allowExcludedDevice(String exclusionId);
+
+  /// Identité lue sur le QR code de l'appareil (repérage des doublons).
+  Future<void> setDeviceIdentity(String deviceId, {String? serialNumber, String? qrCodeType});
+
+  /// QR code lu (texte masqué) ; renvoie son identifiant, null si la base n'est pas à jour.
+  Future<String?> recordQrScan(String homeId, QrScanRecord scan);
+  Future<void> updateQrScan(String scanId, {String? status, bool reported = false, String? deviceId});
+
   /// Active (ou bloque) un appareil de sécurité : propriétaire uniquement, journalisé.
   Future<void> setDeviceSecurity(String deviceId, bool enabled);
 

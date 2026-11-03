@@ -10,7 +10,9 @@ import 'access_control.dart';
 import 'camera_view.dart';
 import 'live_video_view.dart';
 import 'common.dart';
+import 'device_removal.dart';
 import 'device_visual.dart';
+import 'organize.dart';
 
 String capabilityLabel(BuildContext context, String key) => context.tryTr('cap.$key') ?? key.replaceAll('_', ' ');
 
@@ -80,10 +82,13 @@ class CommandIndicator extends StatelessWidget {
 /// Allumé, l'appareil « s'illumine » : carte claire, pastille pleine à sa couleur
 /// et halo. Éteint ou hors ligne, il reste discret.
 class DeviceTile extends StatelessWidget {
-  const DeviceTile(this.device, {super.key, this.showRoom = true});
+  const DeviceTile(this.device, {super.key, this.showRoom = true, this.editing = false});
 
   final Device device;
   final bool showRoom;
+
+  /// Mode organisation : la tuile se déplace, un appui ne l'ouvre pas et ne la bascule pas.
+  final bool editing;
 
   @override
   Widget build(BuildContext context) {
@@ -111,7 +116,7 @@ class DeviceTile extends StatelessWidget {
       ),
       clipBehavior: Clip.antiAlias,
       child: InkWell(
-        onTap: () => showDeviceDetail(context, d.id),
+        onTap: editing ? null : () => showDeviceDetail(context, d.id),
         child: Padding(
           padding: const EdgeInsetsDirectional.fromSTEB(14, 14, 10, 14),
           child: Column(
@@ -134,7 +139,7 @@ class DeviceTile extends StatelessWidget {
                     child: Switch(
                       materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
                       value: on,
-                      onChanged: !d.isOnline || d.isSensitive || (pending?.isWaiting ?? false)
+                      onChanged: editing || !d.isOnline || d.isSensitive || (pending?.isWaiting ?? false)
                           ? null
                           : (v) => state.sendCommand(d, 'switch', v),
                     ),
@@ -217,6 +222,36 @@ class DeviceGrid extends StatelessWidget {
           delegate: SliverChildBuilderDelegate((context, i) => DeviceTile(devices[i], showRoom: showRoom), childCount: devices.length),
         ),
       );
+}
+
+/// Grille d'appareils organisable : appui long pour déplacer (ordre propre à l'utilisateur,
+/// enregistré dans [section]), petite croix pour supprimer en mode organisation.
+class OrganizableDeviceGrid extends StatelessWidget {
+  const OrganizableDeviceGrid(this.devices, {super.key, required this.section, this.showRoom = true, this.fromFavorites = false, this.enabled = true});
+
+  final List<Device> devices;
+  final String section;
+  final bool showRoom;
+  final bool fromFavorites;
+
+  /// false : pas d'organisation (liste filtrée par une recherche, par ex.).
+  final bool enabled;
+
+  @override
+  Widget build(BuildContext context) {
+    final state = AppScope.of(context);
+    final canRemove = state.role.canManage || (fromFavorites && state.role.canConfigureDevices);
+    return ReorderableTileGrid<Device>(
+      key: ValueKey('grid-$section'),
+      items: state.ordered(section, devices),
+      idOf: (d) => d.id,
+      enabled: enabled,
+      itemBuilder: (context, d, editing) => DeviceTile(d, showRoom: showRoom, editing: editing),
+      onReorder: (ids) => state.saveOrder(section, ids),
+      onRemove: canRemove ? (d) => confirmDeviceRemoval(context, d, fromFavorites: fromFavorites) : null,
+      removeLabel: context.tr('remove.title'),
+    );
+  }
 }
 
 /// Contrôles d'un appareil, générés depuis ses capacités réelles (§5.3, §5.4).

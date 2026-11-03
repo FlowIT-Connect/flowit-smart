@@ -51,6 +51,8 @@ void main() {
     await tester.pumpAndSettle();
     await tester.tap(find.text('Ajouter un appareil'));
     await tester.pumpAndSettle();
+    await tester.tap(find.text('Ajouter manuellement'));
+    await tester.pumpAndSettle();
     await tester.tap(find.text('Climatisation et chauffage'));
     await tester.pumpAndSettle();
     await tester.tap(find.text('Climatiseur'));

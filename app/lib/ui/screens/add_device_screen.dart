@@ -21,7 +21,13 @@ enum _Phase { idle, scanning, installing, registering, waiting, done, failed }
 /// couplage hors de ses applications), puis repéré tout de suite par la passerelle.
 /// Dans les deux cas, la passerelle lui donne le nom et la pièce choisis ici.
 class AddDeviceScreen extends StatefulWidget {
-  const AddDeviceScreen({super.key});
+  const AddDeviceScreen({super.key, this.initialKind, this.initialName, this.initialRoomId});
+
+  /// Parcours ouvert directement : « tuya » (Smart Life) ou « lock » (serrure TTLock),
+  /// par ex. après la lecture d'un QR code. Renvoie l'identifiant de l'appareil ajouté.
+  final String? initialKind;
+  final String? initialName;
+  final String? initialRoomId;
 
   @override
   State<AddDeviceScreen> createState() => _AddDeviceScreenState();
@@ -43,7 +49,11 @@ class _AddDeviceScreenState extends State<AddDeviceScreen> {
   @override
   void initState() {
     super.initState();
-    AppScope.read(context).refreshPlan(); // compteur à jour avant de choisir
+    _kind = switch (widget.initialKind) { 'tuya' => _Kind.tuya, 'lock' => _Kind.lock, _ => null };
+    _name.text = widget.initialName ?? '';
+    final state = AppScope.read(context);
+    if (state.roomById(widget.initialRoomId) != null) _roomId = widget.initialRoomId;
+    state.refreshPlan(); // compteur à jour avant de choisir
   }
 
   @override
@@ -308,7 +318,7 @@ class _AddDeviceScreenState extends State<AddDeviceScreen> {
         ].join('\n'),
       ),
       const SizedBox(height: 16),
-      FilledButton(onPressed: () => Navigator.of(context).pop(), child: Text(context.tr('pair.finish'))),
+      FilledButton(onPressed: () => Navigator.of(context).pop(_deviceId), child: Text(context.tr('pair.finish'))),
       const SizedBox(height: 8),
       OutlinedButton(
         onPressed: () {

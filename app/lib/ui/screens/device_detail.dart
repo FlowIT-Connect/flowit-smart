@@ -8,6 +8,7 @@ import '../../models/models.dart';
 import '../../state/app_state.dart';
 import '../widgets/common.dart';
 import '../widgets/device_controls.dart';
+import '../widgets/device_removal.dart';
 import '../widgets/device_visual.dart';
 
 /// Ouvre la fiche d'un appareil (feuille modale, suit l'état en direct).
@@ -123,6 +124,17 @@ class DeviceDetail extends StatelessWidget {
               value: d.isHidden,
               onChanged: (v) => state.updateDevice(d, isHidden: v),
             ),
+            if (state.role.canManage)
+              ListTile(
+                key: const ValueKey('device-remove'),
+                leading: TileIcon(Icons.delete_outline_rounded, color: f.danger),
+                title: Text(context.tr('remove.title'), style: TextStyle(color: f.danger, fontWeight: FontWeight.w700)),
+                subtitle: Text(context.tr('remove.menuHelp')),
+                onTap: () async {
+                  final navigator = Navigator.of(context);
+                  if (await confirmDeviceRemoval(context, d) && state.devices[d.id] == null) navigator.maybePop();
+                },
+              ),
           ]),
       ],
     );

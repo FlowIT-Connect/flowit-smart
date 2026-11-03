@@ -127,6 +127,9 @@ class AppState extends ChangeNotifier {
   /// Offre du logement (null : base pas encore à jour, ou pas de logement).
   HomePlan? plan;
 
+  /// Ordre d'affichage choisi par l'utilisateur pour ce logement (section → identifiants).
+  Map<String, List<String>> layouts = const {};
+
   /// Exploitant Solea : voit la page « Paiements ».
   bool isPlatformAdmin = false;
   final Map<String, PendingCommand> pending = {};
@@ -363,6 +366,7 @@ class AppState extends ChangeNotifier {
     homeModes = HomeModes.none;
     climate = ClimateData.empty;
     plan = null;
+    layouts = const {};
     pending.clear();
     _photoCache.clear();
     weather = null;
@@ -393,6 +397,7 @@ class AppState extends ChangeNotifier {
       automations = results[3] as List<Automation>;
       sceneRuns = results[4] as List<SceneRun>;
       await refreshPlan(notify: false);
+      await _loadLayouts(h.id);
       await _loadHomeModes(h.id);
       await _loadClimate(h.id);
       loadError = null;
@@ -412,7 +417,7 @@ class AppState extends ChangeNotifier {
       case 'devices':
         final id = e.record['id'] as String?;
         if (id == null) return;
-        if (e.type == 'DELETE') {
+        if (e.type == 'DELETE' || e.record['removed_at'] != null) {
           devices = Map.of(devices)..remove(id);
         } else if (devices.containsKey(id)) {
           devices = Map.of(devices)..[id] = devices[id]!.mergeRow(e.record);
@@ -844,6 +849,213 @@ class AppState extends ChangeNotifier {
       notifyListeners();
     }
     return ok;
+  }
+
+  // ---------------------------------------------------------------- Organisation des appareils
+  String get _layoutCacheKey => 'layouts.${backend.currentUserId ?? '-'}.${home?.id ?? '-'}';
+
+  /// Ordre local d'abord (affichage immédiat, hors ligne), puis celui du serveur s'il répond.
+  Future<void> _loadLayouts(String homeId) async {
+    try {
+      final cached = (await SharedPreferences.getInstance()).getString(_layoutCacheKey);
+      if (cached != null && home?.id == homeId) layouts = _decodeLayouts(cached);
+    } catch (_) {
+      // Cache indisponible : l'ordre du serveur suffit.
+    }
+    try {
+      final remote = await backend.getLayouts(homeId);
+      if (home?.id != homeId) return;
+      // Le serveur fait foi ; une section jamais envoyée garde l'ordre local.
+      layouts = {...layouts, ...remote};
+    } on BackendException {
+      // Base pas encore à jour ou hors ligne : l'ordre local reste valable.
+    }
+  }
+
+  static Map<String, List<String>> _decodeLayouts(String json) {
+    final data = jsonDecode(json);
+    if (data is! Map) return const {};
+    return {for (final e in data.entries) if (e.value is List) e.key.toString(): [for (final id in e.value as List) id.toString()]};
+  }
+
+  /// Tri stable : à rang égal (éléments absents de l'ordre), l'ordre d'origine est gardé.
+  static List<T> _stableSort<T>(List<T> list, int Function(T, T) compare) {
+    final indexed = [for (var i = 0; i < list.length; i++) (i, list[i])];
+    indexed.sort((a, b) {
+      final c = compare(a.$2, b.$2);
+      return c != 0 ? c : a.$1.compareTo(b.$1);
+    });
+    return [for (final e in indexed) e.$2];
+  }
+
+  static int Function(T, T) _byLayout<T>(List<String>? order, String Function(T) idOf) {
+    final rank = {for (var i = 0; i < (order?.length ?? 0); i++) order![i]: i};
+    return (a, b) => (rank[idOf(a)] ?? 1 << 20).compareTo(rank[idOf(b)] ?? 1 << 20);
+  }
+
+  /// Appareils dans l'ordre choisi pour [section] ; les nouveaux viennent à la fin.
+  List<Device> ordered(String section, List<Device> list) {
+    final order = layouts[section];
+    if (order == null || order.isEmpty) return list;
+    return _stableSort(list, _byLayout<Device>(order, (d) => d.id));
+  }
+
+  /// Scènes dans l'ordre choisi par l'utilisateur.
+  List<Scene> get orderedScenes {
+    final order = layouts['scenes'];
+    if (order == null || order.isEmpty) return scenes;
+    return _stableSort(scenes, _byLayout<Scene>(order, (s) => s.id));
+  }
+
+  /// Section d'ordre d'une pièce (null : appareils sans pièce).
+  static String roomSection(String? roomId) => 'room:${roomId ?? 'none'}';
+
+  /// Enregistre un nouvel ordre : tout de suite à l'écran et sur le téléphone, puis sur le
+  /// serveur (une erreur réseau n'annule pas l'ordre affiché).
+  Future<void> saveOrder(String section, List<String> ids) async {
+    final h = home;
+    if (h == null) return;
+    layouts = {...layouts, section: List.unmodifiable(ids)};
+    notifyListeners();
+    try {
+      (await SharedPreferences.getInstance()).setString(_layoutCacheKey, jsonEncode(layouts));
+    } catch (_) {
+      // Cache indisponible : le serveur garde l'ordre.
+    }
+    try {
+      await backend.saveLayout(h.id, section, ids);
+    } on BackendException catch (e) {
+      if (e.code == 'network') _setOnline(false);
+    }
+  }
+
+  /// Déplace un appareil dans une autre pièce (glisser-déposer sur une pièce).
+  Future<bool> moveDeviceToRoom(Device d, String? roomId) async {
+    if (d.roomId == roomId) return true;
+    final ok = await updateDevice(d, roomId: roomId, clearRoom: roomId == null);
+    if (ok) {
+      final room = roomById(roomId)?.name ?? tr('room.none');
+      notify(tr('organize.moved', {'name': d.name, 'room': room}));
+    }
+    return ok;
+  }
+
+  // ---------------------------------------------------------------- Suppression des appareils
+  /// Retire l'appareil du logement ([unlink] false) ou le dissocie définitivement.
+  Future<DeviceRemoval?> removeDevice(Device d, {required bool unlink}) async {
+    DeviceRemoval? result;
+    final ok = await run(() async => result = await backend.removeDevice(d.id, unlink: unlink));
+    if (!ok) return null;
+    devices = Map.of(devices)..remove(d.id);
+    layouts = {
+      for (final e in layouts.entries) e.key: [for (final id in e.value) if (id != d.id) id],
+    };
+    final r = result!;
+    notify([
+      tr(unlink ? 'remove.doneUnlink' : 'remove.doneHome', {'name': d.name}),
+      if (r.automationsPaused > 0) tr('remove.automationsPaused', {'n': r.automationsPaused}),
+    ].join(' '));
+    notifyListeners();
+    // Scènes, zones climat et automatisations nettoyées par le serveur : on les relit.
+    unawaited(refreshHome(silent: true));
+    return r;
+  }
+
+  Future<List<RemovedDevice>> loadRemovedDevices() async {
+    final h = home;
+    if (h == null) return const [];
+    try {
+      return await backend.listRemovedDevices(h.id);
+    } on BackendException {
+      return const [];
+    }
+  }
+
+  Future<List<ExcludedDevice>> loadExcludedDevices() async {
+    final h = home;
+    if (h == null) return const [];
+    try {
+      return await backend.listExcludedDevices(h.id);
+    } on BackendException {
+      return const [];
+    }
+  }
+
+  Future<bool> restoreDevice(RemovedDevice d) async {
+    final ok = await run(() => backend.restoreDevice(d.id), success: tr('remove.restored', {'name': d.name}));
+    if (ok) await refreshHome(silent: true);
+    return ok;
+  }
+
+  Future<bool> allowExcludedDevice(ExcludedDevice d) =>
+      run(() => backend.allowExcludedDevice(d.id), success: tr('remove.allowed', {'name': d.name}));
+
+  // ---------------------------------------------------------------- QR codes
+  /// Appareil du logement portant ce numéro de série (doublon), s'il existe.
+  Device? deviceBySerial(String? serial) {
+    final s = serial?.trim().toUpperCase();
+    if (s == null || s.isEmpty) return null;
+    for (final d in devices.values) {
+      if (d.serialNumber?.toUpperCase() == s) return d;
+    }
+    return null;
+  }
+
+  /// Enregistre un QR code lu (texte déjà masqué). Silencieux : la lecture n'en dépend pas.
+  Future<String?> recordQrScan(QrScanRecord scan) async {
+    final h = home;
+    if (h == null) return null;
+    try {
+      return await backend.recordQrScan(h.id, scan);
+    } on BackendException {
+      return null;
+    }
+  }
+
+  Future<void> updateQrScan(String? scanId, {String? status, bool reported = false, String? deviceId}) async {
+    if (scanId == null) return;
+    try {
+      await backend.updateQrScan(scanId, status: status, reported: reported, deviceId: deviceId);
+    } on BackendException {
+      // Sans incidence sur l'appareil ajouté.
+    }
+  }
+
+  /// Signale un QR code non pris en charge à l'administrateur Solea.
+  Future<bool> reportQrScan(String? scanId, QrScanRecord scan) async {
+    final h = home;
+    if (h == null) return false;
+    if (scanId != null) {
+      return run(() => backend.updateQrScan(scanId, reported: true), success: tr('qrflow.reported'));
+    }
+    return run(() async {
+      await backend.recordQrScan(h.id, QrScanRecord(
+        rawPayload: scan.rawPayload,
+        qrCodeType: scan.qrCodeType,
+        parserType: scan.parserType,
+        recognitionStatus: scan.recognitionStatus,
+        manufacturer: scan.manufacturer,
+        productId: scan.productId,
+        model: scan.model,
+        serialNumber: scan.serialNumber,
+        protocol: scan.protocol,
+        reported: true,
+      ));
+    }, success: tr('qrflow.reported'));
+  }
+
+  /// Numéro de série lu sur le QR code, rangé sur l'appareil ajouté.
+  Future<void> setDeviceIdentity(String deviceId, {String? serialNumber, String? qrCodeType}) async {
+    try {
+      await backend.setDeviceIdentity(deviceId, serialNumber: serialNumber, qrCodeType: qrCodeType);
+      final d = devices[deviceId];
+      if (d != null && serialNumber != null) {
+        devices = Map.of(devices)..[deviceId] = d.copyWith(serialNumber: serialNumber);
+        notifyListeners();
+      }
+    } on BackendException {
+      // Base pas encore à jour : l'appareil fonctionne sans.
+    }
   }
 
   /// Active ou bloque un appareil de sécurité (serrure) : propriétaire uniquement.

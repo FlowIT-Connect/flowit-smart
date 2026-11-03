@@ -42,6 +42,13 @@ export class SupabaseStore {
     return check(await this.db.from('device_bindings').select('device_id, external_id').eq('integration_id', integrationId));
   }
 
+  /** Appareils dissociés depuis l'application : la passerelle ne les recrée pas (table absente : aucun). */
+  async listExclusions(integrationId) {
+    const { data, error } = await this.db.from('device_exclusions').select('external_id').eq('integration_id', integrationId);
+    if (error) return []; // base pas encore à jour
+    return data.map((r) => r.external_id);
+  }
+
   async createDevice(row, externalId, capabilities) {
     const device = check(await this.db.from('devices').insert(row).select('id').single());
     check(await this.db.from('device_bindings').insert({ device_id: device.id, integration_id: row.integration_id, external_id: externalId }));

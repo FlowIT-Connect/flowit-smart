@@ -212,6 +212,8 @@ void main() {
     await tester.pumpAndSettle();
     await tester.tap(find.text('Ajouter un appareil'));
     await tester.pumpAndSettle();
+    await tester.tap(find.text('Ajouter manuellement'));
+    await tester.pumpAndSettle();
     await tester.tap(find.text('Appareil Smart Life (Tuya)'));
     await tester.pumpAndSettle();
     await tester.enterText(find.byType(TextField).first, 'Prise bureau');
@@ -241,6 +243,8 @@ void main() {
     await tester.pumpAndSettle();
     await tester.tap(find.text('Ajouter un appareil'));
     await tester.pumpAndSettle();
+    await tester.tap(find.text('Ajouter manuellement'));
+    await tester.pumpAndSettle();
     await tester.tap(find.text('Serrure TTLock'));
     await tester.pumpAndSettle();
     expect(find.textContaining('app Android Solea'), findsOneWidget);
@@ -254,6 +258,8 @@ void main() {
     await tester.tap(find.text('Appareils').last);
     await tester.pumpAndSettle();
     await tester.tap(find.text('Ajouter un appareil'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Ajouter manuellement'));
     await tester.pumpAndSettle();
     expect(find.textContaining('Appareils : ${state.devices.length} / ${state.devices.length}'), findsOneWidget);
     await tester.tap(find.text('Appareil Smart Life (Tuya)'));

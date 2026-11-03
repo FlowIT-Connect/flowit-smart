@@ -7,6 +7,7 @@ export class MemoryStore {
     this.homes = new Map([[homeId, { id: homeId, timezone }]]);
     this.devices = new Map();
     this.bindings = [];
+    this.exclusions = [];
     this.capabilities = [];
     this.commands = [];
     this.automations = [];
@@ -63,6 +64,7 @@ export class MemoryStore {
     Object.assign(i, { status, last_error: lastError }, lastSyncAt ? { last_sync_at: lastSyncAt } : {});
   }
   async listBindings(integrationId) { return this.bindings.filter((b) => b.integration_id === integrationId); }
+  async listExclusions(integrationId) { return this.exclusions.filter((x) => x.integration_id === integrationId).map((x) => x.external_id); }
   async setWaitingDevices(homeId, count) { this.waiting.set(homeId, count); }
   async createDevice(row, externalId, caps) {
     const limit = this.deviceLimit;
