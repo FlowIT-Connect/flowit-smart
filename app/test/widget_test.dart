@@ -232,6 +232,51 @@ void main() {
     await tester.pump(const Duration(seconds: 3));
   });
 
+  testWidgets('robot aspirateur : plan du logement seul, cadré sur la carte, pièces choisies dessous', (tester) async {
+    final state = await pumpApp(tester);
+    await signIn(tester);
+    final robot = state.devices.values.firstWhere((d) => d.name == 'Robot aspirateur');
+    // Comme le yeedi de Baziz : un seul contour (le logement) pour 5 pièces, robot loin du plan.
+    state.devices = Map.of(state.devices)
+      ..[robot.id] = robot.copyWith(state: {
+        ...robot.state,
+        'vacuum_map': {
+          'rooms': [
+            {'id': '0', 'name': 'A', 'pts': [[0, 0], [6000, 0], [6000, 4000], [0, 4000]]},
+            for (final id in ['1', '2', '3', '4']) {'id': id, 'name': String.fromCharCode(65 + int.parse(id)), 'pts': []},
+          ],
+          'bot': [-40000, -40000],
+          'charger': [-40000, -39800],
+        },
+      });
+    await tester.tap(find.text('Appareils').last);
+    await tester.pumpAndSettle();
+    await tester.enterText(find.byType(TextField).first, 'robot');
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Robot aspirateur'));
+    await tester.pumpAndSettle();
+    final chips = find.byKey(const ValueKey('vacuum-room-2'));
+    await tester.scrollUntilVisible(chips, 200, scrollable: find.byType(Scrollable).last);
+    await tester.pumpAndSettle();
+    for (final id in ['0', '1', '2', '3', '4']) {
+      expect(find.byKey(ValueKey('vacuum-room-$id')), findsOneWidget, reason: 'les 5 pièces se choisissent sous la carte');
+    }
+    expect(find.byType(SegmentedButton<String>), findsNothing, reason: 'pas de zone tant que le plan est approximatif');
+    final painter = tester.widget<CustomPaint>(
+      find.byWidgetPredicate((w) => w is CustomPaint && w.painter != null && w.painter.runtimeType.toString() == '_MapPainter'),
+    );
+    final mapBox = tester.getSize(find.byKey(const ValueKey('vacuum-map')));
+    // Plan de 6 m × 4 m (+ marges) qui remplit le cadre : bien plus que quelques pixels.
+    expect(mapBox.width, greaterThan(250));
+    expect(painter.painter, isNotNull);
+    await tester.tap(chips);
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Nettoyer 1 pièce'));
+    await tester.pump(const Duration(milliseconds: 400));
+    expect(state.pendingFor(robot.id, 'vacuum_clean')?.value, {'mode': 'rooms', 'rooms': ['2'], 'passes': 1});
+    await tester.pump(const Duration(seconds: 3));
+  });
+
   testWidgets('arabe : interface de droite à gauche sans débordement', (tester) async {
     await pumpApp(tester, locale: const Locale('ar'));
     await signIn(tester);
