@@ -48,7 +48,7 @@ class FakeBot extends EventEmitter {
     if (cmd === 'GetMaps' && !this.v2Only) later('Maps', MAPS);
     if (cmd === 'GetSpotAreas') later('MapSpotAreas', { mapID: args[0], mapSpotAreas: Object.keys(AREAS).map((id) => ({ mapSpotAreaID: id })) });
     // Réponses dans le désordre, comme sur le vrai robot.
-    if (cmd === 'GetSpotAreaInfo') setTimeout(() => this.emit('MapSpotAreaInfo', { mapID: args[0], mapSpotAreaID: args[1], ...AREAS[args[1]] }), args[1] === '0' ? 9 : 3);
+    if (cmd === 'GetSpotAreaInfo') setTimeout(() => this.emit('MapSpotAreaInfo', { mapID: args[0], mapSpotAreaID: args[1], ...AREAS[args[1]], ...(this.noOutline ? { mapSpotAreaBoundaries: '' } : {}) }), args[1] === '0' ? 9 : 3);
     if (cmd === 'SpotArea' || cmd === 'CustomArea') {
       later('ChargeState', 'idle');
       later('CleanReport', cmd === 'SpotArea' ? 'spot_area' : 'custom_area');
@@ -126,6 +126,15 @@ test('pièces, zone et débit d\'eau : confirmés par le mode de nettoyage du ro
   assert.equal((await hub.command('r1', { water: 'déluge' }, 50)).status, 'failed');
 });
 
+test('robot sans contour de pièces : pièces gardées (nom), nettoyage par pièce possible', async () => {
+  const bot = new FakeBot();
+  bot.noOutline = true;
+  const hub = await hubWith(bot);
+  const rooms = hub.list()[0].map.rooms;
+  assert.deepEqual(rooms.map((r) => [r.id, r.name, r.pts.length]), [['0', 'Living room', 0], ['1', 'Cuisine', 0]]);
+  assert.equal((await hub.command('r1', { rooms: ['1'] }, 500)).status, 'confirmed');
+});
+
 test('robot yeedi qui ne répond qu\'à getMapInfo_V2 : carte quand même', async () => {
   const bot = new FakeBot();
   bot.v2Only = true;
@@ -166,7 +175,7 @@ test('contours de pièces allégés', () => {
   assert.deepEqual(parseBoundary([...Buffer.from('10,20;30,40;50,60')]), [[10, 20], [30, 40], [50, 60]], 'contour en octets');
   assert.deepEqual(parseBoundary(Buffer.from('1,1; 2,2;\n3,3')), [[1, 1], [2, 2], [3, 3]]);
   assert.equal(roomFromInfo(null), null);
-  assert.equal(roomFromInfo({ mapSpotAreaID: 3, mapSpotAreaBoundaries: '0,0;1,1' }), null, 'moins de 3 points : ignorée');
+  assert.deepEqual(roomFromInfo({ mapSpotAreaID: 3, mapSpotAreaName: 'Kitchen', mapSpotAreaBoundaries: '' }), { id: '3', name: 'Kitchen', pts: [] }, 'sans contour : gardée, sans dessin');
   assert.deepEqual(roomFromInfo({ mapSpotAreaID: 3, mapSpotAreaName: 'B', mapSpotAreaBoundaries: '0,0;1,0;1,1' }), { id: '3', name: 'B', pts: [[0, 0], [1, 0], [1, 1]] });
 });
 

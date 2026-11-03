@@ -89,10 +89,15 @@ export function parsePosition(text) {
   return Number.isFinite(x) && Number.isFinite(y) ? [Math.round(x), Math.round(y)] : null;
 }
 
-/** Pièce Solea à partir d'un « MapSpotAreaInfo » de la bibliothèque (null si contour illisible). */
+/**
+ * Pièce Solea à partir d'un « MapSpotAreaInfo » de la bibliothèque (null sans identifiant).
+ * Certains robots yeedi n'envoient pas le contour : la pièce reste utilisable (pts vide),
+ * l'application la propose alors dans une liste au lieu de la dessiner.
+ */
 export function roomFromInfo(a) {
-  const room = { id: String(a?.mapSpotAreaID), name: String(a?.mapSpotAreaName ?? a?.mapSpotAreaID), pts: parseBoundary(a?.mapSpotAreaBoundaries) };
-  return room.pts.length >= 3 ? room : null;
+  if (a?.mapSpotAreaID == null || a.mapSpotAreaID === '') return null;
+  const pts = parseBoundary(a.mapSpotAreaBoundaries);
+  return { id: String(a.mapSpotAreaID), name: String(a.mapSpotAreaName ?? a.mapSpotAreaID), pts: pts.length >= 3 ? pts : [] };
 }
 
 /**
@@ -283,6 +288,13 @@ export class RobotHub {
       const ids = (data.mapSpotAreas ?? []).map((a) => String(a.mapSpotAreaID));
       this.log('yeedi.map', { robot: robot.name, rooms: ids.length });
       entry.map.rooms = entry.map.rooms.filter((r) => ids.includes(r.id));
+      // Pièce connue tout de suite (nom provisoire A, B…), complétée par sa fiche ensuite.
+      for (const id of ids) {
+        if (!entry.map.rooms.some((r) => r.id === id)) {
+          entry.map.rooms.push({ id, name: /^\d+$/.test(id) ? String.fromCharCode(65 + Number(id)) : id, pts: [] });
+        }
+      }
+      entry.map.rooms.sort((a, b) => Number(a.id) - Number(b.id));
       for (const id of ids) {
         try {
           bot.run('GetSpotAreaInfo', entry.map.mapId, id);
@@ -308,6 +320,7 @@ export class RobotHub {
       // Carte en cours seulement ; une réponse sans référence de carte vaut pour la carte en cours.
       if (info?.mapID != null && String(info.mapID) !== entry.map.mapId && entry.map.mapId) return;
       const i = entry.map.rooms.findIndex((r) => r.id === room.id);
+      if (i >= 0 && !room.pts.length) room.pts = entry.map.rooms[i].pts;
       if (i >= 0) entry.map.rooms[i] = room;
       else entry.map.rooms.push(room);
       entry.map.rooms.sort((a, b) => Number(a.id) - Number(b.id));

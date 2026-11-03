@@ -25,10 +25,13 @@ class VacuumRoom {
       for (final p in (r['pts'] as List?) ?? const []) {
         if (p is List && p.length >= 2 && p[0] is num && p[1] is num) pts.add(Offset((p[0] as num).toDouble(), (p[1] as num).toDouble()));
       }
-      if (pts.length >= 3) out.add(VacuumRoom('${r['id']}', '${r['name'] ?? r['id']}', pts));
+      // Pièce sans contour (certains robots yeedi) : gardée, proposée dans une liste.
+      out.add(VacuumRoom('${r['id']}', '${r['name'] ?? r['id']}', pts.length >= 3 ? pts : const []));
     }
     return out;
   }
+
+  bool get hasOutline => points.length >= 3;
 
   Offset get center {
     var x = 0.0, y = 0.0;
@@ -165,7 +168,11 @@ class _VacuumMapPanelState extends State<VacuumMapPanel> {
     final bot = _position(map, 'bot'), charger = _position(map, 'charger');
     _selected.removeWhere((id) => !rooms.any((r) => r.id == id));
     final hasMap = rooms.isNotEmpty;
-    final bounds = _bounds(rooms, [bot, charger]);
+    final drawn = rooms.where((r) => r.hasOutline).toList();
+    // Robot qui ne donne pas le dessin des pièces : liste des pièces, pas de zone à dessiner.
+    final listOnly = hasMap && drawn.isEmpty;
+    if (listOnly) _mode = 'rooms';
+    final bounds = _bounds(drawn, [bot, charger]);
     final ready = widget.enabled && (_mode == 'rooms' ? _selected.isNotEmpty : _zoneBigEnough);
 
     return Padding(
@@ -188,7 +195,7 @@ class _VacuumMapPanelState extends State<VacuumMapPanel> {
             Text(context.tr('vacuum.noMap'), style: Theme.of(context).textTheme.bodyMedium?.copyWith(color: f.inkSoft)),
           ] else ...[
             const SizedBox(height: 12),
-            if (_offers('rooms') && _offers('zone'))
+            if (!listOnly && _offers('rooms') && _offers('zone'))
               SegmentedButton<String>(
                 segments: [
                   ButtonSegment(value: 'rooms', icon: const Icon(Icons.meeting_room_rounded), label: Text(context.tr('vacuum.mode.rooms'))),
@@ -199,65 +206,81 @@ class _VacuumMapPanelState extends State<VacuumMapPanel> {
               ),
             const SizedBox(height: 10),
             Text(
-              context.tr(_mode == 'rooms' ? 'vacuum.hint.rooms' : 'vacuum.hint.zone'),
+              context.tr(listOnly ? 'vacuum.hint.list' : (_mode == 'rooms' ? 'vacuum.hint.rooms' : 'vacuum.hint.zone')),
               style: Theme.of(context).textTheme.bodySmall?.copyWith(color: f.inkSoft),
             ),
             const SizedBox(height: 8),
-            AspectRatio(
-              aspectRatio: (bounds.width / bounds.height).clamp(.8, 1.6),
-              child: ClipRRect(
-                borderRadius: BorderRadius.circular(18),
-                child: DecoratedBox(
-                  decoration: BoxDecoration(
-                    color: f.glass,
-                    border: Border.all(color: f.glassBorder),
-                    borderRadius: BorderRadius.circular(18),
-                  ),
-                  child: LayoutBuilder(
-                    builder: (context, box) {
-                      final frame = _MapFrame(bounds, box.biggest);
-                      final names = {for (final r in rooms) r.id: vacuumRoomName(context, r.name)};
-                      return GestureDetector(
-                        key: const ValueKey('vacuum-map'),
-                        behavior: HitTestBehavior.opaque,
-                        onTapUp: _mode == 'rooms'
-                            ? (e) {
-                                final p = frame.toMap(e.localPosition);
-                                for (final r in rooms.reversed) {
-                                  if ((Path()..addPolygon(r.points, true)).contains(p)) {
-                                    setState(() => _selected.contains(r.id) ? _selected.remove(r.id) : _selected.add(r.id));
-                                    return;
+            if (listOnly)
+              Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                children: [
+                  for (final r in rooms)
+                    FilterChip(
+                      key: ValueKey('vacuum-room-${r.id}'),
+                      avatar: const Icon(Icons.meeting_room_rounded, size: 18),
+                      label: Text(vacuumRoomName(context, r.name)),
+                      selected: _selected.contains(r.id),
+                      onSelected: (on) => setState(() => on ? _selected.add(r.id) : _selected.remove(r.id)),
+                    ),
+                ],
+              )
+            else
+              AspectRatio(
+                aspectRatio: (bounds.width / bounds.height).clamp(.8, 1.6),
+                child: ClipRRect(
+                  borderRadius: BorderRadius.circular(18),
+                  child: DecoratedBox(
+                    decoration: BoxDecoration(
+                      color: f.glass,
+                      border: Border.all(color: f.glassBorder),
+                      borderRadius: BorderRadius.circular(18),
+                    ),
+                    child: LayoutBuilder(
+                      builder: (context, box) {
+                        final frame = _MapFrame(bounds, box.biggest);
+                        final names = {for (final r in drawn) r.id: vacuumRoomName(context, r.name)};
+                        return GestureDetector(
+                          key: const ValueKey('vacuum-map'),
+                          behavior: HitTestBehavior.opaque,
+                          onTapUp: _mode == 'rooms'
+                              ? (e) {
+                                  final p = frame.toMap(e.localPosition);
+                                  for (final r in drawn.reversed) {
+                                    if ((Path()..addPolygon(r.points, true)).contains(p)) {
+                                      setState(() => _selected.contains(r.id) ? _selected.remove(r.id) : _selected.add(r.id));
+                                      return;
+                                    }
                                   }
                                 }
-                              }
-                            : null,
-                        onPanStart: _mode == 'zone'
-                            ? (e) => setState(() {
-                                _zoneStart = frame.toMap(e.localPosition);
-                                _zoneEnd = _zoneStart;
-                              })
-                            : null,
-                        onPanUpdate: _mode == 'zone' ? (e) => setState(() => _zoneEnd = frame.toMap(e.localPosition)) : null,
-                        child: CustomPaint(
-                          size: box.biggest,
-                          painter: _MapPainter(
-                            frame: frame,
-                            rooms: rooms,
-                            names: names,
-                            selected: _mode == 'rooms' ? _selected : const {},
-                            zone: _mode == 'zone' ? _zone : null,
-                            bot: bot,
-                            charger: charger,
-                            colors: f,
-                            textStyle: Theme.of(context).textTheme.labelMedium!,
+                              : null,
+                          onPanStart: _mode == 'zone'
+                              ? (e) => setState(() {
+                                  _zoneStart = frame.toMap(e.localPosition);
+                                  _zoneEnd = _zoneStart;
+                                })
+                              : null,
+                          onPanUpdate: _mode == 'zone' ? (e) => setState(() => _zoneEnd = frame.toMap(e.localPosition)) : null,
+                          child: CustomPaint(
+                            size: box.biggest,
+                            painter: _MapPainter(
+                              frame: frame,
+                              rooms: drawn,
+                              names: names,
+                              selected: _mode == 'rooms' ? _selected : const {},
+                              zone: _mode == 'zone' ? _zone : null,
+                              bot: bot,
+                              charger: charger,
+                              colors: f,
+                              textStyle: Theme.of(context).textTheme.labelMedium!,
+                            ),
                           ),
-                        ),
-                      );
-                    },
+                        );
+                      },
+                    ),
                   ),
                 ),
               ),
-            ),
             const SizedBox(height: 12),
             Wrap(
               spacing: 8,
