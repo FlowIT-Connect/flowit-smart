@@ -1,3 +1,4 @@
+import { parseMqttUrl } from './mqtt_client.js';
 import { parseCameras } from './adapters/direct_cameras.js';
 import { TTLOCK_DEFAULT_URL } from './adapters/ttlock_api.js';
 import { TUYA_REGIONS } from './adapters/tuya_api.js';
@@ -53,6 +54,15 @@ export function loadConfig(env = process.env) {
   const yeedi = env.YEEDI_URL?.trim()
     ? { url: env.YEEDI_URL.trim(), token: required(env, 'YEEDI_TOKEN').trim(), pollMs: int(env, 'YEEDI_POLL_SECONDS', 15) * 1000 }
     : null;
+  // Export vers Home Assistant par MQTT (facultatif) : actif dès que HA_MQTT_URL est renseigné.
+  const haMqtt = env.HA_MQTT_URL?.trim()
+    ? {
+        ...parseMqttUrl(env.HA_MQTT_URL.trim()),
+        prefix: env.HA_MQTT_DISCOVERY_PREFIX?.trim() || 'homeassistant',
+        base: env.HA_MQTT_TOPIC?.trim() || 'solea',
+      }
+    : null;
+  if (haMqtt && platform) throw new Error('HA_MQTT_URL : à utiliser sur la passerelle du logement, pas avec PLATFORM=true');
   return {
     supabaseUrl: required(env, 'SUPABASE_URL'),
     supabaseServiceKey: required(env, 'SUPABASE_SERVICE_ROLE_KEY'),
@@ -76,6 +86,7 @@ export function loadConfig(env = process.env) {
     cameras: parseCameras(env.CAMERAS),
     ttlock,
     yeedi,
+    haMqtt,
     video: video
       ? {
           mediamtxApiUrl: env.MEDIAMTX_API_URL?.trim() || 'http://127.0.0.1:9997',

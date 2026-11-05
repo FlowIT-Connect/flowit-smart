@@ -232,6 +232,8 @@ export class Bridge {
       this.devices.set(deviceId, {
         externalId: desc.externalId,
         name: desc.name,
+        vendor: desc.vendor,
+        model: desc.model,
         caps: new Map(desc.capabilities.map((c) => [c.capability_key, c])),
         isSensitive: desc.isSensitive || prev?.isSensitive || false,
         bleKey,
@@ -255,6 +257,7 @@ export class Bridge {
       }
     }
     log.info('bridge.inventory_synced', { devices: seen.size, ...(waiting ? { waiting } : {}) });
+    this.exporter?.inventory();
     return { waiting };
   }
 
@@ -266,6 +269,7 @@ export class Bridge {
     if (JSON.stringify(before) === JSON.stringify(snap.state) && dev.availability === snap.availability) return;
     dev.state = snap.state;
     dev.availability = snap.availability;
+    this.exporter?.state(deviceId);
     await this.store.updateDevice(deviceId, {
       state: snap.state,
       availability: snap.availability,
@@ -398,6 +402,22 @@ export class Bridge {
       this.inflightDevices.delete(cmd.device_id);
       if (cmd.scene_run_id) this.inflightRuns.delete(cmd.scene_run_id);
     }
+  }
+
+  /**
+   * Ordre venu de Home Assistant (export MQTT). Mêmes vérifications que l'application ;
+   * un appareil sensible (serrure) n'est jamais piloté depuis HA.
+   */
+  async executeLocal(deviceId, key, value) {
+    const dev = this.devices.get(deviceId);
+    if (!dev) return { status: 'rejected', error: 'Appareil inconnu' };
+    if (!this.enabled) return { status: 'rejected', error: 'Intégration désactivée' };
+    if (dev.isSensitive) return { status: 'rejected', error: 'Appareil sensible : à piloter depuis Solea' };
+    const invalid = validateValue(dev.caps.get(key), value);
+    if (invalid) return { status: 'rejected', error: invalid };
+    const result = await this.adapter.execute(dev.externalId, key, value, this.config.commandTimeoutMs);
+    if (result.status === 'confirmed') await this.onDeviceState(dev.externalId, this.adapter.snapshot(dev.externalId));
+    return result;
   }
 
   /**

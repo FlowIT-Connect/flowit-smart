@@ -10,6 +10,8 @@ import { TuyaClient } from './adapters/tuya_api.js';
 import { TuyaCloudAdapter } from './adapters/tuya_cloud.js';
 import { addYeedi, YeediClient } from './adapters/yeedi.js';
 import { Bridge } from './bridge.js';
+import { HaExporter } from './ha_export.js';
+import { MqttClient } from './mqtt_client.js';
 import { loadConfig } from './config.js';
 import { PlatformSupervisor } from './platform.js';
 import { applyAddonOptions } from './addon_options.js';
@@ -89,10 +91,31 @@ if (config.video) {
 
 const store = new SupabaseStore(config.supabaseUrl, config.supabaseServiceKey);
 const bridge = config.platform ? new PlatformSupervisor({ store, adapter, config }) : new Bridge({ store, adapter, config });
+if (config.haMqtt && !config.platform) {
+  const m = config.haMqtt;
+  const exporter = new HaExporter({
+    client: new MqttClient({
+      host: m.host,
+      port: m.port,
+      username: m.username,
+      password: m.password,
+      clientId: `solea-${config.integrationId.slice(0, 8)}`,
+      will: { topic: `${m.base}/bridge/status`, payload: 'offline', retain: true },
+    }),
+    prefix: m.prefix,
+    base: m.base,
+    devices: () => bridge.devices.entries(),
+    execute: (deviceId, key, value) => bridge.executeLocal(deviceId, key, value),
+  });
+  bridge.exporter = exporter;
+  exporter.start();
+  log.info('bridge.ha_mqtt', { broker: `${m.host}:${m.port}`, discovery: m.prefix });
+}
 if (config.platform) log.info('bridge.platform', { message: 'Passerelle unique : appareils attribués aux logements depuis Solea' });
 
 const shutdown = async (signal) => {
   log.info('bridge.stop', { signal });
+  bridge.exporter?.stop();
   await bridge.stop();
   process.exit(0);
 };
