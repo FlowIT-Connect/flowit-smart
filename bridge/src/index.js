@@ -1,6 +1,8 @@
 // FlowIT Bridge — point d'entrée.
 //   node --env-file=.env src/index.js        (ou docker compose up -d, ou npm run local)
 
+import { existsSync } from 'node:fs';
+
 import { addDirectCameras } from './adapters/direct_cameras.js';
 import { FakeHomeAssistant } from './adapters/fake_home_assistant.js';
 import { HomeAssistantAdapter } from './adapters/home_assistant.js';
@@ -10,9 +12,11 @@ import { TuyaClient } from './adapters/tuya_api.js';
 import { TuyaCloudAdapter } from './adapters/tuya_cloud.js';
 import { addYeedi, YeediClient } from './adapters/yeedi.js';
 import { Bridge } from './bridge.js';
+import { HaExporter } from './ha_export.js';
+import { MqttClient } from './mqtt_client.js';
 import { loadConfig } from './config.js';
 import { PlatformSupervisor } from './platform.js';
-import { applyAddonOptions } from './addon_options.js';
+import { applyAddonMqtt, applyAddonOptions, readAddonOptions, startAddonYeedi } from './addon_options.js';
 import { log, setLogLevel } from './log.js';
 import { simulatedFrame } from './png.js';
 import { SupabaseStore } from './store.js';
@@ -23,6 +27,12 @@ import { discoverDahua } from './udi/dahua/dhip.js';
 import { discoverOnvif, subnetFilter } from './udi/onvif/discovery.js';
 
 applyAddonOptions();
+// Module complémentaire en mode passerelle complète : broker MQTT de HA et robot yeedi.
+const addonOptions = readAddonOptions();
+await applyAddonMqtt(addonOptions);
+const addonYeedi = startAddonYeedi(addonOptions);
+// Réglages Home Assistant (HA_MQTT_URL…) dans un fichier à part, à côté de .env : facultatif.
+if (existsSync('homeassistant.env')) process.loadEnvFile('homeassistant.env');
 const config = loadConfig();
 setLogLevel(config.logLevel);
 config.runAutomations = process.env.RUN_AUTOMATIONS !== 'false';
@@ -89,10 +99,32 @@ if (config.video) {
 
 const store = new SupabaseStore(config.supabaseUrl, config.supabaseServiceKey);
 const bridge = config.platform ? new PlatformSupervisor({ store, adapter, config }) : new Bridge({ store, adapter, config });
+if (config.haMqtt && !config.platform) {
+  const m = config.haMqtt;
+  const exporter = new HaExporter({
+    client: new MqttClient({
+      host: m.host,
+      port: m.port,
+      username: m.username,
+      password: m.password,
+      clientId: `solea-${config.integrationId.slice(0, 8)}`,
+      will: { topic: `${m.base}/bridge/status`, payload: 'offline', retain: true },
+    }),
+    prefix: m.prefix,
+    base: m.base,
+    devices: () => bridge.devices.entries(),
+    execute: (deviceId, key, value) => bridge.executeLocal(deviceId, key, value),
+  });
+  bridge.exporter = exporter;
+  exporter.start();
+  log.info('bridge.ha_mqtt', { broker: `${m.host}:${m.port}`, discovery: m.prefix });
+}
 if (config.platform) log.info('bridge.platform', { message: 'Passerelle unique : appareils attribués aux logements depuis Solea' });
 
 const shutdown = async (signal) => {
   log.info('bridge.stop', { signal });
+  bridge.exporter?.stop();
+  addonYeedi?.stop();
   await bridge.stop();
   process.exit(0);
 };

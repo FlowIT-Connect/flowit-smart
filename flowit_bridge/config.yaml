@@ -1,9 +1,9 @@
-# Module complémentaire Home Assistant « FlowIT Bridge » : la passerelle bridge/ empaquetée
-# pour s'installer en quelques clics, sans Docker ni jeton Home Assistant à créer.
+# Module complémentaire Home Assistant « FlowIT Bridge » / passerelle Solea : la passerelle
+# bridge/ empaquetée pour s'installer en quelques clics sur la box, sans Docker ni PC allumé.
 name: FlowIT Bridge
-version: "1.1.0"
+version: "2.0.0"
 slug: flowit_bridge
-description: Relie Home Assistant à l'application FlowIT Smart
+description: Passerelle Solea sur la box (Smart Life, TTLock, robot yeedi) ou relie Home Assistant à Solea
 url: https://github.com/flowit-connect/flowit-smart
 arch:
   - aarch64
@@ -12,18 +12,34 @@ init: false
 startup: application
 boot: auto
 homeassistant_api: true
+services:
+  - mqtt:want
 options:
+  mode: home_assistant
   service_role_key: ""
   integration_id: ""
   supabase_url: https://qhzlmzfdbajulnymrwvg.supabase.co
-  simulator: false
   run_automations: true
   log_level: info
+  ha_mqtt: true
 schema:
+  mode: list(home_assistant|tuya_cloud|simulator)
   service_role_key: password
   integration_id: str
   supabase_url: url
-  simulator: bool
+  simulator: bool?
   run_automations: bool
   log_level: list(debug|info|warn|error)
   entity_filter: str?
+  ha_mqtt: bool
+  tuya_access_id: str?
+  tuya_access_secret: password?
+  tuya_region: list(eu|weu|us|eus|cn|in)?
+  ttlock_client_id: str?
+  ttlock_client_secret: password?
+  ttlock_username: str?
+  ttlock_password_md5: password?
+  yeedi_email: str?
+  yeedi_password_md5: password?
+  yeedi_country: str?
+  yeedi_domain: str?
