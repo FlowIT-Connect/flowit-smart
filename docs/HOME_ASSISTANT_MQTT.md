@@ -24,7 +24,7 @@ La carte du robot et le nettoyage par pièce restent dans Solea.
    passe (il sert seulement à MQTT).
 3. **Paramètres › Appareils et services** : Home Assistant propose l'intégration **MQTT**,
    cliquer sur **Configurer**.
-4. Dans le fichier `bridge\.env` de la passerelle, ajouter (adresse de Home Assistant) :
+4. Dans le fichier `bridge\.env` de la passerelle (ou un fichier `bridge\homeassistant.env`), ajouter (adresse de Home Assistant) :
 
    ```
    HA_MQTT_URL=mqtt://solea:MOTDEPASSE@192.168.1.50:1883

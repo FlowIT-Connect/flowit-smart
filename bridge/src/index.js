@@ -1,6 +1,8 @@
 // FlowIT Bridge — point d'entrée.
 //   node --env-file=.env src/index.js        (ou docker compose up -d, ou npm run local)
 
+import { existsSync } from 'node:fs';
+
 import { addDirectCameras } from './adapters/direct_cameras.js';
 import { FakeHomeAssistant } from './adapters/fake_home_assistant.js';
 import { HomeAssistantAdapter } from './adapters/home_assistant.js';
@@ -25,6 +27,8 @@ import { discoverDahua } from './udi/dahua/dhip.js';
 import { discoverOnvif, subnetFilter } from './udi/onvif/discovery.js';
 
 applyAddonOptions();
+// Réglages Home Assistant (HA_MQTT_URL…) dans un fichier à part, à côté de .env : facultatif.
+if (existsSync('homeassistant.env')) process.loadEnvFile('homeassistant.env');
 const config = loadConfig();
 setLogLevel(config.logLevel);
 config.runAutomations = process.env.RUN_AUTOMATIONS !== 'false';
