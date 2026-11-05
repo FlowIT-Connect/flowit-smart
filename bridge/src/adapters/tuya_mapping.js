@@ -24,6 +24,20 @@ const SENSORS = [
   [['add_ele'], 'energy', 'kWh'],
 ];
 
+const ALARMS = [
+  [['smoke_sensor_status', 'smoke_sensor_state'], 'smoke'],
+  [['watersensor_state', 'water_leak_state'], 'water_leak'],
+  [['gas_sensor_status', 'gas_sensor_state'], 'gas'],
+];
+/** Tuya : alarm / normal, ou '1' (alarme) / '2' (normal), ou booléen. */
+function alarmValue(v) {
+  if (typeof v === 'boolean') return v;
+  if (v === 'alarm' || v === '1' || v === 1) return true;
+  if (v === 'normal' || v === '2' || v === 2) return false;
+  return null;
+}
+const BATTERY_LEVELS = { low: 10, middle: 50, high: 100 };
+
 function parseValues(v) {
   if (v && typeof v === 'object') return v;
   try {
@@ -324,6 +338,27 @@ export function tuyaCapabilities(category, codes) {
   }
   if (has('pir')) {
     caps.push({ key: 'motion', type: 'sensor', writable: false, metadata: { kind: 'binary' }, read: (st) => (st.get('pir') === 'pir' ? true : st.get('pir') === 'none' ? false : null) });
+  } else if (has('presence_state')) {
+    // Détecteurs de présence Zigbee (radar) : presence, small_move, large_move… / none.
+    caps.push({
+      key: 'motion', type: 'sensor', writable: false, metadata: { kind: 'binary' },
+      read: (st) => {
+        const v = st.get('presence_state');
+        return v == null ? null : !['none', 'no_presence', 'nobody', 'peaceful'].includes(String(v));
+      },
+    });
+  }
+  // Alarmes (fumée, fuite d'eau, gaz) : true = alarme en cours.
+  for (const [codesList, key] of ALARMS) {
+    const code = codesList.find(has);
+    if (code) caps.push({ key, type: 'sensor', writable: false, metadata: { kind: 'binary' }, read: (st) => alarmValue(st.get(code)) });
+  }
+  // Luminosité ambiante (capteurs de lumière, détecteurs de présence).
+  const luxCode = firstCode(['illuminance_value', 'bright_value'], (k) => has(k) && !codes.get(k).writable && codes.get(k).type === 'Integer');
+  if (luxCode) caps.push({ key: 'illuminance', type: 'sensor', writable: false, ...scaled(luxCode, codes.get(luxCode), 'lx') });
+  // Pile sans pourcentage (beaucoup de capteurs Zigbee) : low / middle / high.
+  if (!caps.some((c) => c.key === 'battery') && has('battery_state')) {
+    caps.push({ key: 'battery', type: 'sensor', writable: false, metadata: { unit: '%', approximate: true }, read: (st) => BATTERY_LEVELS[String(st.get('battery_state'))] ?? null });
   }
   return { caps, sensitive };
 }

@@ -12,17 +12,43 @@ import { buildTuyaDevice, statusMap, tuyaSnapshot, tuyaStateMatches } from './tu
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
+/** Catégories Tuya des passerelles (Zigbee, Bluetooth, multi-protocoles). */
+const GATEWAY_CATEGORIES = new Set(['wg', 'wg2', 'wgsxj', 'wfcon', 'dgnzk', 'zigbee', 'gateway']);
+const GATEWAY_NAME = /gateway|passerelle|\bhub\b|zigbee|网关/i;
+
+/** Passerelle Smart Life susceptible d'avoir des sous-appareils ? */
+export function isTuyaGateway(dev) {
+  if (dev?.sub === true) return false;
+  return GATEWAY_CATEGORIES.has(dev?.category) || GATEWAY_NAME.test(`${dev?.product_name ?? ''} ${dev?.name ?? ''}`);
+}
+
+/**
+ * Spécification minimale déduite des états, quand Tuya refuse de donner la vraie
+ * (certains sous-appareils Zigbee) : lecture seule, rien n'est piloté à l'aveugle.
+ */
+export function specFromStatus(dev) {
+  const status = [];
+  for (const { code, value } of dev?.status ?? []) {
+    const type = typeof value === 'boolean' ? 'Boolean' : typeof value === 'number' ? 'Integer' : 'Enum';
+    status.push({ code, type, values: type === 'Enum' ? { range: [String(value)] } : {} });
+  }
+  return { category: dev?.category, functions: [], status };
+}
+
 export class TuyaCloudAdapter extends EventEmitter {
   /**
    * @param {{client:import('./tuya_api.js').TuyaClient, pollMs?:number, confirmPollMs?:number, inventoryEveryMs?:number}} opts
    */
-  constructor({ client, pollMs = 30_000, confirmPollMs = 1_000, inventoryEveryMs = 30 * 60_000, imageBase = null }) {
+  constructor({ client, pollMs = 30_000, confirmPollMs = 1_000, inventoryEveryMs = 30 * 60_000, subScanEveryMs = 2 * 60_000, imageBase = null }) {
     super();
     this.client = client;
     this.imageBase = imageBase;
     this.pollMs = pollMs;
     this.confirmPollMs = confirmPollMs;
     this.inventoryEveryMs = inventoryEveryMs;
+    this.subScanEveryMs = subScanEveryMs;
+    this.subDevices = new Map(); // tuyaId -> sous-appareil d'une passerelle (absent de la liste du compte)
+    this.lastSubScan = 0;
     this.inventory = new Map(); // externalId -> descripteur
     this.status = new Map(); // tuyaId -> Map(code -> value)
     this.online = new Map(); // tuyaId -> boolean
@@ -34,7 +60,7 @@ export class TuyaCloudAdapter extends EventEmitter {
   }
 
   async start() {
-    await this.#refreshInventory(await this.client.listDevices());
+    await this.#refreshInventory(await this.#listAll(true));
     this.#setConnected(true);
     this.timer = setInterval(() => this.#poll(), this.pollMs);
   }
@@ -58,6 +84,44 @@ export class TuyaCloudAdapter extends EventEmitter {
     this.emit('connection', ok);
   }
 
+  /**
+   * Appareils du compte + sous-appareils des passerelles (Zigbee…). Selon le compte et
+   * la région, Tuya ne renvoie pas toujours les sous-appareils dans la liste du compte :
+   * on interroge chaque passerelle (toutes les `subScanEveryMs`), puis on lit l'état
+   * des sous-appareils manquants un par un.
+   */
+  async #listAll(forceSubScan = false) {
+    const list = await this.client.listDevices();
+    const ids = new Set(list.map((d) => d.id));
+    const gateways = list.filter(isTuyaGateway);
+    if (gateways.length && (forceSubScan || Date.now() - this.lastSubScan > this.subScanEveryMs)) {
+      const next = new Map();
+      for (const gw of gateways) {
+        try {
+          const subs = await this.client.subDevices(gw.id);
+          for (const sub of subs) if (sub?.id && !ids.has(sub.id)) next.set(sub.id, { ...sub, gateway_id: gw.id });
+          log.info('tuya.gateway', { gateway: gw.id, category: gw.category, sub_devices: subs.length });
+        } catch (e) {
+          log.warn('tuya.sub_devices_failed', { gateway: gw.id, error: e.message });
+          for (const [id, sub] of this.subDevices) if (sub.gateway_id === gw.id) next.set(id, sub);
+        }
+      }
+      this.subDevices = next;
+      this.lastSubScan = Date.now();
+    }
+    for (const [id, sub] of this.subDevices) {
+      if (ids.has(id)) continue;
+      try {
+        const d = await this.client.device(id);
+        list.push({ ...sub, ...d, id, gateway_id: sub.gateway_id });
+      } catch (e) {
+        log.warn('tuya.sub_device_read_failed', { device: id, error: e.message });
+        list.push({ ...sub, status: sub.status ?? [] });
+      }
+    }
+    return list;
+  }
+
   async #refreshInventory(list) {
     const next = new Map();
     for (const dev of list) {
@@ -67,13 +131,15 @@ export class TuyaCloudAdapter extends EventEmitter {
           spec = await this.client.specifications(dev.id);
           this.specs.set(dev.id, spec);
         } catch (e) {
-          log.warn('tuya.specification_failed', { device: dev.id, error: e.message });
-          continue; // réessayé au prochain inventaire
+          // Réessayé au prochain inventaire ; en attendant, lecture seule d'après l'état.
+          log.warn('tuya.specification_failed', { device: dev.id, category: dev.category, error: e.message });
+          spec = specFromStatus(dev);
         }
       }
       const desc = buildTuyaDevice(dev, spec, { imageBase: this.imageBase });
       if (!desc.capabilities.length) {
-        log.info('tuya.device_ignored', { device: dev.id, category: dev.category, reason: 'aucune fonction reconnue' });
+        const codes = [...new Set([...(spec?.functions ?? []), ...(spec?.status ?? []), ...(dev.status ?? [])].map((f) => f.code))];
+        log.info('tuya.device_ignored', { device: dev.id, name: dev.name, category: dev.category, codes, reason: isTuyaGateway(dev) ? 'passerelle (ses appareils sont importés à part)' : 'aucune fonction reconnue' });
         continue;
       }
       next.set(desc.externalId, desc);
@@ -89,14 +155,14 @@ export class TuyaCloudAdapter extends EventEmitter {
 
   /** Relecture immédiate (ajout d'un appareil depuis l'application). */
   rescan() {
-    return this.#poll();
+    return this.#poll(true);
   }
 
-  async #poll() {
+  async #poll(forceSubScan = false) {
     if (this.polling) return;
     this.polling = true;
     try {
-      const list = await this.client.listDevices();
+      const list = await this.#listAll(forceSubScan);
       this.#setConnected(true);
       const known = new Set([...this.inventory.values()].map((d) => d.tuyaId));
       const ids = new Set(list.map((d) => d.id));

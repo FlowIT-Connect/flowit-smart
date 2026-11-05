@@ -133,6 +133,15 @@ export class TuyaClient {
     return all;
   }
 
+  /**
+   * Sous-appareils d'une passerelle (Zigbee, Bluetooth mesh…) : capteurs, interrupteurs
+   * Zigbee… Ils n'ont pas de Wi-Fi et passent par la passerelle Smart Life.
+   */
+  async subDevices(gatewayId) {
+    const r = await this.request('GET', `/v1.0/devices/${encodeURIComponent(gatewayId)}/sub-devices`);
+    return Array.isArray(r) ? r : r?.list ?? r?.devices ?? [];
+  }
+
   /** Fonctions pilotables et états lisibles d'un appareil (avec plages et échelles). */
   specifications(deviceId) {
     return this.request('GET', `/v1.0/devices/${encodeURIComponent(deviceId)}/specifications`);

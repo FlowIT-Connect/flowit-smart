@@ -70,7 +70,7 @@ DeviceKind deviceKind(Device d) {
   if (has('switch')) return DeviceKind.plug;
   if (has('contact')) return DeviceKind.door;
   if (has('motion')) return DeviceKind.motion;
-  if (has('temperature') || has('humidity')) return DeviceKind.sensor;
+  if (has('temperature') || has('humidity') || has('smoke') || has('water_leak') || has('gas') || has('illuminance')) return DeviceKind.sensor;
   return DeviceKind.other;
 }
 
@@ -140,6 +140,9 @@ IconData capabilityIcon(String key) => switch (key) {
       'contact' => Icons.sensor_door_rounded,
       'motion' => Icons.directions_walk_rounded,
       'illuminance' => Icons.light_mode_rounded,
+      'smoke' => Icons.local_fire_department_rounded,
+      'water_leak' => Icons.water_damage_rounded,
+      'gas' => Icons.gas_meter_rounded,
       'preset' => Icons.spa_rounded,
       'fan_mode' => Icons.air_rounded,
       'swing' || 'swing_mode' => Icons.swap_vert_rounded,

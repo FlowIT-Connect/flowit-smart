@@ -113,13 +113,20 @@ export class FakeTuyaCloud {
     if (accessToken !== this.token) return reply({ success: false, code: 1010, msg: 'token invalid' });
 
     if (u.pathname === '/v1.0/iot-01/associated-users/devices') {
-      const devices = [...this.devices.values()].map(({ spec, ...d }) => structuredClone(d));
+      // `hidden` : sous-appareil Zigbee que Tuya ne renvoie pas dans la liste du compte.
+      const devices = [...this.devices.values()].filter((d) => !d.hidden).map(({ spec, hidden, ...d }) => structuredClone(d));
       return reply({ success: true, result: { devices, has_more: false, last_row_key: '' } });
+    }
+    const sub = /^\/v1\.0\/devices\/([^/]+)\/sub-devices$/.exec(u.pathname);
+    if (sub) {
+      if (!this.devices.has(sub[1])) return reply({ success: false, code: 2001, msg: 'device not exist' });
+      const subs = [...this.devices.values()].filter((d) => d.gateway_id === sub[1]).map(({ id, name, category, online, product_name }) => ({ id, name, category, online, product_name }));
+      return reply({ success: true, result: subs });
     }
     const m = /^\/v1\.0\/devices\/([^/]+)(\/specifications|\/commands)?$/.exec(u.pathname);
     const dev = m && this.devices.get(m[1]);
     if (!dev) return reply({ success: false, code: 2001, msg: 'device not exist' });
-    if (m[2] === '/specifications') return reply({ success: true, result: dev.spec });
+    if (m[2] === '/specifications') return dev.spec ? reply({ success: true, result: dev.spec }) : reply({ success: false, code: 2008, msg: 'command or value not support' });
     if (m[2] === '/commands') {
       if (!dev.online) return reply({ success: false, code: 2009, msg: 'device is offline' });
       const { commands } = JSON.parse(init.body);
@@ -131,7 +138,7 @@ export class FakeTuyaCloud {
       }
       return reply({ success: true, result: true });
     }
-    const { spec, ...info } = dev;
+    const { spec, hidden, ...info } = dev;
     return reply({ success: true, result: structuredClone(info) });
   }
 }

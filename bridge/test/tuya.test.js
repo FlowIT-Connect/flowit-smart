@@ -3,7 +3,7 @@ import { createHash, createHmac } from 'node:crypto';
 import { afterEach, beforeEach, describe, test } from 'node:test';
 
 import { canonicalPath, sign, TuyaClient } from '../src/adapters/tuya_api.js';
-import { TuyaCloudAdapter } from '../src/adapters/tuya_cloud.js';
+import { isTuyaGateway, specFromStatus, TuyaCloudAdapter } from '../src/adapters/tuya_cloud.js';
 import { buildTuyaDevice, hexToHsv, hsvToHex, statusMap, tuyaSnapshot, tuyaStateMatches } from '../src/adapters/tuya_mapping.js';
 import { Bridge } from '../src/bridge.js';
 import { loadConfig } from '../src/config.js';
@@ -273,6 +273,86 @@ test('ajout depuis l\'application : relecture immédiate sans attendre l\'interr
   } finally {
     await bridge.stop();
   }
+});
+
+describe('Passerelle Zigbee Smart Life et ses sous-appareils', () => {
+  const fnz = (code, type, values = {}) => ({ code, type, values: JSON.stringify(values) });
+  const zigbeeHome = () => [
+    ...demoTuyaDevices().filter((d) => d.id === 'plug1'),
+    { id: 'gw1', name: 'Passerelle Zigbee', category: 'wg2', product_name: 'Zigbee Gateway', online: true, status: [], spec: { category: 'wg2', functions: [], status: [] } },
+    // Interrupteur Zigbee absent de la liste du compte : seule la passerelle le connaît.
+    {
+      id: 'zsw1', name: 'Interrupteur Zigbee', category: 'kg', product_name: 'Zigbee Switch', online: true, gateway_id: 'gw1', hidden: true,
+      status: [{ code: 'switch_1', value: false }], spec: { category: 'kg', functions: [fnz('switch_1', 'Boolean')], status: [fnz('switch_1', 'Boolean')] },
+    },
+    // Détecteur de fumée Zigbee, déjà dans la liste du compte (pas de doublon attendu).
+    {
+      id: 'zsmoke', name: 'Détecteur fumée', category: 'ywbj', product_name: 'Zigbee Smoke', online: true, gateway_id: 'gw1',
+      status: [{ code: 'smoke_sensor_status', value: 'normal' }, { code: 'battery_state', value: 'high' }],
+      spec: { category: 'ywbj', functions: [], status: [fnz('smoke_sensor_status', 'Enum', { range: ['alarm', 'normal'] }), fnz('battery_state', 'Enum', { range: ['low', 'middle', 'high'] })] },
+    },
+    // Capteur de fuite dont Tuya refuse la spécification : lecture seule d'après l'état.
+    { id: 'zleak', name: 'Fuite cuisine', category: 'sj', online: true, gateway_id: 'gw1', hidden: true, status: [{ code: 'watersensor_state', value: 'alarm' }], spec: null },
+  ];
+
+  let cloud, store, bridge;
+  beforeEach(async () => {
+    cloud = new FakeTuyaCloud(zigbeeHome());
+    store = new MemoryStore();
+    const client = new TuyaClient({ accessId: ACCESS_ID, accessSecret: ACCESS_SECRET, baseUrl: 'https://openapi.tuyaeu.com', fetchImpl: cloud.fetch });
+    bridge = new Bridge({
+      store,
+      adapter: new TuyaCloudAdapter({ client, pollMs: 50, confirmPollMs: 20, subScanEveryMs: 100 }),
+      config: { integrationId: 'integ-1', commandTimeoutMs: 400, pendingMaxAgeMs: 30_000, pollIntervalMs: 50, automationRefreshMs: 60_000, runAutomations: false },
+    });
+    await bridge.start();
+  });
+  afterEach(async () => {
+    await bridge.stop();
+  });
+
+  test('sous-appareils importés, passerelle elle-même ignorée, sans doublon', () => {
+    const names = [...store.devices.values()].map((d) => d.name).sort();
+    assert.deepEqual(names, ['Détecteur fumée', 'Fuite cuisine', 'Interrupteur Zigbee', 'Prise salon']);
+    assert.equal(store.deviceByName('Détecteur fumée').state.smoke, false);
+    assert.equal(store.deviceByName('Détecteur fumée').state.battery, 100);
+    assert.equal(store.deviceByName('Fuite cuisine').state.water_leak, true);
+  });
+
+  test('interrupteur Zigbee piloté et suivi comme un appareil Wi-Fi', async () => {
+    const sw = store.deviceByName('Interrupteur Zigbee');
+    const c = await store.insertCommand({ home_id: 'home-1', device_id: sw.id, capability_key: 'switch', value: true, idempotency_key: 'z1', requested_by: 'u1' });
+    assert.ok(await until(() => c.status === 'confirmed'), `statut ${c.status}`);
+    assert.deepEqual(cloud.commands.at(-1), { id: 'zsw1', commands: [{ code: 'switch_1', value: true }] });
+    cloud.setStatus('zsw1', 'switch_1', false);
+    assert.ok(await until(() => sw.state.switch === false));
+  });
+
+  test('nouvel appareil Zigbee ajouté à la passerelle : importé automatiquement', async () => {
+    cloud.devices.set('zsw2', { ...structuredClone(cloud.devices.get('zsw1')), id: 'zsw2', name: 'Interrupteur couloir' });
+    assert.ok(await until(() => store.deviceByName('Interrupteur couloir')));
+  });
+});
+
+test('passerelles reconnues, sous-appareils et appareils Wi-Fi exclus', () => {
+  assert.equal(isTuyaGateway({ category: 'wg2' }), true);
+  assert.equal(isTuyaGateway({ category: 'xx', product_name: 'Zigbee 3.0 Hub' }), true);
+  assert.equal(isTuyaGateway({ category: 'cz', name: 'Prise salon' }), false);
+  assert.equal(isTuyaGateway({ category: 'wg2', sub: true }), false);
+});
+
+test('capteurs Zigbee : présence, gaz, luminosité, spécification déduite', () => {
+  const desc = (category, list) => buildTuyaDevice({ id: 'x', category }, { category, functions: [], status: list.map(([code, type, , values]) => ({ code, type, values: JSON.stringify(values ?? {}) })) });
+  const presence = desc('hps', [['presence_state', 'Enum'], ['illuminance_value', 'Integer']]);
+  assert.deepEqual(presence.capabilities.map((c) => c.capability_key), ['motion', 'illuminance']);
+  assert.equal(tuyaSnapshot(presence, statusMap([{ code: 'presence_state', value: 'none' }, { code: 'illuminance_value', value: 320 }]), true).state.motion, false);
+  assert.equal(tuyaSnapshot(presence, statusMap([{ code: 'presence_state', value: 'presence' }]), true).state.motion, true);
+  const gas = desc('rqbj', [['gas_sensor_state', 'Enum']]);
+  assert.equal(tuyaSnapshot(gas, statusMap([{ code: 'gas_sensor_state', value: '1' }]), true).state.gas, true);
+  const spec = specFromStatus({ category: 'sj', status: [{ code: 'watersensor_state', value: 'normal' }, { code: 'battery_percentage', value: 80 }] });
+  assert.deepEqual(spec.functions, []);
+  const leak = buildTuyaDevice({ id: 'y' }, spec);
+  assert.deepEqual(tuyaSnapshot(leak, statusMap([{ code: 'watersensor_state', value: 'normal' }, { code: 'battery_percentage', value: 80 }]), true).state, { water_leak: false, battery: 80 });
 });
 
 test('configuration Tuya Cloud', () => {
