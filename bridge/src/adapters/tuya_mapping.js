@@ -24,6 +24,20 @@ const SENSORS = [
   [['add_ele'], 'energy', 'kWh'],
 ];
 
+const ALARMS = [
+  [['smoke_sensor_status', 'smoke_sensor_state'], 'smoke'],
+  [['watersensor_state', 'water_leak_state'], 'water_leak'],
+  [['gas_sensor_status', 'gas_sensor_state'], 'gas'],
+];
+/** Tuya : alarm / normal, ou '1' (alarme) / '2' (normal), ou booléen. */
+function alarmValue(v) {
+  if (typeof v === 'boolean') return v;
+  if (v === 'alarm' || v === '1' || v === 1) return true;
+  if (v === 'normal' || v === '2' || v === 2) return false;
+  return null;
+}
+const BATTERY_LEVELS = { low: 10, middle: 50, high: 100 };
+
 function parseValues(v) {
   if (v && typeof v === 'object') return v;
   try {
@@ -219,6 +233,66 @@ function climateCapabilities(codes, writable, has) {
   return caps;
 }
 
+// ---------------------------------------------------------------- Détecteurs de présence
+/** Codes Tuya des réglages, selon les fabricants (le premier présent est pris). */
+const PRESENCE_SETTINGS = [
+  // [clé FlowIT, codes possibles, unité par défaut]
+  ['sensitivity', ['sensitivity', 'presence_sensitivity', 'motion_sensitivity', 'sensitivity_level', 'move_sensitivity'], null],
+  ['detection_range', ['far_detection', 'detection_distance_max', 'maximum_range', 'max_distance', 'detection_range', 'large_motion_detection_distance'], 'm'],
+  ['detection_min', ['near_detection', 'detection_distance_min', 'minimum_range', 'min_distance'], 'm'],
+  ['presence_delay', ['fading_time', 'presence_delay', 'none_delay_time', 'presence_time', 'delay_time', 'hold_time', 'pir_delay', 'unmanned_delay', 'nobody_time'], 's'],
+];
+const ACTIVITY_CODES = ['human_motion_state', 'motion_state', 'person_state'];
+const DISTANCE_CODES = ['target_dis_closest', 'dis_current', 'target_distance', 'distance'];
+
+/** Unité Tuya → unité affichée (les distances en cm sont converties en m). */
+function presenceUnit(c, fallback) {
+  const u = String(c?.values?.unit ?? '').toLowerCase();
+  if (u === 'cm') return { unit: 'm', factor: 100 };
+  if (u === 'm' || u === 'meter') return { unit: 'm', factor: 1 };
+  if (u === 's' || u === 'sec' || u === 'second') return { unit: 's', factor: 1 };
+  if (u === 'min' || u === 'minute') return { unit: 'min', factor: 1 };
+  return { unit: fallback ?? (u || null), factor: 1 };
+}
+
+function presenceCapabilities(codes, writable, has) {
+  const caps = [];
+  for (const [key, list, fallbackUnit] of PRESENCE_SETTINGS) {
+    const code = list.find((k) => writable(k) && ['Integer', 'Enum'].includes(codes.get(k).type));
+    if (!code) continue;
+    const c = codes.get(code);
+    if (c.type === 'Enum') {
+      const options = enumRange(c);
+      if (options.length < 2) continue;
+      caps.push({ key, type: 'enum', writable: true, metadata: { options, setting: true }, read: (st) => (st.get(code) == null ? null : String(st.get(code))), write: (v) => [{ code, value: v }] });
+      continue;
+    }
+    const s = scaleOf(c);
+    const { unit, factor } = presenceUnit(c, fallbackUnit);
+    const div = s * factor;
+    const step = Math.max((Number(c.values.step) || 1) / div, 0.01);
+    caps.push({
+      key, type: 'number', writable: true,
+      metadata: { min: round((c.values.min ?? 0) / div, 2), max: round((c.values.max ?? 10) / div, 2), step: round(step, 2), ...(unit ? { unit } : {}), setting: true },
+      read: (st) => {
+        const v = num(st.get(code));
+        return v == null ? null : round(v / div, 2);
+      },
+      write: (v) => [{ code, value: Math.round(v * div) }],
+    });
+  }
+  const activity = ACTIVITY_CODES.find((k) => has(k) && codes.get(k).type === 'Enum');
+  if (activity) caps.push({ key: 'activity', type: 'sensor', writable: false, metadata: { kind: 'text' }, read: (st) => (st.get(activity) == null ? null : String(st.get(activity))) });
+  const distance = DISTANCE_CODES.find((k) => has(k) && codes.get(k).type === 'Integer');
+  if (distance) {
+    const c = codes.get(distance);
+    const { unit, factor } = presenceUnit(c, 'm');
+    const div = scaleOf(c) * factor;
+    caps.push({ key: 'target_distance', type: 'sensor', writable: false, metadata: { unit }, read: (st) => { const v = num(st.get(distance)); return v == null ? null : round(v / div, 2); } });
+  }
+  return caps;
+}
+
 function boolCap(key, code) {
   return { key, type: 'boolean', writable: true, metadata: {}, read: (st) => (typeof st.get(code) === 'boolean' ? st.get(code) : null), write: (v) => [{ code, value: v }] };
 }
@@ -324,6 +398,29 @@ export function tuyaCapabilities(category, codes) {
   }
   if (has('pir')) {
     caps.push({ key: 'motion', type: 'sensor', writable: false, metadata: { kind: 'binary' }, read: (st) => (st.get('pir') === 'pir' ? true : st.get('pir') === 'none' ? false : null) });
+  } else if (has('presence_state')) {
+    // Détecteurs de présence Zigbee (radar) : presence, small_move, large_move… / none.
+    caps.push({
+      key: 'motion', type: 'sensor', writable: false, metadata: { kind: 'binary' },
+      read: (st) => {
+        const v = st.get('presence_state');
+        return v == null ? null : !['none', 'no_presence', 'nobody', 'peaceful'].includes(String(v));
+      },
+    });
+  }
+  // Détecteurs de présence : activité, distance de la personne et réglages du capteur.
+  if (caps.some((c) => c.key === 'motion')) caps.push(...presenceCapabilities(codes, writable, has));
+  // Alarmes (fumée, fuite d'eau, gaz) : true = alarme en cours.
+  for (const [codesList, key] of ALARMS) {
+    const code = codesList.find(has);
+    if (code) caps.push({ key, type: 'sensor', writable: false, metadata: { kind: 'binary' }, read: (st) => alarmValue(st.get(code)) });
+  }
+  // Luminosité ambiante (capteurs de lumière, détecteurs de présence).
+  const luxCode = firstCode(['illuminance_value', 'bright_value'], (k) => has(k) && !codes.get(k).writable && codes.get(k).type === 'Integer');
+  if (luxCode) caps.push({ key: 'illuminance', type: 'sensor', writable: false, ...scaled(luxCode, codes.get(luxCode), 'lx') });
+  // Pile sans pourcentage (beaucoup de capteurs Zigbee) : low / middle / high.
+  if (!caps.some((c) => c.key === 'battery') && has('battery_state')) {
+    caps.push({ key: 'battery', type: 'sensor', writable: false, metadata: { unit: '%', approximate: true }, read: (st) => BATTERY_LEVELS[String(st.get('battery_state'))] ?? null });
   }
   return { caps, sensitive };
 }
@@ -354,6 +451,9 @@ export function buildTuyaDevice(device, spec, { imageBase = null } = {}) {
     imageUrl: productImageUrl(device.icon, imageBase),
     capabilities: [],
     capMap: {},
+    // Codes déclarés par l'appareil (plages comprises, aucune valeur) : pour diagnostiquer
+    // un appareil mal reconnu sans accès au cloud Tuya.
+    diagnostic: { category, codes: [...parseSpecification(spec)].map(([code, c]) => ({ code, type: c.type, writable: c.writable, ...(Object.keys(c.values ?? {}).length ? { values: c.values } : {}) })) },
   };
   for (const c of caps) {
     let key = c.key;

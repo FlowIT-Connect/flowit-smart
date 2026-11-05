@@ -672,8 +672,23 @@ class SupabaseBackend implements Backend {
             .from('event_logs')
             .select()
             .eq('home_id', homeId)
+            // Historique des détecteurs et diagnostics : affichés ailleurs, pas dans le journal.
+            .not('event_type', 'in', '(presence,device_diagnostic)')
             .order('created_at', ascending: false)
             .limit(limit);
+        return rows.map(EventLog.fromJson).toList();
+      });
+
+  @override
+  Future<List<EventLog>> listPresence(String deviceId, DateTime since) => _guard(() async {
+        final rows = await _client
+            .from('event_logs')
+            .select()
+            .eq('device_id', deviceId)
+            .eq('event_type', 'presence')
+            .gte('created_at', since.toUtc().toIso8601String())
+            .order('created_at', ascending: true)
+            .limit(1000);
         return rows.map(EventLog.fromJson).toList();
       });
 
