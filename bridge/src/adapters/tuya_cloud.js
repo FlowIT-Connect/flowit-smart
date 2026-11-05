@@ -49,6 +49,7 @@ export class TuyaCloudAdapter extends EventEmitter {
     this.subScanEveryMs = subScanEveryMs;
     this.subDevices = new Map(); // tuyaId -> sous-appareil d'une passerelle (absent de la liste du compte)
     this.lastSubScan = 0;
+    this.cloudIds = new Set(); // identifiants vus au dernier inventaire
     this.inventory = new Map(); // externalId -> descripteur
     this.status = new Map(); // tuyaId -> Map(code -> value)
     this.online = new Map(); // tuyaId -> boolean
@@ -147,6 +148,7 @@ export class TuyaCloudAdapter extends EventEmitter {
       this.online.set(dev.id, dev.online !== false);
     }
     this.inventory = next;
+    this.cloudIds = new Set(list.map((d) => d.id));
     this.lastInventory = Date.now();
     if (!list.length) log.warn('tuya.no_devices', { hint: 'Aucun appareil : liez le compte Smart Life au projet cloud (Devices > Link App Account) et vérifiez le data center' });
     log.info('tuya.inventory', { devices: next.size, cloud_devices: list.length });
@@ -164,7 +166,10 @@ export class TuyaCloudAdapter extends EventEmitter {
     try {
       const list = await this.#listAll(forceSubScan);
       this.#setConnected(true);
-      const known = new Set([...this.inventory.values()].map((d) => d.tuyaId));
+      // Tous les appareils vus au dernier inventaire, ignorés compris (passerelle, télécommande
+      // IR…) : sinon chaque interrogation refait l'inventaire et les changements d'état ne
+      // déclenchent plus les automatisations.
+      const known = this.cloudIds;
       const ids = new Set(list.map((d) => d.id));
       const changed = list.some((d) => !known.has(d.id)) || [...known].some((id) => !ids.has(id));
       if (changed || Date.now() - this.lastInventory > this.inventoryEveryMs) {

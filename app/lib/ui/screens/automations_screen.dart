@@ -308,9 +308,14 @@ EditableAction _editable(Map<String, dynamic> a) =>
     EditableAction(deviceId: a['device_id'] as String?, capabilityKey: a['capability_key'] as String?, value: a['value']);
 
 class AutomationEditor extends StatefulWidget {
-  const AutomationEditor({super.key, this.automation});
+  const AutomationEditor({super.key, this.automation, this.template, this.triggerDeviceId});
 
   final Automation? automation;
+
+  /// Nouvelle automatisation pré-remplie depuis un modèle (ex. 'presence' depuis la fiche
+  /// d'un détecteur), avec l'appareil déclencheur déjà choisi.
+  final String? template;
+  final String? triggerDeviceId;
 
   @override
   State<AutomationEditor> createState() => _AutomationEditorState();
@@ -357,6 +362,19 @@ class _AutomationEditorState extends State<AutomationEditor> {
         'mode' => {'type': 'mode', 'mode': _mode, 'event': _modeEvent},
         _ => {'type': 'manual'},
       };
+
+  @override
+  void initState() {
+    super.initState();
+    final t = widget.template;
+    if (widget.automation == null && t != null) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted) return;
+        _applyTemplate(t);
+        if (widget.triggerDeviceId != null) setState(() => _triggerRule.deviceId = widget.triggerDeviceId);
+      });
+    }
+  }
 
   /// Modèles prêts à l'emploi du cahier des charges ; il reste à choisir les appareils.
   void _applyTemplate(String t) {

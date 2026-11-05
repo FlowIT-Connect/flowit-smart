@@ -46,6 +46,7 @@ export class Bridge {
     /** deviceId -> { externalId, caps: Map<key, cap>, isSensitive, state, availability } */
     this.devices = new Map();
     this.byExternal = new Map();
+    this.diagnosed = new Map(); // deviceId -> codes déjà notés (device_diagnostic)
     /** Appareils refusés faute de place dans le logement (null : pas encore compté). */
     this.waitingDevices = null;
     this.automations = [];
@@ -238,6 +239,7 @@ export class Bridge {
         availability: snap.availability,
       });
       this.byExternal.set(desc.externalId, deviceId);
+      await this.#recordDiagnostic(deviceId, desc.diagnostic);
     }
     for (const [externalId, deviceId] of bindings) {
       if (!seen.has(externalId)) await this.store.updateDevice(deviceId, { availability: 'unavailable' });
@@ -269,7 +271,46 @@ export class Bridge {
       availability: snap.availability,
       ...(snap.availability === 'available' ? { last_seen_at: this.clock().toISOString() } : {}),
     });
+    await this.#recordPresence(deviceId, before, snap.state);
     if (this.config.runAutomations !== false) await this.evaluateStateTriggers(deviceId, before, snap.state);
+  }
+
+  /**
+   * Historique des détecteurs de présence : une ligne par arrivée ou départ, lue par
+   * l'application pour « Personne depuis 12 min » et la frise du jour.
+   */
+  async #recordPresence(deviceId, before, after) {
+    const was = before?.motion;
+    const now = after?.motion;
+    if (typeof was !== 'boolean' || typeof now !== 'boolean' || was === now) return;
+    try {
+      await this.store.logEvent({ home_id: this.homeId, device_id: deviceId, event_type: 'presence', result: now ? 'detected' : 'clear', details: {} });
+    } catch (e) {
+      log.warn('bridge.presence_log_failed', { device_id: deviceId, error: e.message });
+    }
+    // Maison en Vacances ou en Absence : quelqu'un ne devrait pas être là.
+    if (now && this.isAway()) {
+      const name = this.devices.get(deviceId)?.name ?? '';
+      await this.#notify('motion', `Présence détectée${name ? ` : ${name}` : ''} alors que la maison est en mode Absent`, { device_id: deviceId, device: name }, deviceId);
+    }
+  }
+
+  /** Logement inoccupé : mode Vacances actif ou ambiance Absence (manuelle ou géolocalisation). */
+  isAway() {
+    return (this.modes ?? []).includes('vacation') || this.climateSettings?.home_preset === 'away';
+  }
+
+  /** Codes déclarés par un appareil, notés une fois par démarrage (diagnostic à distance). */
+  async #recordDiagnostic(deviceId, diagnostic) {
+    if (!diagnostic) return;
+    const key = JSON.stringify(diagnostic);
+    if (this.diagnosed.get(deviceId) === key) return;
+    this.diagnosed.set(deviceId, key);
+    try {
+      await this.store.logEvent({ home_id: this.homeId, device_id: deviceId, event_type: 'device_diagnostic', result: 'info', details: diagnostic });
+    } catch (e) {
+      log.warn('bridge.diagnostic_failed', { device_id: deviceId, error: e.message });
+    }
   }
 
   /** Caméra d'un appareil connu de cette passerelle (null sinon). */
@@ -567,6 +608,7 @@ export class Bridge {
     } catch {
       data = null;
     }
+    this.climateSettings = data?.settings ?? null; // « Absent » lu aussi par les détecteurs de présence
     if (!data || data.settings?.enabled === false) return;
     const now = this.clock();
     const local = localTime(now, this.timezone);

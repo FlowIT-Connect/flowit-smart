@@ -1480,6 +1480,23 @@ class DemoBackend implements Backend {
     return _logs.where((l) => l['home_id'] == homeId).take(limit).map(EventLog.fromJson).toList();
   }
 
+  @override
+  Future<List<EventLog>> listPresence(String deviceId, DateTime since) async {
+    await _wait();
+    // Démo : quelques passages réguliers sur la journée.
+    final now = DateTime.now();
+    final out = <EventLog>[];
+    var t = since.add(const Duration(hours: 7));
+    var id = 1;
+    var present = true;
+    while (t.isBefore(now)) {
+      out.add(EventLog(id: id++, eventType: 'presence', deviceId: deviceId, result: present ? 'detected' : 'clear', createdAt: t));
+      t = t.add(Duration(minutes: present ? 6 + (id * 7) % 25 : 25 + (id * 13) % 70));
+      present = !present;
+    }
+    return out;
+  }
+
   // ------------------------------------------------------------------ Notifications
   @override
   Future<List<AppNotification>> listNotifications(String homeId, {int limit = 200}) async {

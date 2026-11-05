@@ -13,6 +13,7 @@ import 'common.dart';
 import 'device_removal.dart';
 import 'device_visual.dart';
 import 'organize.dart';
+import 'presence_panel.dart';
 import 'vacuum_map.dart';
 
 String capabilityLabel(BuildContext context, String key) => context.tryTr('cap.$key') ?? key.replaceAll('_', ' ');
@@ -289,11 +290,23 @@ class DeviceControlPanel extends StatelessWidget {
         ));
       }
     }
+    // Détecteur de présence : grande carte, frise du jour et raccourcis.
+    final presence = !d.isCamera && d.capability('motion') != null;
+    if (presence) children.add(PresencePanel(d, key: ValueKey('presence-${d.id}')));
+    final settings = d.controls.where((c) => c.metadata['setting'] == true).toList();
     for (final cap in d.controls) {
       if (d.isSensitive) break;
+      if (settings.contains(cap)) continue;
       children.add(_ControlCard(child: _CapabilityControl(device: d, cap: cap)));
     }
-    if (d.readings.isNotEmpty) {
+    if (settings.isNotEmpty && !d.isSensitive) {
+      children.add(SectionHeader(context.tr(presence ? 'presence.settings' : 'device.settings')));
+      for (final cap in settings) {
+        children.add(_ControlCard(child: _CapabilityControl(device: d, cap: cap)));
+      }
+    }
+    final readings = presence ? d.readings.where((c) => c.key != 'motion').toList() : d.readings;
+    if (readings.isNotEmpty) {
       children.add(SectionHeader(context.tr('device.readings')));
       children.add(Padding(
         padding: const EdgeInsets.symmetric(horizontal: 16),
@@ -301,7 +314,7 @@ class DeviceControlPanel extends StatelessWidget {
           final cols = box.maxWidth > 420 ? 3 : 2;
           final w = (box.maxWidth - 10 * (cols - 1)) / cols;
           return Wrap(spacing: 10, runSpacing: 10, children: [
-            for (final cap in d.readings) SizedBox(width: w, child: _ReadingCard(device: d, cap: cap)),
+            for (final cap in readings) SizedBox(width: w, child: _ReadingCard(device: d, cap: cap)),
           ]);
         }),
       ));

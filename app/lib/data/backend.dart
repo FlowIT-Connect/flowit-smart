@@ -193,6 +193,10 @@ abstract class Backend {
   // --- Journal (§5.10)
   Future<List<EventLog>> listEvents(String homeId, {int limit = 100});
 
+  /// Arrivées / départs vus par un détecteur de présence depuis [since] (le plus ancien
+  /// d'abord), écrits par la passerelle (event_type 'presence', result detected / clear).
+  Future<List<EventLog>> listPresence(String deviceId, DateTime since);
+
   // --- Centre de notifications
   /// Notifications de l'utilisateur connecté pour une maison, les plus récentes d'abord.
   Future<List<AppNotification>> listNotifications(String homeId, {int limit = 200});

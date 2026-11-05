@@ -291,6 +291,16 @@ describe('Passerelle Zigbee Smart Life et ses sous-appareils', () => {
       status: [{ code: 'smoke_sensor_status', value: 'normal' }, { code: 'battery_state', value: 'high' }],
       spec: { category: 'ywbj', functions: [], status: [fnz('smoke_sensor_status', 'Enum', { range: ['alarm', 'normal'] }), fnz('battery_state', 'Enum', { range: ['low', 'middle', 'high'] })] },
     },
+    // Détecteur de présence radar Zigbee avec ses réglages.
+    {
+      id: 'zpres', name: 'Présence salon', category: 'hps', product_name: 'ZigBee human presence sensor', online: true, gateway_id: 'gw1', hidden: true,
+      status: [{ code: 'presence_state', value: 'none' }, { code: 'sensitivity', value: 7 }, { code: 'far_detection', value: 450 }, { code: 'fading_time', value: 30 }, { code: 'target_dis_closest', value: 120 }],
+      spec: {
+        category: 'hps',
+        functions: [fnz('sensitivity', 'Integer', { min: 0, max: 9, scale: 0, step: 1 }), fnz('far_detection', 'Integer', { unit: 'cm', min: 0, max: 950, scale: 0, step: 50 }), fnz('fading_time', 'Integer', { unit: 's', min: 5, max: 600, scale: 0, step: 5 })],
+        status: [fnz('presence_state', 'Enum', { range: ['none', 'presence'] }), fnz('target_dis_closest', 'Integer', { unit: 'cm', min: 0, max: 1000, scale: 0, step: 1 })],
+      },
+    },
     // Capteur de fuite dont Tuya refuse la spécification : lecture seule d'après l'état.
     { id: 'zleak', name: 'Fuite cuisine', category: 'sj', online: true, gateway_id: 'gw1', hidden: true, status: [{ code: 'watersensor_state', value: 'alarm' }], spec: null },
   ];
@@ -313,7 +323,7 @@ describe('Passerelle Zigbee Smart Life et ses sous-appareils', () => {
 
   test('sous-appareils importés, passerelle elle-même ignorée, sans doublon', () => {
     const names = [...store.devices.values()].map((d) => d.name).sort();
-    assert.deepEqual(names, ['Détecteur fumée', 'Fuite cuisine', 'Interrupteur Zigbee', 'Prise salon']);
+    assert.deepEqual(names, ['Détecteur fumée', 'Fuite cuisine', 'Interrupteur Zigbee', 'Prise salon', 'Présence salon']);
     assert.equal(store.deviceByName('Détecteur fumée').state.smoke, false);
     assert.equal(store.deviceByName('Détecteur fumée').state.battery, 100);
     assert.equal(store.deviceByName('Fuite cuisine').state.water_leak, true);
@@ -326,6 +336,35 @@ describe('Passerelle Zigbee Smart Life et ses sous-appareils', () => {
     assert.deepEqual(cloud.commands.at(-1), { id: 'zsw1', commands: [{ code: 'switch_1', value: true }] });
     cloud.setStatus('zsw1', 'switch_1', false);
     assert.ok(await until(() => sw.state.switch === false));
+  });
+
+  test('détecteur de présence : réglages en unités lisibles, historique des passages', async () => {
+    const p = store.deviceByName('Présence salon');
+    assert.deepEqual(p.state, { motion: false, sensitivity: 7, detection_range: 4.5, presence_delay: 30, target_distance: 1.2 });
+    const caps = Object.fromEntries(store.caps(p.id).map((c) => [c.capability_key, c]));
+    assert.deepEqual(caps.detection_range.metadata, { min: 0, max: 9.5, step: 0.5, unit: 'm', setting: true });
+    // Réglage envoyé dans l'unité Tuya (cm).
+    const c = await store.insertCommand({ home_id: 'home-1', device_id: p.id, capability_key: 'detection_range', value: 3, idempotency_key: 'r1', requested_by: 'u1' });
+    assert.ok(await until(() => c.status === 'confirmed'), `statut ${c.status}`);
+    assert.deepEqual(cloud.commands.at(-1), { id: 'zpres', commands: [{ code: 'far_detection', value: 300 }] });
+    // Arrivée puis départ : deux lignes d'historique.
+    cloud.setStatus('zpres', 'presence_state', 'presence');
+    assert.ok(await until(() => p.state.motion === true));
+    cloud.setStatus('zpres', 'presence_state', 'none');
+    assert.ok(await until(() => p.state.motion === false));
+    const events = store.events.filter((e) => e.event_type === 'presence' && e.device_id === p.id).map((e) => e.result);
+    assert.deepEqual(events, ['detected', 'clear']);
+    assert.equal(store.notifications.length, 0); // quelqu'un à la maison : pas d'alerte
+    // Maison en Absence : alerte sur le téléphone.
+    bridge.climateSettings = { home_preset: 'away' };
+    cloud.setStatus('zpres', 'presence_state', 'presence');
+    assert.ok(await until(() => store.notifications.length === 1));
+    assert.equal(store.notifications[0].type, 'motion');
+    assert.match(store.notifications[0].body, /Présence salon/);
+    // Codes notés une seule fois pour le diagnostic.
+    const diag = store.events.filter((e) => e.event_type === 'device_diagnostic' && e.device_id === p.id);
+    assert.equal(diag.length, 1);
+    assert.ok(diag[0].details.codes.some((x) => x.code === 'far_detection' && x.writable));
   });
 
   test('nouvel appareil Zigbee ajouté à la passerelle : importé automatiquement', async () => {
