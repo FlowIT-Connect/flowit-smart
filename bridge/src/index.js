@@ -16,7 +16,7 @@ import { HaExporter } from './ha_export.js';
 import { MqttClient } from './mqtt_client.js';
 import { loadConfig } from './config.js';
 import { PlatformSupervisor } from './platform.js';
-import { applyAddonOptions } from './addon_options.js';
+import { applyAddonMqtt, applyAddonOptions, readAddonOptions, startAddonYeedi } from './addon_options.js';
 import { log, setLogLevel } from './log.js';
 import { simulatedFrame } from './png.js';
 import { SupabaseStore } from './store.js';
@@ -27,6 +27,10 @@ import { discoverDahua } from './udi/dahua/dhip.js';
 import { discoverOnvif, subnetFilter } from './udi/onvif/discovery.js';
 
 applyAddonOptions();
+// Module complémentaire en mode passerelle complète : broker MQTT de HA et robot yeedi.
+const addonOptions = readAddonOptions();
+await applyAddonMqtt(addonOptions);
+const addonYeedi = startAddonYeedi(addonOptions);
 // Réglages Home Assistant (HA_MQTT_URL…) dans un fichier à part, à côté de .env : facultatif.
 if (existsSync('homeassistant.env')) process.loadEnvFile('homeassistant.env');
 const config = loadConfig();
@@ -120,6 +124,7 @@ if (config.platform) log.info('bridge.platform', { message: 'Passerelle unique :
 const shutdown = async (signal) => {
   log.info('bridge.stop', { signal });
   bridge.exporter?.stop();
+  addonYeedi?.stop();
   await bridge.stop();
   process.exit(0);
 };

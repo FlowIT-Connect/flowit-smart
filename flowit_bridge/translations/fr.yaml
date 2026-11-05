@@ -1,21 +1,52 @@
 configuration:
+  mode:
+    name: Mode
+    description: "tuya_cloud = passerelle Solea complète sur cette box (Smart Life, TTLock, robot yeedi) ; home_assistant = les appareils de ce Home Assistant vont dans Solea ; simulator = appareils fictifs."
   service_role_key:
     name: Clé secrète Supabase (service_role)
     description: Supabase > Project Settings > API Keys > service_role (ou secret). Elle reste dans cette box.
   integration_id:
     name: Identifiant d'intégration
-    description: Application FlowIT Smart > Paramètres > Intégrations > Home Assistant > copier l'identifiant.
+    description: Solea > Paramètres > Intégrations > copier l'identifiant (Tuya pour le mode tuya_cloud).
   supabase_url:
     name: Adresse Supabase
     description: Laisser la valeur par défaut.
   simulator:
-    name: Mode simulateur
-    description: Activer pour tester avec 10 appareils fictifs, sans matériel.
+    name: Mode simulateur (ancien réglage)
+    description: Préférer « Mode » = simulator.
   run_automations:
     name: Exécuter les automatisations
     description: Laisser activé (une seule passerelle par maison).
   log_level:
     name: Niveau de détail des journaux
   entity_filter:
-    name: Filtre d'entités (facultatif)
+    name: Filtre d'entités (facultatif, mode home_assistant)
     description: "Expression régulière, ex. ^(light|switch|cover)\\."
+  ha_mqtt:
+    name: Afficher les appareils Solea dans Home Assistant
+    description: Mode tuya_cloud, nécessite le module « Mosquitto broker » (aucun mot de passe à créer).
+  tuya_access_id:
+    name: Tuya Access ID
+  tuya_access_secret:
+    name: Tuya Access Secret
+  tuya_region:
+    name: Data center Tuya
+    description: eu = Central Europe.
+  ttlock_client_id:
+    name: TTLock Client ID (facultatif)
+  ttlock_client_secret:
+    name: TTLock Client Secret
+  ttlock_username:
+    name: Compte de l'app TTLock
+  ttlock_password_md5:
+    name: Mot de passe TTLock (MD5)
+  yeedi_email:
+    name: Compte yeedi (facultatif)
+    description: Robot aspirateur yeedi / Ecovacs.
+  yeedi_password_md5:
+    name: Mot de passe yeedi (MD5)
+  yeedi_country:
+    name: Pays du compte yeedi
+    description: Ex. DZ.
+  yeedi_domain:
+    name: Domaine yeedi (facultatif)

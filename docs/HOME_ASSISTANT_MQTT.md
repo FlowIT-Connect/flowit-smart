@@ -41,3 +41,10 @@ Les appareils sont dans **Paramètres › Appareils et services › MQTT**.
   que l'application, et déclenche les automatisations Solea.
 - Passerelle arrêtée : les appareils passent « indisponible » dans Home Assistant.
 - Un appareil retiré de Solea disparaît aussi de Home Assistant.
+
+## Sans PC : la passerelle sur la box
+
+Le module complémentaire **FlowIT Bridge** (2.0.0) en mode `tuya_cloud` fait tourner la
+passerelle Solea et le module yeedi directement sur la box Home Assistant. Avec l'option
+`ha_mqtt`, les identifiants MQTT viennent du Supervisor : rien à créer. Voir
+`flowit_bridge/DOCS.md`.
