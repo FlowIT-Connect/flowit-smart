@@ -22,6 +22,18 @@ Device dev(String id, Map<String, dynamic> state, List<List<dynamic>> caps, {Str
 
 void main() {
   group('tableau récapitulatif', () {
+    test('Broadlink : humidité, température intérieure et clim infrarouge comptées', () {
+      final hub = dev('rm4', {'temperature': 24.5, 'humidity': 61}, [['temperature', 'sensor', false], ['humidity', 'sensor', false], ['ir_learn', 'string', true]], room: 'salon');
+      final clim = dev('clim', {'hvac_mode': 'cool', 'target_temperature': 22, 'current_temperature': 24.5},
+          [['hvac_mode', 'enum', true], ['target_temperature', 'number', true], ['current_temperature', 'sensor', false]], room: 'salon');
+      final s = HomeOverview.of([hub, clim]);
+      expect(s.humidity, 61);
+      expect(s.humidityByRoom['salon'], 61);
+      expect(s.indoorTemperature, 24.5);
+      expect(s.setpoint, 22);
+      expect(s.climateState, 'cool');
+    });
+
     test('aucune valeur inventée quand il n\'y a pas de capteur', () {
       final s = HomeOverview.of([dev('lampe', {'switch': true}, [['switch', 'boolean', true]])]);
       expect(s.total, 1);

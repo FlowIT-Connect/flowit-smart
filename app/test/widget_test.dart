@@ -184,6 +184,8 @@ void main() {
   testWidgets('Broadlink : touches de la télé, puis apprentissage guidé d\'une touche', (tester) async {
     final state = await pumpApp(tester);
     await signIn(tester);
+    // Accueil : température intérieure à côté de celle du dehors.
+    expect(find.textContaining('Int. '), findsOneWidget);
     await tester.tap(find.text('Appareils').last);
     await tester.pumpAndSettle();
     await tester.enterText(find.byType(TextField).first, 'télé');

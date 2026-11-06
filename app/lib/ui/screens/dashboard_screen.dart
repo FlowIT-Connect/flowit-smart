@@ -1,6 +1,7 @@
 import 'climate_screen.dart';
 import 'package:flutter/material.dart';
 
+import '../../core/home_summary.dart';
 import '../../core/icons.dart';
 import '../../core/l10n.dart';
 import '../../core/theme.dart';
@@ -185,6 +186,7 @@ class _StatusPills extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final weather = AppScope.of(context).weather;
+    final indoor = HomeOverview.of(devices).indoorTemperature;
     final unavailable = devices.where((d) => d.availability == Availability.unavailable).length;
     final power = devices.where((d) => d.isOnline && d.state['power'] is num).fold<double>(0, (sum, d) => sum + (d.state['power'] as num));
     final canAdd = AppScope.of(context).canManage;
@@ -197,11 +199,16 @@ class _StatusPills extends StatelessWidget {
           onTap: () => showAddDeviceMenu(context),
           strong: true,
         ),
-      if (weather != null)
+      // Dehors et intérieur (capteurs, clims, Broadlink…) côte à côte, dans la même pastille.
+      if (weather != null || indoor != null)
         _HeroPill(
-          icon: weatherIcon(weather),
-          label: '${context.tr('weather.outside')} ${formatDegrees(weather.temperature)}',
-          onTap: () => showWeatherSheet(context),
+          key: const ValueKey('temperatures'),
+          icon: weather != null ? weatherIcon(weather) : Icons.home_rounded,
+          label: [
+            if (weather != null) '${context.tr('weather.outside')} ${formatDegrees(weather.temperature)}',
+            if (indoor != null) '${context.tr('summary.indoorShort')} ${formatDegrees(indoor)}',
+          ].join(' · '),
+          onTap: weather != null ? () => showWeatherSheet(context) : null,
         ),
       _HeroPill(
         icon: unavailable > 0 ? Icons.error_outline_rounded : Icons.check_circle_rounded,

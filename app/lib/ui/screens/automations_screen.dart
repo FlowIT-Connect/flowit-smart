@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import '../../core/icons.dart';
+
 import '../../core/home_modes.dart';
 import '../../core/l10n.dart';
 import '../../core/theme.dart';
@@ -394,6 +396,25 @@ class _AutomationEditorState extends State<AutomationEditor> {
           _followActions = [EditableAction(capabilityKey: 'cover_position', value: 100)];
           _followConditions = [_WeatherRule(metric: 'wind_speed', op: 'lt', value: 50)];
           _security = true;
+        case 'heat':
+          // Forte chaleur : la clim (Tuya, Broadlink infrarouge…) passe en froid, puis s'arrête quand ça se rafraîchit.
+          _name.text = context.tr('automation.template.heat');
+          final ac = AppScope.of(context).devices.values.where((d) => deviceKind(d) == DeviceKind.airConditioner).firstOrNull?.id;
+          _type = 'weather';
+          _weather = _WeatherRule(metric: 'temperature', op: 'gt', value: 32);
+          _weatherFor = 15;
+          _conditions = [];
+          _exceptions = [];
+          _actions = [
+            EditableAction(deviceId: ac, capabilityKey: 'hvac_mode', value: 'cool'),
+            EditableAction(deviceId: ac, capabilityKey: 'target_temperature', value: 24),
+          ];
+          _follow = true;
+          _followAfter = 60;
+          _followRestart = false;
+          _followActions = [EditableAction(deviceId: ac, capabilityKey: 'hvac_mode', value: 'off')];
+          _followConditions = [_WeatherRule(metric: 'temperature', op: 'lt', value: 27)];
+          _security = false;
         case 'shutters':
           _name.text = context.tr('automation.template.shutters');
           _type = 'device_state';
@@ -618,7 +639,7 @@ class _AutomationEditorState extends State<AutomationEditor> {
               Text(context.tr('automation.templates'), style: theme.textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w800)),
               const SizedBox(height: 8),
               Wrap(spacing: 8, runSpacing: 8, children: [
-                for (final (t, icon) in const [('wind', Icons.air_rounded), ('shutters', Icons.blinds_closed_rounded), ('presence', Icons.directions_walk_rounded)])
+                for (final (t, icon) in const [('wind', Icons.air_rounded), ('heat', Icons.ac_unit_rounded), ('shutters', Icons.blinds_closed_rounded), ('presence', Icons.directions_walk_rounded)])
                   ActionChip(
                     key: ValueKey('template-$t'),
                     avatar: Icon(icon, size: 18),

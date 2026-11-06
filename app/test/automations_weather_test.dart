@@ -82,4 +82,19 @@ void main() {
     expect(saved.followUp!['conditions'], isNotEmpty);
     expect(saved.priority, 'security');
   });
+
+  testWidgets('éditeur : modèle « Forte chaleur » : clim en froid, choisie d\'office', (tester) async {
+    await pumpApp(tester);
+    await signIn(tester);
+    await openAutomations(tester);
+    await tester.tap(find.byType(FloatingActionButton));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('template-heat')));
+    await tester.pumpAndSettle();
+    expect(find.widgetWithText(TextField, 'Forte chaleur : allumer la clim'), findsOneWidget);
+    final editor = find.descendant(of: find.byType(AutomationEditor), matching: find.byType(Scrollable)).first;
+    await tester.scrollUntilVisible(find.byKey(const ValueKey('follow-switch')), 300, scrollable: editor);
+    expect(tester.widget<SwitchListTile>(find.byKey(const ValueKey('follow-switch'))).value, isTrue);
+    expect(find.text('Climatiseur salon'), findsWidgets, reason: 'la clim de la maison est déjà choisie');
+  });
 }
