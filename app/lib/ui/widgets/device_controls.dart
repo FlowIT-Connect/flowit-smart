@@ -12,6 +12,7 @@ import 'live_video_view.dart';
 import 'common.dart';
 import 'device_removal.dart';
 import 'device_visual.dart';
+import 'ir_remote.dart';
 import 'organize.dart';
 import 'presence_panel.dart';
 import 'vacuum_map.dart';
@@ -611,6 +612,10 @@ class _CapabilityControlState extends State<_CapabilityControl> {
         );
       case CapabilityType.enumeration:
         if (cap.key == 'vacuum_action') return _vacuumButtons(context, d, cap, title, indicator, pending, enabled, send);
+        if (cap.metadata['kind'] == 'ir_command') {
+          // Touche ponctuelle : disponible même pendant l'envoi de la précédente.
+          return IrRemotePanel(device: d, cap: cap, enabled: d.availability != Availability.unavailable, indicator: pending != null ? indicator : null, send: send);
+        }
         if (!cap.writable) {
           // État rapporté par l'appareil (ex. chauffe en cours) : affiché, jamais modifiable.
           return ListTile(
@@ -732,6 +737,9 @@ class _CapabilityControlState extends State<_CapabilityControl> {
         );
       case CapabilityType.string:
       case CapabilityType.sensor:
+        if (cap.metadata['kind'] == 'ir_learn') {
+          return IrLearnCard(device: d, cap: cap, enabled: d.availability != Availability.unavailable);
+        }
         if (cap.metadata['kind'] == 'vacuum_clean') {
           return VacuumMapPanel(device: d, cap: cap, enabled: enabled, indicator: indicator, showIndicator: pending != null, send: send);
         }

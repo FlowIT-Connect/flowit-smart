@@ -69,7 +69,7 @@ void main() {
     for (final label in ['Maison connectée', 'Sécurité', 'Climatisation', 'Humidité']) {
       expect(find.text(label), findsOneWidget, reason: label);
     }
-    expect(find.text('15 appareils'), findsOneWidget);
+    expect(find.text('16 appareils'), findsOneWidget);
     await tester.tap(find.byKey(const ValueKey('summary-humidity')));
     await tester.pumpAndSettle();
     expect(find.textContaining('%'), findsWidgets);

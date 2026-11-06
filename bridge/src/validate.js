@@ -1,5 +1,7 @@
 // Validation d'une valeur de commande selon la capacité déclarée (liste blanche, §7).
 
+import { validateIrLearn } from './adapters/broadlink.js';
+
 /**
  * @param {{capability_key:string,type:string,writable:boolean,metadata:object}} cap
  * @param {unknown} value
@@ -26,6 +28,7 @@ export function validateValue(cap, value) {
       if (meta.kind === 'access_code') return validateAccessCode(value, meta.options ?? []);
       if (meta.kind === 'ekey') return validateKey(value, meta.options ?? []);
       if (meta.kind === 'vacuum_clean') return validateVacuumClean(value, meta.options ?? []);
+      if (meta.kind === 'ir_learn') return validateIrLearn(value);
       return 'Type de capacité non pilotable';
     default:
       return 'Type de capacité non pilotable';

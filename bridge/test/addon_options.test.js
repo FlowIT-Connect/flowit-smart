@@ -54,7 +54,14 @@ test('mode tuya_cloud : passerelle complète (Smart Life + TTLock) sur la box', 
   const config = loadConfig(envFromAddonOptions(FULL, 'tok'));
   assert.equal(config.adapter, 'tuya_cloud');
   assert.equal(config.tuyaAccessId, 'tid');
-  assert.equal(config.haToken, null, 'pas d\'import des entités HA dans ce mode');
+  assert.equal(config.haToken, null, 'pas d\'import de toutes les entités HA dans ce mode');
+  // Seulement les télécommandes Broadlink de HA, avec leurs touches apprises.
+  assert.deepEqual([...config.haImport.platforms], ['broadlink']);
+  assert.equal(config.haImport.wsUrl, 'ws://supervisor/core/websocket');
+  assert.equal(config.haImport.token, 'tok');
+  assert.equal(config.haConfigDir, '/homeassistant');
+  assert.equal(loadConfig(envFromAddonOptions({ ...FULL, ha_integrations: '' }, 'tok')).haImport, null);
+  assert.deepEqual([...loadConfig(envFromAddonOptions({ ...FULL, ha_integrations: 'broadlink, xiaomi_miio' }, 'tok')).haImport.platforms], ['broadlink', 'xiaomi_miio']);
   assert.equal(config.ttlock.username, 'baziz');
   assert.deepEqual(yeediFromAddonOptions(FULL), {
     YEEDI_EMAIL: 'b@x.dz', YEEDI_PASSWORD_MD5: 'b'.repeat(32), YEEDI_COUNTRY: 'DZ', YEEDI_HOST: '127.0.0.1', YEEDI_PORT: '8790',

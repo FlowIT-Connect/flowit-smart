@@ -25,6 +25,9 @@ configuration:
   ha_mqtt:
     name: Afficher les appareils Solea dans Home Assistant
     description: Mode tuya_cloud, nécessite le module « Mosquitto broker » (aucun mot de passe à créer).
+  ha_integrations:
+    name: Appareils de Home Assistant à reprendre (mode tuya_cloud)
+    description: "Intégrations de HA dont les appareils vont aussi dans Solea. Vide = broadlink (télécommande infrarouge RM4 et son capteur)."
   tuya_access_id:
     name: Tuya Access ID
   tuya_access_secret:
