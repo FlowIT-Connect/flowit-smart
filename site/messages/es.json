@@ -633,5 +633,22 @@
     "title": "Página no encontrada",
     "text": "Esta página no existe o se ha movido.",
     "back": "Volver al inicio"
+  },
+  "appShowcase": {
+    "eyebrow": "La aplicación",
+    "title": "Solea, tal como la usará.",
+    "text": "Capturas reales de la aplicación Solea: su hogar, sus habitaciones, sus escenarios y su confort, en una sola pantalla.",
+    "hint": "Desplácese para ver más pantallas",
+    "screens": {
+      "home": "Inicio",
+      "rooms": "Mis habitaciones",
+      "automations": "Automatizaciones",
+      "climate": "Calefacción y clima",
+      "climateModes": "Modos de confort",
+      "settings": "Ajustes",
+      "appearance": "Apariencia",
+      "signIn": "Iniciar sesión"
+    },
+    "alt": "Captura de la aplicación Solea: {screen}"
   }
 }

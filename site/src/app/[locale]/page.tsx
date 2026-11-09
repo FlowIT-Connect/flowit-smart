@@ -9,6 +9,7 @@ import { SectionHead } from "@/components/SectionHead";
 import { CategoryTile, ScenarioCard, SolutionCard, type Scenario } from "@/components/blocks";
 import { VillaScene } from "@/components/art/VillaScene";
 import { GatewayRender } from "@/components/art/GatewayRender";
+import { AppShowcase } from "@/components/AppShowcase";
 import type { Locale } from "@/lib/locales";
 
 export default function Home({ params }: { params: Promise<{ locale: Locale }> }) {
@@ -89,6 +90,9 @@ export default function Home({ params }: { params: Promise<{ locale: Locale }> }
           </Reveal>
         </div>
       </section>
+
+      {/* L'application, en vraies captures */}
+      <AppShowcase />
 
       {/* Fonctionnalités */}
       <section className="py-24 md:py-32">
