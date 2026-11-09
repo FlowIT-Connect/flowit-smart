@@ -113,6 +113,10 @@ class _LiveVideoViewState extends State<LiveVideoView> {
         if (s == RTCPeerConnectionState.RTCPeerConnectionStateFailed || s == RTCPeerConnectionState.RTCPeerConnectionStateDisconnected) {
           _fail(state.tr('video.connectionLost'));
         }
+        // Certains téléphones ne signalent jamais la piste (onTrack) : on la prend chez le récepteur.
+        if (s == RTCPeerConnectionState.RTCPeerConnectionStateConnected) {
+          Future.delayed(const Duration(milliseconds: 1500), () => _attachReceivers(pc, attempt));
+        }
       };
 
       // Pas d'échange de candidats au fil de l'eau : on attend qu'ils soient tous dans l'offre.
@@ -149,6 +153,23 @@ class _LiveVideoViewState extends State<LiveVideoView> {
     } catch (e) {
       _fail(state.tr('video.failed'));
     }
+  }
+
+  Future<void> _attachReceivers(RTCPeerConnection pc, int attempt) async {
+    if (_disposed || attempt != _attempt || _phase != _Phase.connecting) return;
+    try {
+      final tracks = [for (final r in await pc.getReceivers()) if (r.track != null) r.track!];
+      if (!tracks.any((t) => t.kind == 'video')) return;
+      final stream = await createLocalMediaStream('solea-live');
+      for (final t in tracks) {
+        await stream.addTrack(t);
+      }
+      if (_disposed || attempt != _attempt || _phase != _Phase.connecting) return;
+      _stream = stream;
+      _renderer.srcObject = stream;
+      _applyMute();
+      if (mounted) setState(() => _phase = _Phase.playing);
+    } catch (_) {}
   }
 
   void _fail(String message) {
