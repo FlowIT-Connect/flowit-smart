@@ -261,6 +261,56 @@ describe('RTSP', () => {
     assert.equal(d.capabilities().snapshot, false);
   });
 
+  test('RTSP tunnelé dans HTTP (rtsp+http, porte 80) avec Digest', async () => {
+    const md5 = (x) => createHash('md5').update(x).digest('hex');
+    const gets = new Map();
+    const nonces = new Map(); // nonce propre à chaque tunnel, comme la Hero A1
+    let tunnels = 0;
+    server = net.createServer((sock) => {
+      let buf = Buffer.alloc(0);
+      let role = null;
+      let cookie = null;
+      sock.on('data', (chunk) => {
+        buf = Buffer.concat([buf, chunk]);
+        if (!role) {
+          const sep = buf.indexOf('\r\n\r\n');
+          if (sep === -1) return;
+          const head = buf.subarray(0, sep).toString();
+          cookie = /x-sessioncookie: (\S+)/i.exec(head)[1];
+          role = head.startsWith('GET') ? 'get' : 'post';
+          buf = buf.subarray(sep + 4);
+          if (role === 'get') {
+            assert.match(head, /Accept: application\/x-rtsp-tunnelled/);
+            tunnels++;
+            gets.set(cookie, sock);
+            sock.write('HTTP/1.0 200 OK\r\nContent-Type: application/x-rtsp-tunnelled\r\n\r\n');
+          }
+        }
+        if (role !== 'post') return;
+        const req = Buffer.from(buf.toString(), 'base64').toString();
+        if (!req.endsWith('\r\n\r\n')) return;
+        buf = Buffer.alloc(0);
+        const out = gets.get(cookie);
+        const cseq = /CSeq: (\d+)/.exec(req)[1];
+        assert.match(req, /^DESCRIBE rtsp:\/\/127\.0\.0\.1:\d+\/cam\/realmonitor\?channel=1&subtype=0&unicast=true&proto=Onvif RTSP/);
+        const auth = /Authorization: Digest (.*)\r\n/.exec(req)?.[1];
+        const uri = /uri="([^"]+)"/.exec(auth ?? '')?.[1];
+        if (!nonces.has(cookie)) nonces.set(cookie, `n-${cookie}`);
+        const nonce = nonces.get(cookie);
+        const ok = auth && /nonce="([^"]+)"/.exec(auth)[1] === nonce && md5(`${md5('admin:cam:S3cret!')}:${nonce}:${md5(`DESCRIBE:${uri}`)}`) === /response="([^"]+)"/.exec(auth)[1];
+        if (!ok) out.write(`RTSP/1.0 401 Unauthorized\r\nCSeq: ${cseq}\r\nWWW-Authenticate: Digest realm="cam", nonce="${nonce}"\r\n\r\n`);
+        else out.write(`RTSP/1.0 200 OK\r\nCSeq: ${cseq}\r\nContent-Length: ${Buffer.byteLength(SDP)}\r\n\r\n${SDP}`);
+      });
+    });
+    const port = await new Promise((resolve) => server.listen(0, '127.0.0.1', () => resolve(server.address().port)));
+    const url = `rtsp+http://127.0.0.1:${port}/cam/realmonitor?channel=1&subtype=0&unicast=true&proto=Onvif`;
+    const r = await probeRtsp(url, { username: 'admin', password: 'S3cret!' });
+    assert.deepEqual(r, { ok: true, status: 200, video: { codec: 'H264' }, audio: { codec: 'MPEG4-GENERIC' } });
+    assert.equal(tunnels, 1, 'demande identifiée dans le même tunnel');
+    assert.equal((await probeRtsp(url, { username: 'admin', password: 'faux' })).status, 401);
+    assert.equal(withCredentials('rtsp+http://192.168.1.2:80/cam?x=1', 'admin', 'p@ss'), 'rtsp+http://admin:p%40ss@192.168.1.2:80/cam?x=1');
+  });
+
   test('SDP et identifiants', () => {
     assert.deepEqual(parseSdp('m=video 0 RTP/AVP 96\na=rtpmap:96 H265/90000\nm=audio 0 RTP/AVP 0\na=rtpmap:0 PCMU/8000'), { video: { codec: 'H265' }, audio: { codec: 'PCMU' } });
     assert.equal(withCredentials('rtsp://192.168.1.2/s', 'ad min', 'p@ss'), 'rtsp://ad%20min:p%40ss@192.168.1.2/s');
@@ -589,6 +639,27 @@ describe('Dahua : ajout par QR code', () => {
     assert.equal(seen[1].basicFirst, true);
     await d.ping();
     assert.equal(seen.at(-1).basicFirst, true);
+  });
+
+  test('pilote : porte 554 fermée (Hero A1), flux tunnelé sur la porte 80 et image ONVIF', async () => {
+    const tunnel = 'rtsp+http://192.168.1.45:80/cam/realmonitor?channel=1&subtype=0&unicast=true&proto=Onvif';
+    const probe = async (url) => (url === tunnel ? { ok: true, status: 200, video: { codec: 'H265' }, audio: { codec: 'MPEG4-GENERIC' } } : { ok: false, error: 'La caméra coupe le flux RTSP dès la première demande' });
+    const jpeg = Buffer.from([0xff, 0xd8, 0xff, 0xd9]);
+    const asked = [];
+    const fetchImpl = async (url) => {
+      asked.push(url);
+      return url.includes('onvifsnapshot') ? new Response(jpeg, { status: 200, headers: { 'content-type': 'image/jpeg' } }) : new Response('', { status: 404 });
+    };
+    const d = new DahuaDriver({ id: 'q9', serial: 'S1', host: '192.168.1.45', password: 'TEST1234' }, { probe, fetchImpl, onvif: () => assert.fail('ONVIF inutile') });
+    await d.connect();
+    assert.equal(d.streams().main, tunnel);
+    assert.match(d.streams().sub, /^rtsp\+http:\/\/192\.168\.1\.45:80\/.*subtype=1/);
+    assert.equal(d.capabilities().video_stream, true);
+    assert.equal(d.capabilities().snapshot, true);
+    asked.length = 0;
+    await d.snapshot();
+    assert.deepEqual(asked, ['http://192.168.1.45/onvifsnapshot/media_service/snapshot?channel=1&subtype=0']);
+    await d.ping();
   });
 
   test('pilote : vidéo refusée partout, images fixes quand même', async () => {
