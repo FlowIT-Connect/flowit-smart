@@ -39,14 +39,24 @@ if exist mediamtx\version.txt set /p MTX_HAVE=<mediamtx\version.txt
 if not exist mediamtx\mediamtx.exe set "MTX_HAVE="
 if not "%MTX_HAVE%"=="%MTX_VERSION%" (
   echo Téléchargement du relais vidéo %MTX_VERSION%...
-  taskkill /im mediamtx.exe /f >nul 2>&1
-  if exist mediamtx rmdir /s /q mediamtx
-  powershell -NoProfile -ExecutionPolicy Bypass -Command "$ProgressPreference='SilentlyContinue'; Invoke-WebRequest -Uri 'https://github.com/bluenviron/mediamtx/releases/download/%MTX_VERSION%/mediamtx_%MTX_VERSION%_windows_amd64.zip' -OutFile 'mediamtx.zip'; Expand-Archive -Path 'mediamtx.zip' -DestinationPath 'mediamtx' -Force; Remove-Item 'mediamtx.zip'"
-  if not exist mediamtx\mediamtx.exe (
+  if exist mediamtx_new rmdir /s /q mediamtx_new
+  powershell -NoProfile -ExecutionPolicy Bypass -Command "$ProgressPreference='SilentlyContinue'; Invoke-WebRequest -Uri 'https://github.com/bluenviron/mediamtx/releases/download/%MTX_VERSION%/mediamtx_%MTX_VERSION%_windows_amd64.zip' -OutFile 'mediamtx.zip'; Expand-Archive -Path 'mediamtx.zip' -DestinationPath 'mediamtx_new' -Force; Remove-Item 'mediamtx.zip'"
+  if not exist mediamtx_new\mediamtx.exe (
     echo Le téléchargement du relais vidéo a échoué. Vérifiez la connexion Internet puis relancez.
     pause
     exit /b 1
   )
+  rem L'ancien relais doit être arrêté pour être remplacé.
+  taskkill /im mediamtx.exe /f >nul 2>&1
+  timeout /t 2 /nobreak >nul
+  if exist mediamtx rmdir /s /q mediamtx >nul 2>&1
+  if exist mediamtx\mediamtx.exe (
+    echo L'ancien relais vidéo est encore ouvert et Windows refuse de le remplacer.
+    echo Redémarrez le PC, puis relancez ce fichier.
+    pause
+    exit /b 1
+  )
+  move mediamtx_new mediamtx >nul
   >mediamtx\version.txt echo %MTX_VERSION%
 )
 
