@@ -81,9 +81,15 @@ class _LiveVideoViewState extends State<LiveVideoView> {
     });
     try {
       if (_renderer.textureId == null) await _renderer.initialize();
-      _renderer.onFirstFrameRendered = () {
-        _gotFrame = true;
+      void shown() {
+        if (_gotFrame) return;
         _watchdog?.cancel();
+        if (mounted) setState(() => _gotFrame = true);
+      }
+
+      _renderer.onFirstFrameRendered = shown;
+      _renderer.onResize = () {
+        if (_renderer.videoWidth > 0) shown();
       };
       final gateway = await state.backend.getMediaGateway(d.homeId);
       if (gateway == null || !gateway.online) throw BackendException('offline', state.tr('video.boxOffline'));
