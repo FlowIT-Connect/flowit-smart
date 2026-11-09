@@ -1,9 +1,9 @@
 # Module complémentaire Home Assistant « FlowIT Bridge » / passerelle Solea : la passerelle
 # bridge/ empaquetée pour s'installer en quelques clics sur la box, sans Docker ni PC allumé.
 name: FlowIT Bridge
-version: "2.0.0"
+version: "2.1.0"
 slug: flowit_bridge
-description: Passerelle Solea sur la box (Smart Life, TTLock, robot yeedi) ou relie Home Assistant à Solea
+description: Passerelle Solea sur la box (Smart Life, TTLock, robot yeedi, Broadlink) ou relie Home Assistant à Solea
 url: https://github.com/flowit-connect/flowit-smart
 arch:
   - aarch64
@@ -12,6 +12,10 @@ init: false
 startup: application
 boot: auto
 homeassistant_api: true
+# Lecture seule : touches apprises des télécommandes Broadlink (.storage/broadlink_remote_*_codes).
+map:
+  - type: homeassistant_config
+    read_only: true
 services:
   - mqtt:want
 options:
@@ -32,6 +36,7 @@ schema:
   log_level: list(debug|info|warn|error)
   entity_filter: str?
   ha_mqtt: bool
+  ha_integrations: str?
   tuya_access_id: str?
   tuya_access_secret: password?
   tuya_region: list(eu|weu|us|eus|cn|in)?

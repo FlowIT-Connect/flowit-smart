@@ -230,7 +230,18 @@ class DemoBackend implements Backend {
           ['motion', 'sensor', false, {'kind': 'binary'}],
           ['battery', 'sensor', false, {'unit': '%'}],
         ]);
-    device('Télécommande IR', salon, 'other', 'cloud', vendor: 'Générique', model: 'IR blaster');
+    // Broadlink RM4 Pro repris de Home Assistant : capteur, apprentissage, télé apprise.
+    device('Broadlink RM4 Pro', salon, 'wifi', 'local',
+        vendor: 'Broadlink', model: 'RM4 Pro', state: {'temperature': 24.5, 'humidity': 58.0},
+        caps: [
+          ['temperature', 'sensor', false, {'unit': '°C'}],
+          ['humidity', 'sensor', false, {'unit': '%'}],
+          ['ir_learn', 'string', true, {'kind': 'ir_learn', 'learned': {'tv': ['power', 'volume_up', 'volume_down', 'mute', 'channel_up', 'channel_down']}}],
+        ]);
+    device('Télé', salon, 'wifi', 'local', vendor: 'Broadlink', model: 'Télécommande infrarouge', state: {},
+        caps: [
+          ['ir_command', 'enum', true, {'kind': 'ir_command', 'options': ['power', 'volume_up', 'volume_down', 'mute', 'channel_up', 'channel_down']}],
+        ]);
     final clim = device('Climatiseur salon', salon, 'tuya', 'cloud',
         vendor: 'Tuya', model: 'Split 12000 BTU', state: {'target_temperature': 24.0, 'hvac_mode': 'cool', 'current_temperature': 27.5, 'fan_mode': 'auto', 'swing': true, 'sleep': false},
         caps: [
@@ -941,6 +952,8 @@ class DemoBackend implements Backend {
             'charge' => 'returning',
             _ => 'idle',
           };
+        } else if (row['capability_key'] == 'ir_learn' || row['capability_key'] == 'ir_command') {
+          // Infrarouge : aucun état à retenir (touche envoyée ou apprise).
         } else if (row['capability_key'] != 'access_code') {
           state[row['capability_key'] as String] = row['value'];
         }

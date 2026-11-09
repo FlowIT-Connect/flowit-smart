@@ -62,6 +62,18 @@ export function loadConfig(env = process.env) {
         base: env.HA_MQTT_TOPIC?.trim() || 'solea',
       }
     : null;
+  // Appareils de certaines intégrations de Home Assistant (ex. Broadlink) ajoutés à une
+  // passerelle Smart Life / TTLock / yeedi : HA_IMPORT_PLATFORMS=broadlink.
+  const haImportPlatforms = list(env.HA_IMPORT_PLATFORMS);
+  const haImport = adapter !== 'home_assistant' && haImportPlatforms.length
+    ? {
+        platforms: new Set(haImportPlatforms),
+        wsUrl: env.HA_WS_URL?.trim() || null,
+        url: env.HA_WS_URL?.trim() ? null : required(env, 'HA_URL').replace(/\/$/, ''),
+        token: required(env, 'HA_TOKEN'),
+      }
+    : null;
+  if (haImport && platform) throw new Error('HA_IMPORT_PLATFORMS : à utiliser sur la passerelle du logement, pas avec PLATFORM=true');
   if (haMqtt && platform) throw new Error('HA_MQTT_URL : à utiliser sur la passerelle du logement, pas avec PLATFORM=true');
   return {
     supabaseUrl: required(env, 'SUPABASE_URL'),
@@ -77,6 +89,9 @@ export function loadConfig(env = process.env) {
     haToken: adapter === 'home_assistant' ? required(env, 'HA_TOKEN') : null,
     // Filtre facultatif : n'importer que les entités dont l'id correspond (ex. ^(light|switch|cover)\.)
     haEntityFilter: env.HA_ENTITY_FILTER ? new RegExp(env.HA_ENTITY_FILTER) : null,
+    haImport,
+    // Dossier de configuration de HA (touches apprises des télécommandes Broadlink).
+    haConfigDir: env.HA_CONFIG_DIR?.trim() || null,
     // Tuya Cloud (sans box) : identifiants du projet cloud sur platform.tuya.com > Overview.
     tuyaAccessId: tuya ? required(env, 'TUYA_ACCESS_ID').trim() : null,
     tuyaAccessSecret: tuya ? required(env, 'TUYA_ACCESS_SECRET').trim() : null,

@@ -92,9 +92,9 @@ void main() {
       final weather = FakeWeather();
       final state = await pumpApp(tester, weather: weather);
       await tester.pumpAndSettle();
-      expect(find.text('Dehors 24°'), findsOneWidget);
+      expect(find.textContaining('Dehors 24°'), findsOneWidget);
       expect(find.text('Favoris'), findsOneWidget, reason: 'la météo ne repousse pas les favoris');
-      await tester.tap(find.text('Dehors 24°'));
+      await tester.tap(find.textContaining('Dehors 24°'));
       await tester.pumpAndSettle();
       expect(find.text('Alger, Algérie'), findsOneWidget);
       expect(find.textContaining('Min 18°'), findsOneWidget);

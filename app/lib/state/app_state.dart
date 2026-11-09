@@ -756,7 +756,8 @@ class AppState extends ChangeNotifier {
       if (current == null || !current.isWaiting) return;
       pending[key] = current.withStatus(cmd.status, commandId: cmd.id);
       notifyListeners();
-      _watchCommand(key, cmd.id);
+      // Apprentissage infrarouge : HA attend la touche jusqu'à 30 s, puis l'enregistre.
+      _watchCommand(key, cmd.id, cap == 'ir_learn' ? const Duration(seconds: 75) : commandTimeout);
     } on BackendException catch (e) {
       if (e.code == 'network') _setOnline(false);
       _finishCommand(key, CommandStatus.rejected, _errorText(e), device.name);
@@ -774,8 +775,8 @@ class AppState extends ChangeNotifier {
   }
 
   /// Suivi de secours par interrogation (si le temps réel est coupé) et délai maximal.
-  void _watchCommand(String key, String commandId) {
-    final deadline = DateTime.now().add(commandTimeout);
+  void _watchCommand(String key, String commandId, Duration timeout) {
+    final deadline = DateTime.now().add(timeout);
     Timer.periodic(const Duration(seconds: 2), (t) async {
       final p = pending[key];
       if (p == null || p.commandId != commandId || !p.isWaiting) {

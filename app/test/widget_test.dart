@@ -181,6 +181,49 @@ void main() {
     await tester.pump(const Duration(seconds: 3));
   });
 
+  testWidgets('Broadlink : touches de la télé, puis apprentissage guidé d\'une touche', (tester) async {
+    final state = await pumpApp(tester);
+    await signIn(tester);
+    // Accueil : température intérieure à côté de celle du dehors.
+    expect(find.textContaining('Int. '), findsOneWidget);
+    await tester.tap(find.text('Appareils').last);
+    await tester.pumpAndSettle();
+    await tester.enterText(find.byType(TextField).first, 'télé');
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Télé').last);
+    await tester.pumpAndSettle();
+    expect(find.text('Télécommande'), findsOneWidget);
+    await tester.tap(find.text('Volume +'));
+    await tester.pump(const Duration(milliseconds: 400));
+    Device tv() => state.devices.values.firstWhere((d) => d.name == 'Télé');
+    expect(state.pendingFor(tv().id, 'ir_command')?.value, 'volume_up');
+    await tester.pumpAndSettle();
+    expect(state.pendingFor(tv().id, 'ir_command')?.status, CommandStatus.confirmed);
+
+    Navigator.of(tester.element(find.text('Télécommande'))).pop();
+    await tester.pumpAndSettle();
+    await tester.enterText(find.byType(TextField).first, 'broadlink');
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Broadlink RM4 Pro').last);
+    await tester.pumpAndSettle();
+    await tester.scrollUntilVisible(find.text('Apprendre les touches d\'une télécommande'), 200, scrollable: find.byType(Scrollable).last);
+    await tester.tap(find.text('Apprendre les touches d\'une télécommande'));
+    await tester.pumpAndSettle();
+    // Télé : les touches déjà apprises sont cochées, la première manquante est proposée.
+    expect(find.text('Apprendre « Source »'), findsOneWidget);
+    await tester.tap(find.text('Clim'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Apprendre « Éteindre »'));
+    await tester.pump();
+    expect(find.textContaining('Appuyez maintenant sur « Éteindre »'), findsOneWidget);
+    await tester.pumpAndSettle();
+    final hub = state.devices.values.firstWhere((d) => d.name == 'Broadlink RM4 Pro');
+    expect(state.pendingFor(hub.id, 'ir_learn')?.status, CommandStatus.confirmed);
+    expect(find.text('« Éteindre » apprise. Touche suivante proposée.'), findsOneWidget);
+    expect(find.text('Apprendre « Déshumidifier »'), findsOneWidget);
+    await tester.pump(const Duration(seconds: 3));
+  });
+
   testWidgets('robot aspirateur : carte, pièces choisies puis zone dessinée', (tester) async {
     final state = await pumpApp(tester);
     await signIn(tester);

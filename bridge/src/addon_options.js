@@ -18,6 +18,10 @@ export const ADDON_OPTIONS_FILE = '/data/options.json';
 export const DEFAULT_SUPABASE_URL = 'https://qhzlmzfdbajulnymrwvg.supabase.co';
 /** Module « Solea Yeedi » (GPL) copié à part dans l'image du module complémentaire. */
 export const YEEDI_ENTRY = '/yeedi/src/index.js';
+/** Dossier de configuration de HA dans le module (map homeassistant_config, lecture seule). */
+export const HA_CONFIG_DIR = '/homeassistant';
+/** Intégrations de HA reprises par défaut en mode tuya_cloud : télécommandes Broadlink. */
+export const DEFAULT_HA_INTEGRATIONS = 'broadlink';
 const YEEDI_PORT = 8790;
 
 const text = (v) => (v == null ? '' : String(v).trim());
@@ -44,11 +48,20 @@ export function envFromAddonOptions(options, supervisorToken) {
     env.HA_WS_URL = 'ws://supervisor/core/websocket';
     env.HA_TOKEN = supervisorToken ?? '';
     if (options.entity_filter) env.HA_ENTITY_FILTER = options.entity_filter;
+    env.HA_CONFIG_DIR = HA_CONFIG_DIR;
   }
   if (mode === 'tuya_cloud') {
     env.TUYA_ACCESS_ID = text(options.tuya_access_id);
     env.TUYA_ACCESS_SECRET = text(options.tuya_access_secret);
     env.TUYA_REGION = text(options.tuya_region) || 'eu';
+    // Appareils de HA ajoutés à la passerelle (Broadlink par défaut ; "" pour aucun).
+    const integrations = options.ha_integrations == null ? DEFAULT_HA_INTEGRATIONS : text(options.ha_integrations);
+    if (integrations && supervisorToken) {
+      env.HA_IMPORT_PLATFORMS = integrations;
+      env.HA_WS_URL = 'ws://supervisor/core/websocket';
+      env.HA_TOKEN = supervisorToken ?? '';
+      env.HA_CONFIG_DIR = HA_CONFIG_DIR;
+    }
   }
   if (text(options.ttlock_client_id)) {
     env.TTLOCK_CLIENT_ID = text(options.ttlock_client_id);

@@ -6,6 +6,7 @@ import { existsSync } from 'node:fs';
 import { addDirectCameras } from './adapters/direct_cameras.js';
 import { FakeHomeAssistant } from './adapters/fake_home_assistant.js';
 import { HomeAssistantAdapter } from './adapters/home_assistant.js';
+import { addHomeAssistant, isHaExternalId } from './adapters/ha_import.js';
 import { addTTLock } from './adapters/ttlock.js';
 import { TTLockClient } from './adapters/ttlock_api.js';
 import { TuyaClient } from './adapters/tuya_api.js';
@@ -62,7 +63,13 @@ if (config.adapter === 'simulator') {
 } else if (config.adapter === 'video') {
   adapter = new VideoOnlyAdapter();
 } else {
-  adapter = new HomeAssistantAdapter({ url: config.haUrl, wsUrl: config.haWsUrl ?? undefined, token: config.haToken, filter: config.haEntityFilter });
+  adapter = new HomeAssistantAdapter({ url: config.haUrl, wsUrl: config.haWsUrl ?? undefined, token: config.haToken, filter: config.haEntityFilter, configDir: config.haConfigDir });
+}
+
+if (config.haImport) {
+  const h = config.haImport;
+  addHomeAssistant(adapter, new HomeAssistantAdapter({ url: h.url ?? undefined, wsUrl: h.wsUrl ?? undefined, token: h.token, platforms: h.platforms, configDir: config.haConfigDir }));
+  log.info('bridge.ha_import', { platforms: [...h.platforms], codes: Boolean(config.haConfigDir) });
 }
 
 if (config.cameras.length) {
@@ -112,7 +119,8 @@ if (config.haMqtt && !config.platform) {
     }),
     prefix: m.prefix,
     base: m.base,
-    devices: () => bridge.devices.entries(),
+    // Appareils repris de Home Assistant : déjà dans HA, jamais republiés en double.
+    devices: () => [...bridge.devices.entries()].filter(([, d]) => !isHaExternalId(d.externalId)),
     execute: (deviceId, key, value) => bridge.executeLocal(deviceId, key, value),
   });
   bridge.exporter = exporter;

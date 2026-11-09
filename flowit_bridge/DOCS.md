@@ -17,6 +17,12 @@ de démarrer ce module : deux passerelles pour la même intégration se gênerai
 Onglet **Journal** : `tuya.inventory`, `ttlock.inventory`, `yeedi.inventory`, puis
 `ha_mqtt.published`.
 
+**Télécommande Broadlink (RM4 Pro, RM4 mini)** : ajoutez-la d'abord dans Home Assistant
+(Paramètres > Appareils et services, « Broadlink » découvert > Configurer). Le module la
+reprend tout seul (`bridge.ha_import`, puis `home_assistant.inventory … broadlink: 1`) :
+sa température et son humidité arrivent dans Solea, et les touches s'apprennent depuis
+Solea (fiche du Broadlink > Apprendre une touche). Guide : docs/BROADLINK.md.
+
 ## Mode `home_assistant` : les appareils de ce Home Assistant dans Solea
 
 1. **Clé secrète Supabase** : supabase.com > projet > Project Settings > API Keys >

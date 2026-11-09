@@ -74,7 +74,11 @@ DeviceKind deviceKind(Device d) {
   return DeviceKind.other;
 }
 
+/// Télécommande infrarouge (Broadlink) : touches apprises ou appareil d'apprentissage.
+bool isIrRemote(Device d) => d.capability('ir_command') != null || d.capability('ir_learn') != null;
+
 IconData deviceIcon(Device d) => switch (deviceKind(d)) {
+      DeviceKind.other when isIrRemote(d) => _irIcon(d),
       DeviceKind.camera => Icons.videocam_rounded,
       DeviceKind.airConditioner => Icons.ac_unit_rounded,
       DeviceKind.lock => Icons.lock_rounded,
@@ -88,6 +92,13 @@ IconData deviceIcon(Device d) => switch (deviceKind(d)) {
       DeviceKind.sensor => Icons.device_thermostat_rounded,
       DeviceKind.other => Icons.devices_other_rounded,
     };
+
+IconData _irIcon(Device d) {
+  final n = d.name.toLowerCase();
+  if (n.contains('télé') || n.contains('tele') || n.contains('tv')) return Icons.tv_rounded;
+  if (n.contains('ventil') || n.contains('fan')) return Icons.mode_fan_off_rounded;
+  return Icons.settings_remote_rounded;
+}
 
 /// Couleur d'accent d'un appareil : la couleur réelle d'une lampe colorée si elle
 /// est connue, sinon la couleur de sa famille.
@@ -144,6 +155,7 @@ IconData capabilityIcon(String key) => switch (key) {
       'water_leak' => Icons.water_damage_rounded,
       'gas' => Icons.gas_meter_rounded,
       'preset' => Icons.spa_rounded,
+      'ir_command' || 'ir_learn' => Icons.settings_remote_rounded,
       'fan_mode' => Icons.air_rounded,
       'swing' || 'swing_mode' => Icons.swap_vert_rounded,
       'eco' => Icons.eco_rounded,

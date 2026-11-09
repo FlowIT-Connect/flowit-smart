@@ -19,3 +19,6 @@ configuration:
   entity_filter:
     name: Entity filter (optional)
     description: "Regular expression, e.g. ^(light|switch|cover)\\."
+  ha_integrations:
+    name: Home Assistant devices to bring in (tuya_cloud mode)
+    description: "HA integrations whose devices also go to Solea. Empty = broadlink (RM4 IR remote and its sensor)."

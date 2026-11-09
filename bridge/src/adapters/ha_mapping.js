@@ -35,6 +35,8 @@ const PLATFORMS = {
   bthome: ['ble', 'ble_direct'],
   xiaomi_ble: ['ble', 'ble_direct'],
   mqtt: ['mqtt', 'gateway'],
+  // Télécommande infrarouge Wi-Fi (RM4 Pro, RM4 mini…), pilotée sur le réseau local
+  broadlink: ['wifi', 'local'],
   // Caméras IP (Wi-Fi / Ethernet sur le réseau local)
   onvif: ['wifi', 'local'],
   generic: ['wifi', 'local'],
@@ -209,8 +211,9 @@ function guessProtocol(platform, device) {
  * @param {Array} entityRegistry `config/entity_registry/list`
  * @param {Array} deviceRegistry `config/device_registry/list`
  * @param {RegExp|null} filter  filtre facultatif sur entity_id
+ * @param {Set<string>|null} platforms  intégrations HA retenues (ex. broadlink), toutes si null
  */
-export function buildInventory(states, entityRegistry = [], deviceRegistry = [], filter = null) {
+export function buildInventory(states, entityRegistry = [], deviceRegistry = [], filter = null, platforms = null) {
   const entities = new Map(entityRegistry.map((e) => [e.entity_id, e]));
   const devices = new Map(deviceRegistry.map((d) => [d.id, d]));
   const groups = new Map();
@@ -218,6 +221,7 @@ export function buildInventory(states, entityRegistry = [], deviceRegistry = [],
   for (const s of states) {
     if (filter && !filter.test(s.entity_id)) continue;
     const reg = entities.get(s.entity_id);
+    if (platforms && !platforms.has(reg?.platform)) continue;
     if (reg?.disabled_by || reg?.hidden_by || reg?.entity_category) continue; // diagnostics/config ignorés
     const caps = entityCapabilities(s);
     if (!caps.length) continue;

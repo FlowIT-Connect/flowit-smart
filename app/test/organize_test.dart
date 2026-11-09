@@ -136,6 +136,9 @@ void main() {
       final ids = state.ordered('favorites', state.visibleDevices.where((d) => d.isPinned).toList()).map((d) => d.id).toList();
       expect(find.byKey(const ValueKey('organize-bar')), findsNothing);
 
+      // Les deux tuiles à l'écran (la pastille des températures peut prendre une ligne de plus).
+      await tester.ensureVisible(tileOf('Prise café'));
+      await tester.pumpAndSettle();
       // Un appui court ouvre la fiche, pas l'organisation.
       final gesture = await longPressDrag(tester, tileOf('Plafonnier'));
       expect(find.byKey(const ValueKey('organize-bar')), findsOneWidget);
