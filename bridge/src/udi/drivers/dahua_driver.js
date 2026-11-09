@@ -14,6 +14,11 @@ import { OnvifDriver } from './onvif_driver.js';
 
 export const dahuaRtsp = (host, subtype, port = 554) => `rtsp://${host}:${port}/cam/realmonitor?channel=1&subtype=${subtype}`;
 
+/** RTSP tunnelé dans HTTP sur la porte 80 (Hero A1 : porte 554 fermée par le micrologiciel). */
+export const dahuaRtspHttp = (host, subtype) => `rtsp+http://${host}:80/cam/realmonitor?channel=1&subtype=${subtype}&unicast=true&proto=Onvif`;
+
+const SNAPSHOT_PATHS = ['/cgi-bin/snapshot.cgi?channel=1', '/onvifsnapshot/media_service/snapshot?channel=1&subtype=0'];
+
 /** Variante « authbasic » (Dahua grand public) : identifiants dans l'adresse, lue seulement sur le réseau local. */
 export const dahuaRtspAuthBasic = (host, subtype, { username, password }) =>
   `${dahuaRtsp(host, subtype)}&authbasic=${Buffer.from(`${username}:${password}`).toString('base64')}`;
@@ -34,6 +39,7 @@ export class DahuaDriver {
     this.found = null;
     this.check = null;
     this.snapshotOk = false;
+    this.snapPath = null;
     this.flags = capabilityFlags();
   }
 
@@ -80,6 +86,14 @@ export class DahuaDriver {
         check = basic;
         this.alt = { main: dahuaRtspAuthBasic(this.host, 0, this.creds), sub: dahuaRtspAuthBasic(this.host, 1, this.creds) };
       }
+    }
+    // Porte 554 fermée : le même flux, tunnelé dans HTTP sur la porte 80.
+    if (!check.ok && check.status !== 401) {
+      const http = await this.probe(dahuaRtspHttp(this.host, 0), this.creds);
+      if (http.ok) {
+        check = http;
+        this.alt = { main: dahuaRtspHttp(this.host, 0), sub: dahuaRtspHttp(this.host, 1) };
+      } else if (http.status === 401) check = http;
     }
     if (!check.ok && check.status !== 401) {
       const alt = await this.#viaOnvif();
@@ -137,9 +151,26 @@ export class DahuaDriver {
     return this.host ? { main: dahuaRtsp(this.host, 0), sub: dahuaRtsp(this.host, 1) } : { main: null, sub: null };
   }
 
+  /** Image fixe : snapshot.cgi, sinon l'image ONVIF (Hero A1). Le chemin qui marche est retenu. */
   async #trySnapshot() {
-    const res = await this.fetchImpl(`http://${this.host}/cgi-bin/snapshot.cgi?channel=1`, { signal: AbortSignal.timeout(6000) });
-    const final = res.status === 401 ? await fetchWithAuth(this.fetchImpl, `http://${this.host}/cgi-bin/snapshot.cgi?channel=1`, { signal: AbortSignal.timeout(6000) }, this.creds) : res;
+    let last = null;
+    for (const path of this.snapPath ? [this.snapPath] : SNAPSHOT_PATHS) {
+      try {
+        const img = await this.#fetchImage(path);
+        this.snapPath = path;
+        return img;
+      } catch (e) {
+        if (e?.kind === 'auth') throw e;
+        last = e;
+      }
+    }
+    throw last;
+  }
+
+  async #fetchImage(path) {
+    const url = `http://${this.host}${path}`;
+    const res = await this.fetchImpl(url, { signal: AbortSignal.timeout(6000) });
+    const final = res.status === 401 ? await fetchWithAuth(this.fetchImpl, url, { signal: AbortSignal.timeout(6000) }, this.creds) : res;
     if (final.status === 401) throw new UdiError('Code de sécurité refusé pour l\'image', 'auth');
     const type = final.headers.get('content-type') ?? '';
     if (!final.ok || !type.startsWith('image/')) throw new UdiError(`Image indisponible (HTTP ${final.status})`);

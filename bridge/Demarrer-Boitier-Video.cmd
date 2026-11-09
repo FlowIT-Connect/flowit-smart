@@ -32,15 +32,22 @@ if not exist node_modules\@supabase\supabase-js (
   )
 )
 
-rem Relais vidéo MediaMTX (logiciel libre), téléchargé une seule fois.
-if not exist mediamtx\mediamtx.exe (
-  echo Téléchargement du relais vidéo, une seule fois...
-  powershell -NoProfile -ExecutionPolicy Bypass -Command "$ProgressPreference='SilentlyContinue'; Invoke-WebRequest -Uri 'https://github.com/bluenviron/mediamtx/releases/download/v1.12.3/mediamtx_v1.12.3_windows_amd64.zip' -OutFile 'mediamtx.zip'; Expand-Archive -Path 'mediamtx.zip' -DestinationPath 'mediamtx' -Force; Remove-Item 'mediamtx.zip'"
+rem Relais vidéo MediaMTX (logiciel libre), téléchargé une fois puis à chaque nouvelle version.
+set "MTX_VERSION=v1.21.3"
+set "MTX_HAVE="
+if exist mediamtx\version.txt set /p MTX_HAVE=<mediamtx\version.txt
+if not exist mediamtx\mediamtx.exe set "MTX_HAVE="
+if not "%MTX_HAVE%"=="%MTX_VERSION%" (
+  echo Téléchargement du relais vidéo %MTX_VERSION%...
+  taskkill /im mediamtx.exe /f >nul 2>&1
+  if exist mediamtx rmdir /s /q mediamtx
+  powershell -NoProfile -ExecutionPolicy Bypass -Command "$ProgressPreference='SilentlyContinue'; Invoke-WebRequest -Uri 'https://github.com/bluenviron/mediamtx/releases/download/%MTX_VERSION%/mediamtx_%MTX_VERSION%_windows_amd64.zip' -OutFile 'mediamtx.zip'; Expand-Archive -Path 'mediamtx.zip' -DestinationPath 'mediamtx' -Force; Remove-Item 'mediamtx.zip'"
   if not exist mediamtx\mediamtx.exe (
     echo Le téléchargement du relais vidéo a échoué. Vérifiez la connexion Internet puis relancez.
     pause
     exit /b 1
   )
+  >mediamtx\version.txt echo %MTX_VERSION%
 )
 
 if not exist .env.video (
