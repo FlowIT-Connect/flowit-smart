@@ -38,6 +38,8 @@ class _LiveVideoViewState extends State<LiveVideoView> {
   bool _snapshots = false;
   bool _disposed = false;
   int _attempt = 0;
+  bool _gotFrame = false;
+  Timer? _watchdog;
   late final Backend _backend;
 
   @override
@@ -56,6 +58,8 @@ class _LiveVideoViewState extends State<LiveVideoView> {
   }
 
   Future<void> _teardown() async {
+    _watchdog?.cancel();
+    _watchdog = null;
     final id = _sessionId;
     _sessionId = null;
     if (id != null) unawaited(_backend.closeVideoSession(id).then((_) {}, onError: (_) {}));
@@ -73,9 +77,14 @@ class _LiveVideoViewState extends State<LiveVideoView> {
     setState(() {
       _phase = _Phase.connecting;
       _error = null;
+      _gotFrame = false;
     });
     try {
       if (_renderer.textureId == null) await _renderer.initialize();
+      _renderer.onFirstFrameRendered = () {
+        _gotFrame = true;
+        _watchdog?.cancel();
+      };
       final gateway = await state.backend.getMediaGateway(d.homeId);
       if (gateway == null || !gateway.online) throw BackendException('offline', state.tr('video.boxOffline'));
       if (!gateway.relayOk) throw BackendException('offline', state.tr('video.relayMissing'));
@@ -86,9 +95,15 @@ class _LiveVideoViewState extends State<LiveVideoView> {
       if (d.udi.microphone) {
         await pc.addTransceiver(kind: RTCRtpMediaType.RTCRtpMediaTypeAudio, init: RTCRtpTransceiverInit(direction: TransceiverDirection.RecvOnly));
       }
-      pc.onTrack = (event) {
-        if (event.streams.isEmpty || _disposed) return;
-        _stream = event.streams.first;
+      pc.onTrack = (event) async {
+        if (_disposed || attempt != _attempt) return;
+        if (event.streams.isNotEmpty) {
+          _stream = event.streams.first;
+        } else {
+          // Réponse sans identifiant de flux (msid) : on range nous-mêmes la piste reçue.
+          _stream ??= await createLocalMediaStream('solea-live');
+          await _stream!.addTrack(event.track);
+        }
         _renderer.srcObject = _stream;
         _applyMute();
         if (mounted) setState(() => _phase = _Phase.playing);
@@ -123,6 +138,12 @@ class _LiveVideoViewState extends State<LiveVideoView> {
       if (info == null || info.status == 'offer') throw BackendException('timeout', state.tr('video.noAnswer'));
       if (info.status != 'answered' || info.answer == null) throw BackendException('failed', info.error ?? state.tr('video.failed'));
       await pc.setRemoteDescription(RTCSessionDescription(info.answer, 'answer'));
+      // Images reçues mais jamais affichées (format ou taille que ce téléphone ne décode pas) :
+      // on le dit au lieu de laisser tourner sans fin, avec la qualité SD ou les images fixes.
+      _watchdog?.cancel();
+      _watchdog = Timer(const Duration(seconds: 15), () {
+        if (!_disposed && attempt == _attempt && !_gotFrame && _renderer.videoWidth == 0) _fail(state.tr('video.noPicture'));
+      });
     } on BackendException catch (e) {
       _fail(e.message);
     } catch (e) {
@@ -173,7 +194,11 @@ class _LiveVideoViewState extends State<LiveVideoView> {
     final f = context.flow;
     const white = Colors.white;
     final Widget body = switch (_phase) {
-      _Phase.playing => RTCVideoView(_renderer, objectFit: RTCVideoViewObjectFit.RTCVideoViewObjectFitContain),
+      _Phase.playing => Stack(fit: StackFit.expand, children: [
+          RTCVideoView(_renderer, objectFit: RTCVideoViewObjectFit.RTCVideoViewObjectFitContain),
+          if (!_gotFrame)
+            const Center(child: SizedBox(width: 28, height: 28, child: CircularProgressIndicator(strokeWidth: 2.5, color: white))),
+        ]),
       _Phase.connecting => Center(
           child: Column(mainAxisSize: MainAxisSize.min, children: [
             const SizedBox(width: 28, height: 28, child: CircularProgressIndicator(strokeWidth: 2.5, color: white)),
@@ -192,6 +217,15 @@ class _LiveVideoViewState extends State<LiveVideoView> {
               const SizedBox(height: 12),
               Wrap(spacing: 8, runSpacing: 8, alignment: WrapAlignment.center, children: [
                 FilledButton.tonalIcon(onPressed: _restart, icon: const Icon(Icons.refresh_rounded), label: Text(context.tr('common.retry'))),
+                if (_hd)
+                  FilledButton.tonalIcon(
+                    onPressed: () {
+                      setState(() => _hd = false);
+                      _restart();
+                    },
+                    icon: const Icon(Icons.sd_rounded),
+                    label: Text(context.tr('video.trySd')),
+                  ),
                 if (d.udi.snapshot)
                   FilledButton.tonalIcon(
                     onPressed: () => setState(() => _snapshots = true),
