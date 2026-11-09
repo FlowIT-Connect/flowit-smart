@@ -633,5 +633,22 @@
     "title": "Seite nicht gefunden",
     "text": "Diese Seite existiert nicht oder wurde verschoben.",
     "back": "Zur Startseite"
+  },
+  "appShowcase": {
+    "eyebrow": "Die App",
+    "title": "Solea, so wie Sie sie nutzen werden.",
+    "text": "Echte Screenshots der Solea-App: Ihr Zuhause, Ihre Räume, Ihre Szenarien und Ihr Komfort auf einem Bildschirm.",
+    "hint": "Scrollen Sie für weitere Bildschirme",
+    "screens": {
+      "home": "Start",
+      "rooms": "Meine Räume",
+      "automations": "Automationen",
+      "climate": "Heizung & Klima",
+      "climateModes": "Komfortmodi",
+      "settings": "Einstellungen",
+      "appearance": "Darstellung",
+      "signIn": "Anmelden"
+    },
+    "alt": "Screenshot der Solea-App: {screen}"
   }
 }

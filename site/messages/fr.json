@@ -633,5 +633,22 @@
     "title": "Page introuvable",
     "text": "Cette page n'existe pas ou a été déplacée.",
     "back": "Retour à l'accueil"
+  },
+  "appShowcase": {
+    "eyebrow": "L'application",
+    "title": "Solea, telle que vous l'utiliserez.",
+    "text": "Captures réelles de l'application Solea : votre maison, vos pièces, vos scénarios et votre confort, réunis dans un seul écran.",
+    "hint": "Faites défiler pour voir d'autres écrans",
+    "screens": {
+      "home": "Accueil",
+      "rooms": "Mes pièces",
+      "automations": "Automatisations",
+      "climate": "Chauffage et clim",
+      "climateModes": "Modes de confort",
+      "settings": "Paramètres",
+      "appearance": "Apparence",
+      "signIn": "Connexion"
+    },
+    "alt": "Capture de l'application Solea : {screen}"
   }
 }

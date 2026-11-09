@@ -633,5 +633,22 @@
     "title": "Page not found",
     "text": "This page does not exist or has been moved.",
     "back": "Back to home"
+  },
+  "appShowcase": {
+    "eyebrow": "The app",
+    "title": "Solea, just as you'll use it.",
+    "text": "Real screenshots of the Solea app: your home, your rooms, your scenarios and your comfort, all on one screen.",
+    "hint": "Scroll to see more screens",
+    "screens": {
+      "home": "Home",
+      "rooms": "My rooms",
+      "automations": "Automations",
+      "climate": "Heating & cooling",
+      "climateModes": "Comfort modes",
+      "settings": "Settings",
+      "appearance": "Appearance",
+      "signIn": "Sign in"
+    },
+    "alt": "Solea app screenshot: {screen}"
   }
 }
