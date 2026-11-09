@@ -36,7 +36,8 @@ jobs:
           cache: true
       - run: flutter pub get
       - run: flutter test
-      - run: flutter build apk --release
+      # Numéro de version propre à chaque construction (visible dans Paramètres › Applications).
+      - run: flutter build apk --release --build-name=1.0.${{ github.run_number }} --build-number=${{ github.run_number }}
       - uses: actions/upload-artifact@v4
         with:
           name: Solea-android
