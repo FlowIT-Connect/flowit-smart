@@ -264,6 +264,8 @@ describe('RTSP', () => {
   test('RTSP tunnelé dans HTTP (rtsp+http, porte 80) avec Digest', async () => {
     const md5 = (x) => createHash('md5').update(x).digest('hex');
     const gets = new Map();
+    const nonces = new Map(); // nonce propre à chaque tunnel, comme la Hero A1
+    let tunnels = 0;
     server = net.createServer((sock) => {
       let buf = Buffer.alloc(0);
       let role = null;
@@ -279,6 +281,7 @@ describe('RTSP', () => {
           buf = buf.subarray(sep + 4);
           if (role === 'get') {
             assert.match(head, /Accept: application\/x-rtsp-tunnelled/);
+            tunnels++;
             gets.set(cookie, sock);
             sock.write('HTTP/1.0 200 OK\r\nContent-Type: application/x-rtsp-tunnelled\r\n\r\n');
           }
@@ -292,8 +295,10 @@ describe('RTSP', () => {
         assert.match(req, /^DESCRIBE rtsp:\/\/127\.0\.0\.1:\d+\/cam\/realmonitor\?channel=1&subtype=0&unicast=true&proto=Onvif RTSP/);
         const auth = /Authorization: Digest (.*)\r\n/.exec(req)?.[1];
         const uri = /uri="([^"]+)"/.exec(auth ?? '')?.[1];
-        const ok = auth && md5(`${md5('admin:cam:S3cret!')}:n1:${md5(`DESCRIBE:${uri}`)}`) === /response="([^"]+)"/.exec(auth)[1];
-        if (!ok) out.write(`RTSP/1.0 401 Unauthorized\r\nCSeq: ${cseq}\r\nWWW-Authenticate: Digest realm="cam", nonce="n1"\r\n\r\n`);
+        if (!nonces.has(cookie)) nonces.set(cookie, `n-${cookie}`);
+        const nonce = nonces.get(cookie);
+        const ok = auth && /nonce="([^"]+)"/.exec(auth)[1] === nonce && md5(`${md5('admin:cam:S3cret!')}:${nonce}:${md5(`DESCRIBE:${uri}`)}`) === /response="([^"]+)"/.exec(auth)[1];
+        if (!ok) out.write(`RTSP/1.0 401 Unauthorized\r\nCSeq: ${cseq}\r\nWWW-Authenticate: Digest realm="cam", nonce="${nonce}"\r\n\r\n`);
         else out.write(`RTSP/1.0 200 OK\r\nCSeq: ${cseq}\r\nContent-Length: ${Buffer.byteLength(SDP)}\r\n\r\n${SDP}`);
       });
     });
@@ -301,6 +306,7 @@ describe('RTSP', () => {
     const url = `rtsp+http://127.0.0.1:${port}/cam/realmonitor?channel=1&subtype=0&unicast=true&proto=Onvif`;
     const r = await probeRtsp(url, { username: 'admin', password: 'S3cret!' });
     assert.deepEqual(r, { ok: true, status: 200, video: { codec: 'H264' }, audio: { codec: 'MPEG4-GENERIC' } });
+    assert.equal(tunnels, 1, 'demande identifiée dans le même tunnel');
     assert.equal((await probeRtsp(url, { username: 'admin', password: 'faux' })).status, 401);
     assert.equal(withCredentials('rtsp+http://192.168.1.2:80/cam?x=1', 'admin', 'p@ss'), 'rtsp+http://admin:p%40ss@192.168.1.2:80/cam?x=1');
   });

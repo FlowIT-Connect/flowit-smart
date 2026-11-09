@@ -139,13 +139,18 @@ export async function probeRtsp(rawUrl, { username, password, basicFirst = false
 
   // Une connexion neuve par requête : certaines caméras (Dahua grand public) ferment la
   // connexion après avoir répondu 401, la requête identifiée doit donc repartir de zéro.
+  // Tunnel HTTP : un seul canal pour les deux demandes, car la caméra (Hero A1) refuse le
+  // « nonce » Digest reçu dans un autre tunnel. Le canal est fermé à la fin de probeRtsp.
+  let kept = null;
   const describe = async (cseq, extra = {}) => {
     let timer;
     const timeout = new Promise((_, reject) => {
       timer = setTimeout(() => reject(new Error('délai dépassé')), timeoutMs);
     });
     let channel = null;
-    const opening = tunnel
+    const opening = kept
+      ? Promise.resolve(kept)
+      : tunnel
       ? openTunnel({ host: u.hostname, port, path: `${u.pathname}${u.search}`, connect })
       : (async () => {
           const socket = connect({ host: u.hostname, port });
@@ -156,11 +161,13 @@ export async function probeRtsp(rawUrl, { username, password, basicFirst = false
     opening.then((c) => (channel = c), () => null);
     try {
       channel = await Promise.race([opening, timeout]);
+      if (tunnel) kept = channel;
       return await Promise.race([rtspRequest(channel.read, { method: 'DESCRIBE', url, cseq, headers: { Accept: 'application/sdp', ...extra } }, channel.write), timeout]);
     } finally {
       clearTimeout(timer);
-      if (channel) channel.destroy();
-      else opening.then((c) => c.destroy(), () => null);
+      if (channel) {
+        if (!tunnel) channel.destroy();
+      } else opening.then((c) => c.destroy(), () => null);
     }
   };
 
@@ -186,6 +193,8 @@ export async function probeRtsp(rawUrl, { username, password, basicFirst = false
     if (cut && stage === 'identification') return { ok: false, error: `La caméra coupe le flux RTSP après l'envoi du mot de passe (${e.message})` };
     if (cut) return { ok: false, error: `La caméra coupe le flux RTSP dès la première demande : RTSP désactivé ou accès bloqué (${e.message})` };
     return { ok: false, error: `Flux RTSP injoignable (${e.message})` };
+  } finally {
+    kept?.destroy();
   }
 }
 
