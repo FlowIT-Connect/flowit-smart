@@ -203,6 +203,7 @@ describe('RTSP', () => {
       server = net.createServer((sock) => {
         sock.on('data', (buf) => {
           if (resetAll) return sock.resetAndDestroy();
+          if (sock.writableEnded) return; // connexion déjà fermée après 401 : demande ignorée
           const req = buf.toString();
           const cseq = /CSeq: (\d+)/.exec(req)[1];
           const auth = /Authorization: Digest (.*)\r\n/.exec(req)?.[1];
@@ -231,6 +232,30 @@ describe('RTSP', () => {
     const port = await startServer({ sdp: SDP, closeAfter401: true });
     const r = await probeRtsp(`rtsp://127.0.0.1:${port}/cam/realmonitor?channel=1&subtype=0`, { username: 'admin', password: 'S3cret!' });
     assert.equal(r.ok, true);
+  });
+
+  test('porte 554 (Hero A1) : nonce valable seulement sur sa connexion, demande identifiée sur la même', async () => {
+    let conns = 0;
+    let n = 0;
+    await new Promise((resolve) => {
+      server = net.createServer((sock) => {
+        conns += 1;
+        const nonce = `n${++n}`;
+        sock.on('data', (buf) => {
+          const req = buf.toString();
+          const cseq = /CSeq: (\d+)/.exec(req)[1];
+          const auth = /Authorization: Digest (.*)\r\n/.exec(req)?.[1];
+          const md5 = (x) => createHash('md5').update(x).digest('hex');
+          const uri = /uri="([^"]+)"/.exec(auth ?? '')?.[1];
+          const ok = auth && auth.includes(`nonce="${nonce}"`) && md5(`${md5('admin:cam:S3cret!')}:${nonce}:${md5(`DESCRIBE:${uri}`)}`) === /response="([^"]+)"/.exec(auth)[1];
+          if (!ok) return sock.write(`RTSP/1.0 401 Unauthorized\r\nCSeq: ${cseq}\r\nWWW-Authenticate: Digest realm="cam", nonce="${nonce}"\r\n\r\n`);
+          sock.write(`RTSP/1.0 200 OK\r\nCSeq: ${cseq}\r\nContent-Type: application/sdp\r\nContent-Length: ${Buffer.byteLength(SDP)}\r\n\r\n${SDP}`);
+        });
+      }).listen(0, '127.0.0.1', resolve);
+    });
+    const r = await probeRtsp(`rtsp://127.0.0.1:${server.address().port}/cam/realmonitor?channel=1&subtype=0`, { username: 'admin', password: 'S3cret!' });
+    assert.equal(r.ok, true);
+    assert.equal(conns, 1);
   });
 
   test('connexion coupée dès la première demande : RTSP désactivé expliqué', async () => {

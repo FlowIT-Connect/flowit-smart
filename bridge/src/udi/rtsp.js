@@ -47,12 +47,22 @@ function rtspRequest(socket, { method, url, cseq, headers = {} }, write = (text)
       }
       const len = Number(hdrs['content-length'] ?? 0);
       if (buf.length < sep + 4 + len) return;
-      socket.off('data', onData);
-      socket.off('error', reject);
+      done();
       resolve({ status, headers: hdrs, body: buf.subarray(sep + 4, sep + 4 + len).toString('utf8') });
     };
+    // Connexion fermée par la caméra avant la réponse : échec immédiat (pas d'attente du délai).
+    const onClose = () => (done(), reject(new Error('connexion fermée par la caméra')));
+    const onError = (e) => (done(), reject(e));
+    const done = () => {
+      socket.off('data', onData);
+      socket.off('error', onError);
+      socket.off('end', onClose);
+      socket.off('close', onClose);
+    };
     socket.on('data', onData);
-    socket.once('error', reject);
+    socket.on('error', onError);
+    socket.on('end', onClose);
+    socket.on('close', onClose);
     const lines = [`${method} ${url} RTSP/1.0`, `CSeq: ${cseq}`, 'User-Agent: Solea-UDI', ...Object.entries(headers).map(([k, v]) => `${k}: ${v}`)];
     write(`${lines.join('\r\n')}\r\n\r\n`);
   });
@@ -137,37 +147,53 @@ export async function probeRtsp(rawUrl, { username, password, basicFirst = false
     url = u.toString();
   }
 
-  // Une connexion neuve par requête : certaines caméras (Dahua grand public) ferment la
-  // connexion après avoir répondu 401, la requête identifiée doit donc repartir de zéro.
-  // Tunnel HTTP : un seul canal pour les deux demandes, car la caméra (Hero A1) refuse le
-  // « nonce » Digest reçu dans un autre tunnel. Le canal est fermé à la fin de probeRtsp.
+  // Même connexion pour la demande identifiée : la Hero A1 (porte 554 comme tunnel HTTP)
+  // refuse le « nonce » Digest reçu sur une autre connexion. Si la caméra a fermé la
+  // connexion après son 401 (autres Dahua grand public), on repart d'une connexion neuve.
+  // Le canal gardé est fermé à la fin de probeRtsp.
   let kept = null;
-  const describe = async (cseq, extra = {}) => {
-    let timer;
-    const timeout = new Promise((_, reject) => {
-      timer = setTimeout(() => reject(new Error('délai dépassé')), timeoutMs);
-    });
-    let channel = null;
-    const opening = kept
-      ? Promise.resolve(kept)
-      : tunnel
+  const open = () =>
+    tunnel
       ? openTunnel({ host: u.hostname, port, path: `${u.pathname}${u.search}`, connect })
       : (async () => {
           const socket = connect({ host: u.hostname, port });
           socket.setTimeout?.(timeoutMs);
           await connected(socket);
-          return { read: socket, write: (text) => socket.write(text), destroy: () => socket.destroy() };
+          const channel = { read: socket, write: (text) => socket.write(text), destroy: () => socket.destroy(), closed: false };
+          const gone = () => (channel.closed = true);
+          socket.on('end', gone);
+          socket.on('close', gone);
+          socket.on('error', gone); // connexion gardée entre deux demandes : erreur sans plantage
+          return channel;
         })();
-    opening.then((c) => (channel = c), () => null);
+  const describe = async (cseq, extra = {}) => {
+    let timer;
+    const timeout = new Promise((_, reject) => {
+      timer = setTimeout(() => reject(new Error('délai dépassé')), timeoutMs);
+    });
+    if (kept?.closed) {
+      kept.destroy();
+      kept = null;
+    }
+    const reuse = Boolean(kept);
+    const opening = kept ? Promise.resolve(kept) : open();
+    let channel = null;
     try {
       channel = await Promise.race([opening, timeout]);
-      if (tunnel) kept = channel;
+      kept = channel;
       return await Promise.race([rtspRequest(channel.read, { method: 'DESCRIBE', url, cseq, headers: { Accept: 'application/sdp', ...extra } }, channel.write), timeout]);
+    } catch (e) {
+      // Connexion gardée fermée entre-temps par la caméra : une seule reprise sur une neuve.
+      if (reuse && !tunnel && channel?.closed) {
+        clearTimeout(timer);
+        channel.destroy();
+        kept = null;
+        return describe(cseq, extra);
+      }
+      throw e;
     } finally {
       clearTimeout(timer);
-      if (channel) {
-        if (!tunnel) channel.destroy();
-      } else opening.then((c) => c.destroy(), () => null);
+      if (!channel) opening.then((c) => c.destroy(), () => null);
     }
   };
 
@@ -189,7 +215,7 @@ export async function probeRtsp(rawUrl, { username, password, basicFirst = false
     if (res.status !== 200) return { ok: false, status: res.status, error: `Le flux RTSP répond ${res.status}` };
     return { ok: true, status: 200, ...parseSdp(res.body) };
   } catch (e) {
-    const cut = /ECONNRESET|socket hang up|EPIPE/i.test(e.message);
+    const cut = /ECONNRESET|socket hang up|EPIPE|connexion fermée/i.test(e.message);
     if (cut && stage === 'identification') return { ok: false, error: `La caméra coupe le flux RTSP après l'envoi du mot de passe (${e.message})` };
     if (cut) return { ok: false, error: `La caméra coupe le flux RTSP dès la première demande : RTSP désactivé ou accès bloqué (${e.message})` };
     return { ok: false, error: `Flux RTSP injoignable (${e.message})` };

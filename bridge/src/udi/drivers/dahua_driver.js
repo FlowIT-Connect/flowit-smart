@@ -87,8 +87,8 @@ export class DahuaDriver {
         this.alt = { main: dahuaRtspAuthBasic(this.host, 0, this.creds), sub: dahuaRtspAuthBasic(this.host, 1, this.creds) };
       }
     }
-    // Porte 554 fermée : le même flux, tunnelé dans HTTP sur la porte 80.
-    if (!check.ok && check.status !== 401) {
+    // Porte 554 fermée ou qui refuse le code : le même flux, tunnelé dans HTTP sur la porte 80.
+    if (!check.ok) {
       const http = await this.probe(dahuaRtspHttp(this.host, 0), this.creds);
       if (http.ok) {
         check = http;
