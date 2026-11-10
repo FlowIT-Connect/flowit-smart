@@ -12,10 +12,13 @@ import '../../state/app_state.dart';
 /// Le flux n'existe que tant que cet écran est ouvert : à la fermeture, la passerelle
 /// cesse d'envoyer des images.
 class CameraLiveView extends StatefulWidget {
-  const CameraLiveView({super.key, required this.device, this.fullscreen = false});
+  const CameraLiveView({super.key, required this.device, this.fullscreen = false, this.embedded = false});
 
   final Device device;
   final bool fullscreen;
+
+  /// Dans le cadre de la vidéo fluide (images fixes en attendant que la vidéo s'affiche).
+  final bool embedded;
 
   @override
   State<CameraLiveView> createState() => _CameraLiveViewState();
@@ -126,7 +129,7 @@ class _CameraLiveViewState extends State<CameraLiveView> {
       ]),
     );
 
-    if (widget.fullscreen) return view;
+    if (widget.fullscreen || widget.embedded) return view;
     return Padding(
       padding: const EdgeInsets.fromLTRB(16, 6, 16, 6),
       child: ClipRRect(
