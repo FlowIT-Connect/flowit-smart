@@ -89,3 +89,26 @@ test('ajout d\'appareils : demande réservée une seule fois, clé de serrure ef
   assert.match(r.calls[3].query, /created_at=gt\.2026-10-31T10:00:00\.000Z/);
   assert.match(r.calls[3].query, /id=not\.in\.\(d9\)/);
 });
+
+test('caméras : « watch » de l\'application Flutter (champs à plat) et de supabase-js (sous payload)', () => {
+  const store = new SupabaseStore('http://127.0.0.1:1', 'cle-de-test');
+  let handler;
+  store.db = {
+    channel: () => ({
+      on(_type, _filter, cb) {
+        handler = cb;
+        return this;
+      },
+      subscribe() {
+        return this;
+      },
+    }),
+    removeChannel() {},
+  };
+  const seen = [];
+  store.subscribeCameraWatch('home-1', (id) => seen.push(id));
+  handler({ type: 'broadcast', event: 'watch', device_id: 'cam-flutter' });
+  handler({ type: 'broadcast', event: 'watch', payload: { device_id: 'cam-js' } });
+  handler({ type: 'broadcast', event: 'watch' });
+  assert.deepEqual(seen, ['cam-flutter', 'cam-js']);
+});

@@ -81,9 +81,15 @@ class _LiveVideoViewState extends State<LiveVideoView> {
     });
     try {
       if (_renderer.textureId == null) await _renderer.initialize();
-      _renderer.onFirstFrameRendered = () {
-        _gotFrame = true;
+      void shown() {
+        if (_gotFrame) return;
         _watchdog?.cancel();
+        if (mounted) setState(() => _gotFrame = true);
+      }
+
+      _renderer.onFirstFrameRendered = shown;
+      _renderer.onResize = () {
+        if (_renderer.videoWidth > 0) shown();
       };
       final gateway = await state.backend.getMediaGateway(d.homeId);
       if (gateway == null || !gateway.online) throw BackendException('offline', state.tr('video.boxOffline'));
@@ -110,8 +116,14 @@ class _LiveVideoViewState extends State<LiveVideoView> {
       };
       pc.onConnectionState = (s) {
         if (_disposed || attempt != _attempt) return;
-        if (s == RTCPeerConnectionState.RTCPeerConnectionStateFailed || s == RTCPeerConnectionState.RTCPeerConnectionStateDisconnected) {
-          _fail(state.tr('video.connectionLost'));
+        if (s == RTCPeerConnectionState.RTCPeerConnectionStateFailed) _fail(state.tr('video.connectionLost'));
+        // « Disconnected » est souvent passager (Wi-Fi qui hésite) : on laisse 6 s pour revenir.
+        if (s == RTCPeerConnectionState.RTCPeerConnectionStateDisconnected) {
+          Future.delayed(const Duration(seconds: 6), () {
+            if (!_disposed && attempt == _attempt && pc.connectionState == RTCPeerConnectionState.RTCPeerConnectionStateDisconnected) {
+              _fail(state.tr('video.connectionLost'));
+            }
+          });
         }
         // Certains téléphones ne signalent jamais la piste (onTrack) : on la prend chez le récepteur.
         if (s == RTCPeerConnectionState.RTCPeerConnectionStateConnected) {
@@ -249,7 +261,10 @@ class _LiveVideoViewState extends State<LiveVideoView> {
                   ),
                 if (d.udi.snapshot)
                   FilledButton.tonalIcon(
-                    onPressed: () => setState(() => _snapshots = true),
+                    onPressed: () {
+                      _teardown(); // ne pas laisser la vidéo couler pour rien
+                      setState(() => _snapshots = true);
+                    },
                     icon: const Icon(Icons.photo_library_rounded),
                     label: Text(context.tr('video.useSnapshots')),
                   ),

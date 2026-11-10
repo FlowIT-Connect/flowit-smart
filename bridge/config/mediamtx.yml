@@ -6,6 +6,9 @@
 # Les chemins (un par caméra) sont créés par la passerelle via l'API ; rien à déclarer ici.
 
 logLevel: info
+# Journal aussi dans un fichier, pour comprendre une coupure vidéo après coup.
+logDestinations: [stdout, file]
+logFile: mediamtx.log
 
 api: yes
 apiAddress: 127.0.0.1:9997
