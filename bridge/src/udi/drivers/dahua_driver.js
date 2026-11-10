@@ -17,6 +17,20 @@ export const dahuaRtsp = (host, subtype, port = 554) => `rtsp://${host}:${port}/
 /** RTSP tunnelé dans HTTP sur la porte 80 (Hero A1 : porte 554 fermée par le micrologiciel). */
 export const dahuaRtspHttp = (host, subtype) => `rtsp+http://${host}:80/cam/realmonitor?channel=1&subtype=${subtype}&unicast=true&proto=Onvif`;
 
+/** Heure locale de la caméra au format Dahua AAAA_MM_JJ_HH_MM_SS (le boîtier est à la même heure). */
+export function dahuaTime(date) {
+  const p = (n) => String(n).padStart(2, '0');
+  return `${date.getFullYear()}_${p(date.getMonth() + 1)}_${p(date.getDate())}_${p(date.getHours())}_${p(date.getMinutes())}_${p(date.getSeconds())}`;
+}
+
+/** Relecture de la carte mémoire : même porte et même mode que le direct qui marche. */
+export function dahuaPlayback(live, host, start, end) {
+  const range = `channel=1&starttime=${dahuaTime(start)}&endtime=${dahuaTime(end)}`;
+  if (live?.startsWith('rtsp+http:')) return `rtsp+http://${host}:80/cam/playback?${range}`;
+  const auth = /[?&](authbasic=[^&]+)/.exec(live ?? '')?.[1];
+  return `rtsp://${host}:554/cam/playback?${range}${auth ? `&${auth}` : ''}`;
+}
+
 const SNAPSHOT_PATHS = ['/cgi-bin/snapshot.cgi?channel=1', '/onvifsnapshot/media_service/snapshot?channel=1&subtype=0'];
 
 /** Variante « authbasic » (Dahua grand public) : identifiants dans l'adresse, lue seulement sur le réseau local. */
@@ -219,6 +233,49 @@ export class DahuaDriver {
     }
     const check = this.alt?.main ? await this.probe(this.alt.main, { ...this.creds, basicFirst: this.alt.main.includes('authbasic=') }) : await this.#probe();
     if (!check.ok) throw new UdiError(check.error, check.status === 401 ? 'auth' : 'unreachable');
+  }
+
+  /** Adresse RTSP d'un passage enregistré sur la carte mémoire (sans identifiants). */
+  playbackUrl(start, end) {
+    if (!this.host) return null;
+    return dahuaPlayback(this.streams().main, this.host, start, end);
+  }
+
+  /** Le passage demandé existe-t-il sur la carte mémoire ? (404 : rien d'enregistré) */
+  probePlayback(url) {
+    return this.probe(url, { ...this.creds, basicFirst: url.includes('authbasic='), timeoutMs: 8000 });
+  }
+
+  /**
+   * Heures enregistrées sur la carte mémoire pour une journée (heure locale) : une demande
+   * RTSP par heure, la caméra répond 404 quand rien n'est enregistré. Codec lu dans la réponse
+   * (les enregistrements H.265 ne sont pas lisibles sur téléphone).
+   */
+  async recordedSlots(day, { now = new Date(), concurrency = 4 } = {}) {
+    if (!this.host) throw new UdiError('Caméra pas encore trouvée sur le réseau', 'unreachable');
+    const base = new Date(day.getFullYear(), day.getMonth(), day.getDate());
+    const hours = [];
+    for (let h = 0; h < 24; h++) {
+      const start = new Date(base.getFullYear(), base.getMonth(), base.getDate(), h);
+      if (start > now) break;
+      hours.push(start);
+    }
+    const slots = [];
+    let authError = null;
+    const work = [...hours];
+    const worker = async () => {
+      while (work.length) {
+        const start = work.shift();
+        const end = new Date(start.getTime() + 3600_000 - 1000);
+        const url = this.playbackUrl(start, end);
+        const res = await this.probePlayback(url).catch((e) => ({ ok: false, error: e.message }));
+        if (res.status === 401) authError = res;
+        if (res.ok && res.video) slots.push({ start: start.toISOString(), end: new Date(end.getTime() + 1000).toISOString(), codec: res.video.codec ?? null, audio: res.audio?.codec ?? null });
+      }
+    };
+    await Promise.all(Array.from({ length: Math.min(concurrency, hours.length) }, worker));
+    if (!slots.length && authError) throw new UdiError('Code de sécurité refusé pour la carte mémoire', 'auth');
+    return slots.sort((a, b) => a.start.localeCompare(b.start));
   }
 
   async disconnect() {}

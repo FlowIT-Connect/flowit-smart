@@ -100,6 +100,11 @@ export function pathName(sourceId, quality = 'main') {
   return `solea_${String(sourceId).replace(/[^a-zA-Z0-9]/g, '')}_${quality === 'sub' ? 'sub' : 'main'}`;
 }
 
+/** Chemin MediaMTX propre à une relecture de la carte mémoire (supprimé à la fin de la session). */
+export function playbackPathName(sourceId, sessionId) {
+  return `solea_${String(sourceId).replace(/[^a-zA-Z0-9]/g, '')}_pb_${String(sessionId).replace(/[^a-zA-Z0-9]/g, '').slice(0, 12)}`;
+}
+
 /**
  * Identifiants TURN temporaires (« TURN REST API », coturn avec use-auth-secret) :
  * l'application reçoit un mot de passe valable quelques heures, jamais le secret.

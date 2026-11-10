@@ -246,3 +246,36 @@ class VideoSessionInfo {
   factory VideoSessionInfo.fromJson(Map<String, dynamic> j) =>
       VideoSessionInfo(id: j['id'] as String, status: j['status'] as String, answer: j['answer'] as String?, error: j['error'] as String?);
 }
+
+/// Heure enregistrée sur la carte mémoire d'une caméra (relue par le boîtier vidéo).
+class RecordingSlot {
+  const RecordingSlot({required this.start, required this.end, this.codec});
+  final DateTime start;
+  final DateTime end;
+  final String? codec;
+
+  /// Les enregistrements H.265 ne sont pas lisibles en WebRTC sur téléphone.
+  bool get playable => !RegExp(r'H265|HEVC', caseSensitive: false).hasMatch(codec ?? '');
+
+  factory RecordingSlot.fromJson(Map<String, dynamic> j) {
+    final start = DateTime.parse(j['start'] as String).toLocal();
+    final end = j['end'] == null ? start.add(const Duration(hours: 1)) : DateTime.parse(j['end'] as String).toLocal();
+    return RecordingSlot(start: start, end: end, codec: j['codec'] as String?);
+  }
+}
+
+/// Réponse du boîtier à une demande d'historique (heures enregistrées d'une journée).
+class RecordingQuery {
+  const RecordingQuery({required this.id, required this.status, this.slots = const [], this.error});
+  final String id;
+  final String status; // pending | done | failed
+  final List<RecordingSlot> slots;
+  final String? error;
+
+  factory RecordingQuery.fromJson(Map<String, dynamic> j) => RecordingQuery(
+        id: j['id'] as String,
+        status: j['status'] as String,
+        slots: [for (final s in (j['slots'] as List? ?? const [])) RecordingSlot.fromJson(Map<String, dynamic>.from(s as Map))],
+        error: j['error'] as String?,
+      );
+}

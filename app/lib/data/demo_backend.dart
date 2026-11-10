@@ -1660,7 +1660,7 @@ class DemoBackend implements Backend {
   }
 
   @override
-  Future<String> openVideoSession(String homeId, String deviceId, String offerSdp, {String quality = 'main'}) async {
+  Future<String> openVideoSession(String homeId, String deviceId, String offerSdp, {String quality = 'main', DateTime? playbackStart}) async {
     await _wait();
     throw const BackendException('invalid', 'Vidéo fluide indisponible en démonstration.');
   }
@@ -1670,6 +1670,26 @@ class DemoBackend implements Backend {
 
   @override
   Future<void> closeVideoSession(String sessionId) async {}
+
+  @override
+  Future<String> requestVideoRecordings(String deviceId, DateTime day) async {
+    await _wait();
+    return 'demo-${day.toIso8601String()}';
+  }
+
+  @override
+  Future<RecordingQuery?> getVideoRecordings(String queryId) async {
+    await _wait();
+    // Démonstration : quelques heures enregistrées, dont une à l'ancien format.
+    final day = DateTime.parse(queryId.substring(5));
+    final now = DateTime.now();
+    final slots = [
+      for (final h in const [7, 8, 12, 18, 19, 20])
+        if (DateTime(day.year, day.month, day.day, h).isBefore(now))
+          RecordingSlot(start: DateTime(day.year, day.month, day.day, h), end: DateTime(day.year, day.month, day.day, h + 1), codec: h == 7 ? 'H265' : 'H264'),
+    ];
+    return RecordingQuery(id: queryId, status: 'done', slots: slots);
+  }
 
   @override
   Stream<CameraFrame> watchCamera(String homeId, String deviceId) async* {

@@ -16,9 +16,15 @@ import 'camera_view.dart';
 /// renvoie la réponse : aucune adresse RTSP ni aucun port n'est exposé. Si la vidéo fluide
 /// n'est pas disponible, on bascule sur les images fixes (environ une par seconde).
 class LiveVideoView extends StatefulWidget {
-  const LiveVideoView({super.key, required this.device});
+  const LiveVideoView({super.key, required this.device, this.playbackStart, this.onBackToLive});
 
   final Device device;
+
+  /// Relecture de la carte mémoire à partir de cette heure (null : direct).
+  final DateTime? playbackStart;
+
+  /// Relecture : bouton « Revenir au direct ».
+  final VoidCallback? onBackToLive;
 
   @override
   State<LiveVideoView> createState() => _LiveVideoViewState();
@@ -39,6 +45,7 @@ class _LiveVideoViewState extends State<LiveVideoView> {
   bool _disposed = false;
   int _attempt = 0;
   bool _gotFrame = false;
+  bool _attaching = false;
   Timer? _watchdog;
   late final Backend _backend;
 
@@ -48,6 +55,14 @@ class _LiveVideoViewState extends State<LiveVideoView> {
     _backend = AppScope.read(context).backend;
     _start();
   }
+
+  @override
+  void didUpdateWidget(LiveVideoView old) {
+    super.didUpdateWidget(old);
+    if (old.playbackStart != widget.playbackStart) _restart();
+  }
+
+  bool get _playback => widget.playbackStart != null;
 
   @override
   void dispose() {
@@ -101,18 +116,11 @@ class _LiveVideoViewState extends State<LiveVideoView> {
       if (d.udi.microphone) {
         await pc.addTransceiver(kind: RTCRtpMediaType.RTCRtpMediaTypeAudio, init: RTCRtpTransceiverInit(direction: TransceiverDirection.RecvOnly));
       }
-      pc.onTrack = (event) async {
+      // Son et image arrivent en deux pistes, parfois dans deux flux distincts et dans n'importe
+      // quel ordre : on n'accroche au lecteur qu'un flux qui contient bien la piste vidéo.
+      pc.onTrack = (event) {
         if (_disposed || attempt != _attempt) return;
-        if (event.streams.isNotEmpty) {
-          _stream = event.streams.first;
-        } else {
-          // Réponse sans identifiant de flux (msid) : on range nous-mêmes la piste reçue.
-          _stream ??= await createLocalMediaStream('solea-live');
-          await _stream!.addTrack(event.track);
-        }
-        _renderer.srcObject = _stream;
-        _applyMute();
-        if (mounted) setState(() => _phase = _Phase.playing);
+        if (event.track.kind == 'video') _attachReceivers(pc, attempt);
       };
       pc.onConnectionState = (s) {
         if (_disposed || attempt != _attempt) return;
@@ -141,7 +149,8 @@ class _LiveVideoViewState extends State<LiveVideoView> {
       final offer = await pc.getLocalDescription();
       if (offer?.sdp == null) throw BackendException('unknown', state.tr('video.failed'));
 
-      final sessionId = await state.backend.openVideoSession(d.homeId, d.id, offer!.sdp!, quality: _hd ? 'main' : 'sub');
+      final sessionId = await state.backend.openVideoSession(d.homeId, d.id, offer!.sdp!,
+          quality: _hd ? 'main' : 'sub', playbackStart: widget.playbackStart);
       _sessionId = sessionId;
       final deadline = DateTime.now().add(const Duration(seconds: 15));
       VideoSessionInfo? info;
@@ -157,7 +166,7 @@ class _LiveVideoViewState extends State<LiveVideoView> {
       // Images reçues mais jamais affichées (format ou taille que ce téléphone ne décode pas) :
       // on le dit au lieu de laisser tourner sans fin, avec la qualité SD ou les images fixes.
       _watchdog?.cancel();
-      _watchdog = Timer(const Duration(seconds: 15), () {
+      _watchdog = Timer(const Duration(seconds: 10), () {
         if (!_disposed && attempt == _attempt && !_gotFrame && _renderer.videoWidth == 0) _failNoPicture(pc, attempt, state.tr('video.noPicture'));
       });
     } on BackendException catch (e) {
@@ -168,7 +177,8 @@ class _LiveVideoViewState extends State<LiveVideoView> {
   }
 
   Future<void> _attachReceivers(RTCPeerConnection pc, int attempt) async {
-    if (_disposed || attempt != _attempt || _phase != _Phase.connecting) return;
+    if (_disposed || attempt != _attempt || _phase != _Phase.connecting || _attaching) return;
+    _attaching = true;
     try {
       final tracks = [for (final r in await pc.getReceivers()) if (r.track != null) r.track!];
       if (!tracks.any((t) => t.kind == 'video')) return;
@@ -181,7 +191,10 @@ class _LiveVideoViewState extends State<LiveVideoView> {
       _renderer.srcObject = stream;
       _applyMute();
       if (mounted) setState(() => _phase = _Phase.playing);
-    } catch (_) {}
+    } catch (_) {
+    } finally {
+      _attaching = false;
+    }
   }
 
   /// Pas d'image affichée : on ajoute ce que le téléphone a reçu et décodé, pour savoir
@@ -246,17 +259,35 @@ class _LiveVideoViewState extends State<LiveVideoView> {
     final theme = Theme.of(context);
     final f = context.flow;
     const white = Colors.white;
+    // Images fixes proposées dès l'ouverture, sans attendre que la vidéo échoue.
+    final canStills = d.udi.snapshot && !_playback;
+    void useStills() {
+      _teardown(); // ne pas laisser la vidéo couler pour rien
+      setState(() => _snapshots = true);
+    }
+
+    Widget stillsButton() => FilledButton.tonalIcon(
+          onPressed: useStills,
+          icon: const Icon(Icons.photo_library_rounded),
+          label: Text(context.tr('video.useSnapshots')),
+        );
     final Widget body = switch (_phase) {
       _Phase.playing => Stack(fit: StackFit.expand, children: [
           RTCVideoView(_renderer, objectFit: RTCVideoViewObjectFit.RTCVideoViewObjectFitContain),
           if (!_gotFrame)
-            const Center(child: SizedBox(width: 28, height: 28, child: CircularProgressIndicator(strokeWidth: 2.5, color: white))),
+            Center(
+              child: Column(mainAxisSize: MainAxisSize.min, children: [
+                const SizedBox(width: 28, height: 28, child: CircularProgressIndicator(strokeWidth: 2.5, color: white)),
+                if (canStills) ...[const SizedBox(height: 14), stillsButton()],
+              ]),
+            ),
         ]),
       _Phase.connecting => Center(
           child: Column(mainAxisSize: MainAxisSize.min, children: [
             const SizedBox(width: 28, height: 28, child: CircularProgressIndicator(strokeWidth: 2.5, color: white)),
             const SizedBox(height: 12),
             Text(context.tr('video.connecting'), style: theme.textTheme.bodyMedium?.copyWith(color: white.withValues(alpha: .85))),
+            if (canStills) ...[const SizedBox(height: 14), stillsButton()],
           ]),
         ),
       _Phase.failed => Center(
@@ -270,7 +301,13 @@ class _LiveVideoViewState extends State<LiveVideoView> {
               const SizedBox(height: 12),
               Wrap(spacing: 8, runSpacing: 8, alignment: WrapAlignment.center, children: [
                 FilledButton.tonalIcon(onPressed: _restart, icon: const Icon(Icons.refresh_rounded), label: Text(context.tr('common.retry'))),
-                if (_hd)
+                if (_playback && widget.onBackToLive != null)
+                  FilledButton.tonalIcon(
+                    onPressed: widget.onBackToLive,
+                    icon: const Icon(Icons.live_tv_rounded),
+                    label: Text(context.tr('history.backToLive')),
+                  ),
+                if (_hd && !_playback)
                   FilledButton.tonalIcon(
                     onPressed: () {
                       setState(() => _hd = false);
@@ -279,15 +316,7 @@ class _LiveVideoViewState extends State<LiveVideoView> {
                     icon: const Icon(Icons.sd_rounded),
                     label: Text(context.tr('video.trySd')),
                   ),
-                if (d.udi.snapshot)
-                  FilledButton.tonalIcon(
-                    onPressed: () {
-                      _teardown(); // ne pas laisser la vidéo couler pour rien
-                      setState(() => _snapshots = true);
-                    },
-                    icon: const Icon(Icons.photo_library_rounded),
-                    label: Text(context.tr('video.useSnapshots')),
-                  ),
+                if (canStills) stillsButton(),
               ]),
             ]),
           ),
@@ -308,11 +337,13 @@ class _LiveVideoViewState extends State<LiveVideoView> {
               child: Container(
                 padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
                 decoration: BoxDecoration(
-                  color: (_phase == _Phase.playing ? f.danger : Colors.black).withValues(alpha: .7),
+                  color: (_phase != _Phase.playing ? Colors.black : _playback ? f.brand : f.danger).withValues(alpha: .7),
                   borderRadius: BorderRadius.circular(20),
                 ),
                 child: Text(
-                  context.tr(_phase == _Phase.playing ? 'video.liveBadge' : 'camera.waiting'),
+                  _playback && _phase == _Phase.playing
+                      ? context.tr('history.badge', {'time': _hhmm(widget.playbackStart!)})
+                      : context.tr(_phase == _Phase.playing ? 'video.liveBadge' : 'camera.waiting'),
                   style: theme.textTheme.labelSmall?.copyWith(color: white, fontWeight: FontWeight.w800, letterSpacing: .6),
                 ),
               ),
@@ -331,13 +362,20 @@ class _LiveVideoViewState extends State<LiveVideoView> {
                       }),
                       icon: Icon(_muted ? Icons.volume_off_rounded : Icons.volume_up_rounded, color: white),
                     ),
-                  TextButton(
-                    onPressed: () {
-                      setState(() => _hd = !_hd);
-                      _restart();
-                    },
-                    child: Text(_hd ? 'HD' : 'SD', style: const TextStyle(color: white, fontWeight: FontWeight.w800)),
-                  ),
+                  if (_playback && widget.onBackToLive != null)
+                    IconButton(
+                      tooltip: context.tr('history.backToLive'),
+                      onPressed: widget.onBackToLive,
+                      icon: const Icon(Icons.live_tv_rounded, color: white),
+                    )
+                  else
+                    TextButton(
+                      onPressed: () {
+                        setState(() => _hd = !_hd);
+                        _restart();
+                      },
+                      child: Text(_hd ? 'HD' : 'SD', style: const TextStyle(color: white, fontWeight: FontWeight.w800)),
+                    ),
                   IconButton(
                     tooltip: context.tr('camera.fullscreen'),
                     onPressed: () => Navigator.of(context).push(MaterialPageRoute(
@@ -354,6 +392,8 @@ class _LiveVideoViewState extends State<LiveVideoView> {
     );
   }
 }
+
+String _hhmm(DateTime t) => '${t.hour.toString().padLeft(2, '0')}:${t.minute.toString().padLeft(2, '0')}';
 
 class _FullscreenVideo extends StatelessWidget {
   const _FullscreenVideo({required this.renderer, required this.title});

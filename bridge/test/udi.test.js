@@ -11,7 +11,7 @@ import { setLogLevel } from '../src/log.js';
 import { digestHeader, fetchWithAuth, parseChallenge } from '../src/udi/auth.js';
 import { capabilityFlags, UDI_CAPABILITIES } from '../src/udi/contract.js';
 import { OnvifDriver } from '../src/udi/drivers/onvif_driver.js';
-import { DahuaDriver } from '../src/udi/drivers/dahua_driver.js';
+import { DahuaDriver, dahuaPlayback, dahuaTime } from '../src/udi/drivers/dahua_driver.js';
 import { RtspDriver } from '../src/udi/drivers/rtsp_driver.js';
 import { discoverDahua, parseDhipReply, sameSerial, searchPacket } from '../src/udi/dahua/dhip.js';
 import { addUdi, UdiHub } from '../src/udi/index.js';
@@ -769,6 +769,84 @@ describe('Dahua : ajout par QR code', () => {
       ['192.168.1.46', 'dahua', 'OTHER', false],
     ]);
     assert.ok(searches >= 1);
+  });
+
+  test('carte mémoire : adresse de relecture au format Dahua, même porte que le direct', () => {
+    const start = new Date(2026, 10, 4, 17, 20, 0);
+    const end = new Date(2026, 10, 4, 17, 25, 5);
+    assert.equal(dahuaTime(start), '2026_11_04_17_20_00');
+    assert.equal(dahuaPlayback('rtsp://h:554/cam/realmonitor?channel=1&subtype=0', 'h', start, end), 'rtsp://h:554/cam/playback?channel=1&starttime=2026_11_04_17_20_00&endtime=2026_11_04_17_25_05');
+    assert.equal(dahuaPlayback('rtsp+http://h:80/cam/realmonitor?channel=1', 'h', start, end), 'rtsp+http://h:80/cam/playback?channel=1&starttime=2026_11_04_17_20_00&endtime=2026_11_04_17_25_05');
+    assert.match(dahuaPlayback('rtsp://h:554/cam/realmonitor?channel=1&subtype=0&authbasic=QUJD', 'h', start, end), /&authbasic=QUJD$/);
+  });
+
+  test('carte mémoire : heures enregistrées d\'une journée (404 = rien), codec lu', async () => {
+    const probe = async (url) => {
+      if (url.includes('realmonitor')) return { ok: true, status: 200, video: { codec: 'H264' } };
+      const h = Number(/starttime=\d{4}_\d\d_\d\d_(\d\d)/.exec(url)[1]);
+      if (h === 9) return { ok: true, status: 200, video: { codec: 'H265' }, audio: { codec: 'MPEG4-GENERIC' } };
+      if (h === 14) return { ok: true, status: 200, video: { codec: 'H264' }, audio: { codec: 'PCMU' } };
+      return { ok: false, status: 404, error: 'Le flux RTSP répond 404' };
+    };
+    const d = new DahuaDriver({ id: 'pb1', host: '192.168.1.45', password: 'x' }, { probe, fetchImpl: async () => new Response('', { status: 404 }) });
+    await d.connect();
+    const slots = await d.recordedSlots(new Date(2026, 10, 4), { now: new Date(2026, 10, 4, 20, 30) });
+    assert.deepEqual(slots.map((x) => [new Date(x.start).getHours(), x.codec]), [[9, 'H265'], [14, 'H264']]);
+    // Les heures pas encore arrivées ne sont pas demandées.
+    let asked = 0;
+    const d2 = new DahuaDriver({ id: 'pb2', host: 'h', password: 'x' }, { probe: async (u) => (u.includes('playback') && asked++, { ok: false, status: 404 }), fetchImpl: async () => new Response('', { status: 404 }) });
+    assert.deepEqual(await d2.recordedSlots(new Date(2026, 10, 4), { now: new Date(2026, 10, 4, 2, 10) }), []);
+    assert.equal(asked, 3);
+  });
+
+  test('boîtier : historique demandé, puis relecture d\'un passage en WebRTC (chemin supprimé à la fin)', async () => {
+    const store = new MemoryStore();
+    store.videoSources = [{ id: 'sd-1', home_id: 'home-1', name: 'Salon', category: 'camera', driver: 'dahua', host: '192.168.1.45', username: 'admin', password: 'TEST1234' }];
+    const { mtx, paths } = globalThis.__fakeMtx();
+    const probe = async (url) => {
+      if (url.includes('realmonitor')) return { ok: true, status: 200, video: { codec: 'H264' }, audio: { codec: 'PCMU' } };
+      if (url.includes('starttime=2026_11_04_10')) return { ok: true, status: 200, video: { codec: 'H264' } };
+      if (url.includes('starttime=2026_11_04_11')) return { ok: true, status: 200, video: { codec: 'H265' } };
+      return { ok: false, status: 404, error: 'Le flux RTSP répond 404' };
+    };
+    const hub = new UdiHub({
+      mediamtx: mtx,
+      allowedSubnet: subnetFilter(''),
+      driverFactory: (s, deps) => new DahuaDriver(s, { ...deps, probe, fetchImpl: async () => new Response('', { status: 404 }) }),
+      clock: () => new Date(2026, 10, 4, 12, 30).getTime(),
+      retryMinMs: 30,
+      retryMaxMs: 100,
+    });
+    const adapter = addUdi(new VideoOnlyAdapter(), hub);
+    bridge = new Bridge({ store, adapter, config: { integrationId: 'integ-1', commandTimeoutMs: 300, pendingMaxAgeMs: 30_000, pollIntervalMs: 50, automationRefreshMs: 60_000, runAutomations: false, runTimeTriggers: false } });
+    await bridge.start();
+    assert.ok(await until(() => store.videoSources[0].status === 'online' && store.devices.size === 1));
+    const deviceId = [...store.devices.keys()][0];
+    assert.ok(await until(() => store.capabilities.some((c) => c.device_id === deviceId && c.metadata?.playback === 'sd')));
+
+    store.recordingQueries.push({ id: 'rq-1', home_id: 'home-1', device_id: deviceId, day: '2026-11-04', status: 'pending' });
+    await hub.processRecordings();
+    assert.equal(store.recordingQueries[0].status, 'done');
+    assert.deepEqual(store.recordingQueries[0].slots.map((x) => [new Date(x.start).getHours(), x.codec]), [[10, 'H264'], [11, 'H265']]);
+
+    const created = new Date(2026, 10, 4, 12, 30).toISOString();
+    const at = (h, m = 0) => new Date(2026, 10, 4, h, m).toISOString();
+    store.videoSessions.push({ id: 'pb-sess-1', home_id: 'home-1', device_id: deviceId, quality: 'playback', playback_start: at(10, 15), offer: 'v=0 offre', status: 'offer', created_at: created });
+    await hub.processSessions();
+    assert.ok(await until(() => store.videoSessions[0].status === 'answered'));
+    const path = [...paths.keys()].find((k) => k.includes('_pb_'));
+    assert.equal(paths.get(path).source, 'rtsp://admin:TEST1234@192.168.1.45:554/cam/playback?channel=1&starttime=2026_11_04_10_15_00&endtime=2026_11_04_11_15_00');
+    store.videoSessions[0].status = 'closed';
+    await hub.processSessions();
+    assert.equal(paths.has(path), false, 'chemin de relecture supprimé');
+
+    // Rien d'enregistré, ou format H.265 : refus expliqué.
+    store.videoSessions.push({ id: 'pb-sess-2', home_id: 'home-1', device_id: deviceId, quality: 'playback', playback_start: at(8), offer: 'v=0', status: 'offer', created_at: created });
+    store.videoSessions.push({ id: 'pb-sess-3', home_id: 'home-1', device_id: deviceId, quality: 'playback', playback_start: at(11), offer: 'v=0', status: 'offer', created_at: created });
+    await hub.processSessions();
+    assert.ok(await until(() => store.videoSessions[1].status === 'failed' && store.videoSessions[2].status === 'failed'));
+    assert.match(store.videoSessions[1].error, /Rien n'est enregistré/);
+    assert.match(store.videoSessions[2].error, /H\.265/);
   });
 
   let bridge;

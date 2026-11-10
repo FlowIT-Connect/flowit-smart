@@ -179,3 +179,30 @@ select pg_temp.as_service();
 select pg_temp.check((select username = 'admin' and password = 'TEST1234' from public.video_source_secrets where source_id = (select id from t_qr)), 'QR code : code de sécurité rangé dans le coffre, identifiant admin');
 update public.video_sources set host = '192.168.1.45', mac = 'aa:bb:cc:00:11:22' where id = (select id from t_qr);
 select pg_temp.check((select host = '192.168.1.45' from public.video_sources where id = (select id from t_qr)), 'le boîtier enregistre l''adresse trouvée');
+
+-- ---------------------------------------------------------------- Historique (carte mémoire)
+select pg_temp.as_service();
+insert into public.devices (id, home_id, integration_id, name, protocol) values
+ ('f1000000-0000-0000-0000-000000000009','f0000000-0000-0000-0000-000000000001','f2000000-0000-0000-0000-000000000001','Salon','other');
+select pg_temp.as_user('00000000-0000-0000-0000-0000000000f2');
+create temp table t_rq as select public.request_video_recordings('f1000000-0000-0000-0000-000000000009', current_date) as id;
+grant select on t_rq to public;
+select pg_temp.check((select status = 'pending' and day = current_date from public.video_recording_queries where id = (select id from t_rq)), 'historique : demande des heures enregistrées');
+select pg_temp.check(public.request_video_recordings('f1000000-0000-0000-0000-000000000009', current_date) = (select id from t_rq), 'historique : même demande rendue une fois');
+select pg_temp.check(pg_temp.try_sql($$select public.request_video_recordings('f1000000-0000-0000-0000-000000000009', current_date + 30)$$) like '%Jour invalide%', 'historique : jour futur refusé');
+select pg_temp.check(pg_temp.try_sql($$update public.video_recording_queries set status = 'done'$$) like '%permission denied%', 'historique : seul le boîtier répond');
+select pg_temp.as_user('00000000-0000-0000-0000-0000000000f4');
+select pg_temp.check(pg_temp.try_sql($$select public.request_video_recordings('f1000000-0000-0000-0000-000000000009', current_date)$$) like '%Accès refusé%', 'historique : le voisin ne voit pas la carte mémoire');
+select pg_temp.check((select count(*) = 0 from public.video_recording_queries), 'historique : chacun ne voit que ses demandes');
+select pg_temp.as_service();
+update public.video_recording_queries set status = 'done', slots = '[{"start":"2026-11-04T09:00:00Z","codec":"H264"}]' where id = (select id from t_rq);
+select pg_temp.as_user('00000000-0000-0000-0000-0000000000f2');
+select pg_temp.check((select jsonb_array_length(slots) = 1 from public.video_recording_queries where id = (select id from t_rq)), 'historique : le propriétaire lit les heures enregistrées');
+
+-- Relecture : session « playback » avec heure de début obligatoire.
+insert into public.video_sessions (home_id, device_id, offer, quality, playback_start) values
+ ('f0000000-0000-0000-0000-000000000001','f1000000-0000-0000-0000-000000000009','v=0 offre sdp','playback', now() - interval '1 day');
+select pg_temp.check((select count(*) = 1 from public.video_sessions where quality = 'playback'), 'relecture : session créée par le propriétaire');
+select pg_temp.check(pg_temp.try_sql($$insert into public.video_sessions (home_id, device_id, offer, quality) values ('f0000000-0000-0000-0000-000000000001','f1000000-0000-0000-0000-000000000009','v=0 offre sdp','playback')$$) like '%playback_check%', 'relecture : heure de début obligatoire');
+select pg_temp.check(pg_temp.try_sql($$insert into public.video_sessions (home_id, device_id, offer, quality, playback_start, playback_end) values ('f0000000-0000-0000-0000-000000000001','f1000000-0000-0000-0000-000000000009','v=0 offre sdp','playback', now() - interval '1 day', now())$$) like '%playback_check%', 'relecture : 3 heures au plus');
+reset role;

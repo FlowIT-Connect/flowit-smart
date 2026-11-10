@@ -228,9 +228,14 @@ abstract class Backend {
   Future<MediaGateway?> getMediaGateway(String homeId);
 
   /// Vidéo WebRTC : dépose l'offre SDP, le boîtier répond avec celle du relais.
-  Future<String> openVideoSession(String homeId, String deviceId, String offerSdp, {String quality = 'main'});
+  /// [playbackStart] : relecture de la carte mémoire à partir de cette heure (quality 'playback').
+  Future<String> openVideoSession(String homeId, String deviceId, String offerSdp, {String quality = 'main', DateTime? playbackStart});
   Future<VideoSessionInfo?> getVideoSession(String sessionId);
   Future<void> closeVideoSession(String sessionId);
+
+  /// Historique : heures enregistrées sur la carte mémoire de la caméra pour un jour donné.
+  Future<String> requestVideoRecordings(String deviceId, DateTime day);
+  Future<RecordingQuery?> getVideoRecordings(String queryId);
 
   /// Photo prise par l'utilisateur (bucket privé, accès vérifié côté serveur).
   Future<Uint8List> downloadDevicePhoto(String path);
