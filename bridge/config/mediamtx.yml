@@ -22,6 +22,8 @@ rtspAddress: 127.0.0.1:8554
 rtmp: no
 hls: no
 srt: no
+# Serveur MoQ (nouveau dans MediaMTX 1.21, actif par défaut sur toutes les interfaces) : coupé.
+moq: no
 
 webrtc: yes
 webrtcAddress: 127.0.0.1:8889
