@@ -26,6 +26,7 @@ export class MemoryStore {
     this.videoSessions = [];
     this.videoScans = [];
     this.recordingQueries = [];
+    this.ptzCommands = [];
     this.mediaGateways = new Map();
     this.automationRuns = [];
     this.homeModes = new Map();
@@ -47,6 +48,8 @@ export class MemoryStore {
   async updateVideoScan(id, patch) { Object.assign(this.videoScans.find((s) => s.id === id) ?? {}, patch); }
   async listPendingRecordingQueries(homeId) { return this.recordingQueries.filter((q) => q.home_id === homeId && q.status === 'pending').map((q) => ({ ...q })); }
   async updateRecordingQuery(id, patch) { Object.assign(this.recordingQueries.find((q) => q.id === id) ?? {}, patch); }
+  async listPendingPtzCommands(homeId) { return this.ptzCommands.filter((q) => q.home_id === homeId && q.status === 'pending').map((q) => ({ ...q })); }
+  async updatePtzCommand(id, patch) { Object.assign(this.ptzCommands.find((q) => q.id === id) ?? {}, patch); }
   async upsertMediaGateway(homeId, row) { this.mediaGateways.set(homeId, { home_id: homeId, ...row }); }
 
   async getIntegration(id) { return this.integrations.get(id) ?? null; }

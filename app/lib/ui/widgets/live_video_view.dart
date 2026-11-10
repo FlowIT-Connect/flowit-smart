@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_webrtc/flutter_webrtc.dart';
 
+import '../../core/camera_talk.dart';
 import '../../core/l10n.dart';
 import '../../core/theme.dart';
 import '../../data/backend.dart';
@@ -16,7 +17,7 @@ import 'camera_view.dart';
 /// renvoie la réponse : aucune adresse RTSP ni aucun port n'est exposé. Si la vidéo fluide
 /// n'est pas disponible, on bascule sur les images fixes (environ une par seconde).
 class LiveVideoView extends StatefulWidget {
-  const LiveVideoView({super.key, required this.device, this.playbackStart, this.onBackToLive});
+  const LiveVideoView({super.key, required this.device, this.playbackStart, this.onBackToLive, this.onFirstFrame});
 
   final Device device;
 
@@ -25,6 +26,9 @@ class LiveVideoView extends StatefulWidget {
 
   /// Relecture : bouton « Revenir au direct ».
   final VoidCallback? onBackToLive;
+
+  /// Première image affichée (la relecture fait avancer la barre du temps à partir d'ici).
+  final VoidCallback? onFirstFrame;
 
   @override
   State<LiveVideoView> createState() => _LiveVideoViewState();
@@ -40,6 +44,8 @@ class _LiveVideoViewState extends State<LiveVideoView> {
   _Phase _phase = _Phase.connecting;
   String? _error;
   bool _muted = true;
+  CameraTalk? _talk; // voix du téléphone vers la caméra, pendant qu'on parle
+  bool _talking = false;
   bool _hd = true;
   bool _snapshots = false;
   bool _disposed = false;
@@ -67,6 +73,8 @@ class _LiveVideoViewState extends State<LiveVideoView> {
   @override
   void dispose() {
     _disposed = true;
+    unawaited(_talk?.stop());
+    _talk = null;
     _teardown();
     _renderer.dispose();
     super.dispose();
@@ -100,6 +108,7 @@ class _LiveVideoViewState extends State<LiveVideoView> {
         if (_gotFrame) return;
         _watchdog?.cancel();
         if (mounted) setState(() => _gotFrame = true);
+        widget.onFirstFrame?.call();
       }
 
       _renderer.onFirstFrameRendered = shown;
@@ -110,7 +119,12 @@ class _LiveVideoViewState extends State<LiveVideoView> {
       if (gateway == null || !gateway.online) throw BackendException('offline', state.tr('video.boxOffline'));
       if (!gateway.relayOk) throw BackendException('offline', state.tr('video.relayMissing'));
 
+      if (_disposed || attempt != _attempt) return;
       final pc = await createPeerConnection({'iceServers': gateway.iceServers, 'sdpSemantics': 'unified-plan'});
+      if (_disposed || attempt != _attempt) {
+        unawaited(pc.close().then((_) {}, onError: (_) {}));
+        return;
+      }
       _pc = pc;
       await pc.addTransceiver(kind: RTCRtpMediaType.RTCRtpMediaTypeVideo, init: RTCRtpTransceiverInit(direction: TransceiverDirection.RecvOnly));
       if (d.udi.microphone) {
@@ -149,8 +163,19 @@ class _LiveVideoViewState extends State<LiveVideoView> {
       final offer = await pc.getLocalDescription();
       if (offer?.sdp == null) throw BackendException('unknown', state.tr('video.failed'));
 
+      // Une seule session à la fois : une demande dépassée (changement d'heure, nouvel essai)
+      // est abandonnée tout de suite, sans laisser une seconde vidéo s'ouvrir sur le boîtier.
+      if (_disposed || attempt != _attempt) {
+        unawaited(pc.close().then((_) {}, onError: (_) {}));
+        return;
+      }
       final sessionId = await state.backend.openVideoSession(d.homeId, d.id, offer!.sdp!,
           quality: _hd ? 'main' : 'sub', playbackStart: widget.playbackStart);
+      if (_disposed || attempt != _attempt) {
+        unawaited(_backend.closeVideoSession(sessionId).then((_) {}, onError: (_) {}));
+        unawaited(pc.close().then((_) {}, onError: (_) {}));
+        return;
+      }
       _sessionId = sessionId;
       final deadline = DateTime.now().add(const Duration(seconds: 15));
       VideoSessionInfo? info;
@@ -235,7 +260,42 @@ class _LiveVideoViewState extends State<LiveVideoView> {
     _renderer.muted = _muted;
   }
 
+  /// Micro : un appui pour parler, un autre pour arrêter (la caméra coupe son propre micro
+  /// pendant qu'on parle, comme un talkie-walkie).
+  Future<void> _toggleTalk(void Function(String) toast) async {
+    final current = _talk;
+    if (current != null) {
+      _talk = null;
+      setState(() => _talking = false);
+      await current.stop();
+      return;
+    }
+    final state = AppScope.read(context);
+    final talk = CameraTalk(_backend, widget.device);
+    _talk = talk;
+    setState(() => _talking = true);
+    try {
+      await talk.start(tr: state.tr);
+      if (mounted && _talk == talk) toast(state.tr('video.talkOn'));
+    } on BackendException catch (e) {
+      await talk.stop();
+      if (_talk == talk) _talk = null;
+      if (mounted) {
+        setState(() => _talking = false);
+        toast(e.message);
+      }
+    } catch (_) {
+      await talk.stop();
+      if (_talk == talk) _talk = null;
+      if (mounted) {
+        setState(() => _talking = false);
+        toast(state.tr('video.talkFailed'));
+      }
+    }
+  }
+
   Future<void> _restart() async {
+    _attempt++; // la tentative en cours s'arrête d'elle-même
     await _teardown();
     if (!_disposed) await _start();
   }
@@ -322,7 +382,60 @@ class _LiveVideoViewState extends State<LiveVideoView> {
           ),
         ),
     };
-    return Padding(
+    final playing = _phase == _Phase.playing;
+    void toast(String text) => ScaffoldMessenger.of(context)
+      ..hideCurrentSnackBar()
+      ..showSnackBar(SnackBar(content: Text(text)));
+    // Rangée de boutons sous la vidéo, comme dans l'application de la caméra.
+    final toolbar = Padding(
+      padding: const EdgeInsets.fromLTRB(16, 0, 16, 4),
+      child: Row(mainAxisAlignment: MainAxisAlignment.spaceAround, children: [
+        _ToolButton(
+          key: const ValueKey('video-sound'),
+          icon: _muted ? Icons.volume_off_rounded : Icons.volume_up_rounded,
+          label: context.tr(_muted ? 'video.unmute' : 'video.mute'),
+          onPressed: playing && d.udi.microphone
+              ? () => setState(() {
+                    _muted = !_muted;
+                    _applyMute();
+                  })
+              : null,
+        ),
+        _ToolButton(
+          key: const ValueKey('video-talk'),
+          icon: _talking ? Icons.mic_rounded : Icons.mic_none_rounded,
+          label: context.tr(_talking ? 'video.talkStop' : 'video.talk'),
+          active: _talking,
+          onPressed: () {
+            if (!d.udi.speaker) return toast(context.tr('video.talkUnsupported'));
+            _toggleTalk(toast);
+          },
+        ),
+        _ToolButton(
+          key: const ValueKey('video-quality'),
+          icon: _hd ? Icons.hd_rounded : Icons.sd_rounded,
+          label: context.tr(_hd ? 'video.qualityHd' : 'video.qualitySd'),
+          onPressed: _playback
+              ? null
+              : () {
+                  setState(() => _hd = !_hd);
+                  _restart();
+                },
+        ),
+        _ToolButton(
+          key: const ValueKey('video-fullscreen'),
+          icon: Icons.fullscreen_rounded,
+          label: context.tr('camera.fullscreen'),
+          onPressed: playing
+              ? () => Navigator.of(context).push(MaterialPageRoute(
+                    fullscreenDialog: true,
+                    builder: (_) => _FullscreenVideo(renderer: _renderer, title: d.name),
+                  ))
+              : null,
+        ),
+      ]),
+    );
+    final view = Padding(
       padding: const EdgeInsets.fromLTRB(16, 4, 16, 8),
       child: ClipRRect(
         borderRadius: BorderRadius.circular(22),
@@ -348,49 +461,33 @@ class _LiveVideoViewState extends State<LiveVideoView> {
                 ),
               ),
             ),
-            if (_phase == _Phase.playing)
-              PositionedDirectional(
-                bottom: 6,
-                end: 6,
-                child: Row(mainAxisSize: MainAxisSize.min, children: [
-                  if (d.udi.microphone)
-                    IconButton(
-                      tooltip: context.tr(_muted ? 'video.unmute' : 'video.mute'),
-                      onPressed: () => setState(() {
-                        _muted = !_muted;
-                        _applyMute();
-                      }),
-                      icon: Icon(_muted ? Icons.volume_off_rounded : Icons.volume_up_rounded, color: white),
-                    ),
-                  if (_playback && widget.onBackToLive != null)
-                    IconButton(
-                      tooltip: context.tr('history.backToLive'),
-                      onPressed: widget.onBackToLive,
-                      icon: const Icon(Icons.live_tv_rounded, color: white),
-                    )
-                  else
-                    TextButton(
-                      onPressed: () {
-                        setState(() => _hd = !_hd);
-                        _restart();
-                      },
-                      child: Text(_hd ? 'HD' : 'SD', style: const TextStyle(color: white, fontWeight: FontWeight.w800)),
-                    ),
-                  IconButton(
-                    tooltip: context.tr('camera.fullscreen'),
-                    onPressed: () => Navigator.of(context).push(MaterialPageRoute(
-                      fullscreenDialog: true,
-                      builder: (_) => _FullscreenVideo(renderer: _renderer, title: d.name),
-                    )),
-                    icon: const Icon(Icons.fullscreen_rounded, color: white),
-                  ),
-                ]),
-              ),
           ]),
         ),
       ),
     );
+    return Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.stretch, children: [view, toolbar]);
   }
+}
+
+class _ToolButton extends StatelessWidget {
+  const _ToolButton({super.key, required this.icon, required this.label, this.onPressed, this.active = false});
+  final IconData icon;
+  final String label;
+  final VoidCallback? onPressed;
+  final bool active;
+
+  @override
+  Widget build(BuildContext context) => Tooltip(
+        message: label,
+        child: IconButton.filledTonal(
+          isSelected: active,
+          style: active ? IconButton.styleFrom(backgroundColor: context.flow.danger, foregroundColor: Colors.white) : null,
+          onPressed: onPressed,
+          iconSize: 26,
+          padding: const EdgeInsets.all(12),
+          icon: Icon(icon),
+        ),
+      );
 }
 
 String _hhmm(DateTime t) => '${t.hour.toString().padLeft(2, '0')}:${t.minute.toString().padLeft(2, '0')}';

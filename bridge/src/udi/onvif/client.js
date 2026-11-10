@@ -17,6 +17,8 @@ const NS = {
   tt: 'http://www.onvif.org/ver10/schema',
 };
 
+const PTZ = 'http://www.onvif.org/ver20/ptz/wsdl';
+
 export class OnvifError extends Error {
   /** @param {string} message @param {{code?:string, status?:number}} [info] */
   constructor(message, { code, status } = {}) {
@@ -216,6 +218,41 @@ export class OnvifClient {
       `<trt:GetSnapshotUri><trt:ProfileToken>${escapeXml(profileToken)}</trt:ProfileToken></trt:GetSnapshotUri>`,
     );
     return this.#fixHost(textOf(doc, 'Uri'));
+  }
+
+  /**
+   * Orientation (PTZ) : déplacement continu, à la vitesse demandée (-1 à 1), arrêté par la caméra
+   * elle-même après [timeoutSeconds] même si l'ordre d'arrêt se perd.
+   */
+  async ptzMove(profileToken, pan, tilt, timeoutSeconds = 1) {
+    const v = (n) => Math.max(-1, Math.min(1, Number(n) || 0)).toFixed(2);
+    await this.call(
+      this.services.ptz ?? this.deviceUrl,
+      `<tptz:ContinuousMove xmlns:tptz="${PTZ}"><tptz:ProfileToken>${escapeXml(profileToken)}</tptz:ProfileToken>` +
+        `<tptz:Velocity><tt:PanTilt x="${v(pan)}" y="${v(tilt)}"/></tptz:Velocity><tptz:Timeout>PT${Math.max(1, Math.round(timeoutSeconds))}S</tptz:Timeout></tptz:ContinuousMove>`,
+    );
+  }
+
+  async ptzStop(profileToken) {
+    await this.call(
+      this.services.ptz ?? this.deviceUrl,
+      `<tptz:Stop xmlns:tptz="${PTZ}"><tptz:ProfileToken>${escapeXml(profileToken)}</tptz:ProfileToken><tptz:PanTilt>true</tptz:PanTilt><tptz:Zoom>true</tptz:Zoom></tptz:Stop>`,
+    );
+  }
+
+  async ptzGotoPreset(profileToken, preset) {
+    await this.call(
+      this.services.ptz ?? this.deviceUrl,
+      `<tptz:GotoPreset xmlns:tptz="${PTZ}"><tptz:ProfileToken>${escapeXml(profileToken)}</tptz:ProfileToken><tptz:PresetToken>${escapeXml(preset)}</tptz:PresetToken></tptz:GotoPreset>`,
+    );
+  }
+
+  async ptzPresets(profileToken) {
+    const doc = await this.call(
+      this.services.ptz ?? this.deviceUrl,
+      `<tptz:GetPresets xmlns:tptz="${PTZ}"><tptz:ProfileToken>${escapeXml(profileToken)}</tptz:ProfileToken></tptz:GetPresets>`,
+    );
+    return findAll(doc, 'Preset').map((p) => ({ token: p.attrs.token, name: textOf(p, 'Name') ?? p.attrs.token })).filter((p) => p.token);
   }
 
   /** Abonnement « pull point » : renvoie l'adresse à interroger. */

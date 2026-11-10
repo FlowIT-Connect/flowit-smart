@@ -167,22 +167,79 @@ void main() {
       ),
     );
     await tester.pumpAndSettle();
-    expect(find.text('Historique (carte mémoire)'), findsOneWidget);
-    // Hier : toute la journée est passée, les heures de démonstration sont là.
-    await tester.tap(find.text('Hier'));
+    // Hier : toute la journée est passée, les passages de démonstration sont là.
+    await tester.tap(find.byKey(const ValueKey('history-prev-day')));
     await tester.pumpAndSettle();
-    await tester.tap(find.text('12h'));
+    expect(find.text('Hier'), findsOneWidget);
+    String time() => tester.widget<Text>(find.byKey(const ValueKey('history-time'))).data!;
+    expect(time(), '20:00:00', reason: 'la barre s\'ouvre sur le dernier enregistrement');
+    // -30 s : lecture juste avant.
+    await tester.tap(find.byIcon(Icons.replay_30_rounded));
     await tester.pumpAndSettle();
-    expect(played?.hour, 12);
-    expect(find.text('12:30'), findsOneWidget, reason: 'choix des minutes');
-    await tester.tap(find.text('12:30'));
-    expect(played?.minute, 30);
-    // Ancien format : explication, pas de lecture.
-    played = null;
-    await tester.tap(find.text('07h'));
+    expect([played?.hour, played?.minute, played?.second], [19, 59, 30]);
+    // Glisser vers la droite remonte le temps ; lâcher lance la lecture.
+    await tester.drag(find.byKey(const ValueKey('history-timeline')), const Offset(480, 0));
+    await tester.pumpAndSettle();
+    expect(played?.hour, 18);
+    // Ancien format (H.265) : explication, pas de lecture.
+    final before = played;
+    await tester.drag(find.byKey(const ValueKey('history-timeline')), const Offset(2600, 0));
     await tester.pump();
-    expect(played, isNull);
-    expect(find.textContaining('H.265'), findsOneWidget);
+    expect(played, before);
+    expect(find.textContaining('H.265'), findsWidgets);
+    await tester.pumpAndSettle();
+    // Rien d'enregistré à cet endroit : on saute au passage suivant.
+    await tester.drag(find.byKey(const ValueKey('history-timeline')), const Offset(-800, 0));
+    await tester.pumpAndSettle();
+    expect([played?.hour, played?.minute], [12, 0]);
+  });
+
+  testWidgets('caméra motorisée : boutons sous la vidéo, onglets Aperçu / Relecture, pavé de direction', (tester) async {
+    await pumpApp(tester);
+    await signIn(tester);
+    final cam = Device.fromJson({
+      'id': 'd-ptz',
+      'home_id': 'h1',
+      'name': 'Hero',
+      'protocol': 'other',
+      'connection_source': 'local',
+      'availability': 'available',
+      'state': {},
+      'device_capabilities': [
+        {
+          'device_id': 'd-ptz',
+          'capability_key': 'camera',
+          'type': 'string',
+          'writable': false,
+          'metadata': {
+            'kind': 'camera',
+            'live': 'webrtc',
+            'playback': 'sd',
+            'udi': {'video_stream': true, 'snapshot': true, 'audio_input': true, 'audio_output': true, 'ptz_control': true},
+          },
+        },
+      ],
+    });
+    final nav = tester.state<NavigatorState>(find.byType(Navigator).first);
+    nav.push(MaterialPageRoute(builder: (_) => Scaffold(body: SingleChildScrollView(child: CameraVideoPanel(device: cam)))));
+    await tester.pump();
+    await tester.pump(const Duration(seconds: 1));
+    for (final k in ['video-sound', 'video-talk', 'video-quality', 'video-fullscreen', 'ptz-pad', 'ptz-preset']) {
+      expect(find.byKey(ValueKey(k)), findsOneWidget, reason: k);
+    }
+    expect(find.text('Aperçu'), findsOneWidget);
+    // Appui maintenu sur une flèche : la caméra tourne ; doigt levé : elle s'arrête.
+    final g = await tester.startGesture(tester.getCenter(find.byIcon(Icons.arrow_left_rounded)));
+    await tester.pump(const Duration(milliseconds: 800));
+    await g.up();
+    await tester.pump();
+    await tester.tap(find.text('Relecture'));
+    await tester.pump(const Duration(seconds: 2));
+    expect(find.byKey(const ValueKey('ptz-pad')), findsNothing, reason: 'le pavé laisse la place à la barre du temps');
+    expect(find.byKey(const ValueKey('history-timeline')), findsOneWidget);
+    await tester.tap(find.text('Aperçu'));
+    await tester.pump(const Duration(seconds: 1));
+    nav.pop();
     await tester.pumpAndSettle();
   });
 

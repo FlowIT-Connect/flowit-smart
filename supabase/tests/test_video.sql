@@ -205,4 +205,21 @@ insert into public.video_sessions (home_id, device_id, offer, quality, playback_
 select pg_temp.check((select count(*) = 1 from public.video_sessions where quality = 'playback'), 'relecture : session créée par le propriétaire');
 select pg_temp.check(pg_temp.try_sql($$insert into public.video_sessions (home_id, device_id, offer, quality) values ('f0000000-0000-0000-0000-000000000001','f1000000-0000-0000-0000-000000000009','v=0 offre sdp','playback')$$) like '%playback_check%', 'relecture : heure de début obligatoire');
 select pg_temp.check(pg_temp.try_sql($$insert into public.video_sessions (home_id, device_id, offer, quality, playback_start, playback_end) values ('f0000000-0000-0000-0000-000000000001','f1000000-0000-0000-0000-000000000009','v=0 offre sdp','playback', now() - interval '1 day', now())$$) like '%playback_check%', 'relecture : 3 heures au plus');
+-- Parler à travers la caméra : session « talk ».
+insert into public.video_sessions (home_id, device_id, offer, quality) values
+ ('f0000000-0000-0000-0000-000000000001','f1000000-0000-0000-0000-000000000009','v=0 offre sdp','talk');
+select pg_temp.check((select count(*) = 1 from public.video_sessions where quality = 'talk'), 'micro : session « parler » créée par le propriétaire');
+
+-- Orientation (PTZ).
+create temp table t_ptz as select public.camera_ptz('f1000000-0000-0000-0000-000000000009', 'move', 0.5, -0.5) as id;
+grant select on t_ptz to public;
+select pg_temp.check((select action = 'move' and pan = 0.5 and tilt = -0.5 and status = 'pending' from public.video_ptz_commands where id = (select id from t_ptz)), 'orientation : ordre déposé');
+select pg_temp.check(public.camera_ptz('f1000000-0000-0000-0000-000000000009', 'preset', p_preset => '1') is not null, 'orientation : point favori');
+select pg_temp.check(pg_temp.try_sql($$select public.camera_ptz('f1000000-0000-0000-0000-000000000009', 'move', 3, 0)$$) like '%check%', 'orientation : vitesse hors limites refusée');
+select pg_temp.check(pg_temp.try_sql($$select public.camera_ptz('f1000000-0000-0000-0000-000000000009', 'reboot')$$) like '%check%', 'orientation : action inconnue refusée');
+select pg_temp.check(pg_temp.try_sql($$select public.camera_ptz('f1000000-0000-0000-0000-000000000009', 'preset', p_preset => '1;drop')$$) like '%check%', 'orientation : point favori invalide refusé');
+select pg_temp.check(pg_temp.try_sql($$update public.video_ptz_commands set status = 'done'$$) like '%permission denied%', 'orientation : seul le boîtier répond');
+select pg_temp.as_user('00000000-0000-0000-0000-0000000000f4');
+select pg_temp.check(pg_temp.try_sql($$select public.camera_ptz('f1000000-0000-0000-0000-000000000009', 'move', 1, 0)$$) like '%Accès refusé%', 'orientation : le voisin ne peut pas orienter la caméra');
+select pg_temp.check((select count(*) = 0 from public.video_ptz_commands), 'orientation : chacun ne voit que ses ordres');
 reset role;

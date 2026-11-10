@@ -2,6 +2,8 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
+	<key>NSMicrophoneUsageDescription</key>
+	<string>Parler à travers vos caméras quand vous touchez le bouton micro.</string>
 	<key>NSCameraUsageDescription</key>
 	<string>Prendre en photo vos appareils et scanner leur QR code pour les ajouter à Solea.</string>
 	<key>NSLocationWhenInUseUsageDescription</key>

@@ -227,6 +227,16 @@ export class SupabaseStore {
     check(await this.db.from('video_recording_queries').update(patch).eq('id', id));
   }
 
+  async listPendingPtzCommands(homeId) {
+    return check(
+      await this.db.from('video_ptz_commands').select('id, device_id, action, pan, tilt, preset, created_at').eq('home_id', homeId).eq('status', 'pending').order('created_at').limit(20),
+    );
+  }
+
+  async updatePtzCommand(id, patch) {
+    check(await this.db.from('video_ptz_commands').update(patch).eq('id', id));
+  }
+
   async upsertMediaGateway(homeId, row) {
     check(await this.db.from('media_gateways').upsert({ home_id: homeId, ...row }));
   }
@@ -235,7 +245,7 @@ export class SupabaseStore {
   subscribeVideo(homeId, onChange) {
     const filter = `home_id=eq.${homeId}`;
     const channel = this.db.channel(`udi:${homeId}`);
-    for (const table of ['video_sessions', 'video_scans', 'video_sources', 'video_recording_queries']) {
+    for (const table of ['video_sessions', 'video_scans', 'video_sources', 'video_recording_queries', 'video_ptz_commands']) {
       channel.on('postgres_changes', { event: '*', schema: 'public', table, filter }, () => onChange(table));
     }
     channel.subscribe();
