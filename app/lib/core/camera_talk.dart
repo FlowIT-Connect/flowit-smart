@@ -35,14 +35,30 @@ class CameraTalk {
     final pc = await createPeerConnection({'iceServers': gateway.iceServers, 'sdpSemantics': 'unified-plan'});
     _pc = pc;
     final track = _mic!.getAudioTracks().first;
-    await pc.addTransceiver(track: track, kind: RTCRtpMediaType.RTCRtpMediaTypeAudio, init: RTCRtpTransceiverInit(direction: TransceiverDirection.SendOnly, streams: [_mic!]));
+    final transceiver = await pc.addTransceiver(track: track, kind: RTCRtpMediaType.RTCRtpMediaTypeAudio, init: RTCRtpTransceiverInit(direction: TransceiverDirection.SendOnly, streams: [_mic!]));
+    // La caméra ne comprend que le G.711 : on le demande au moteur WebRTC lui-même (A-law
+    // d'abord), le tri de l'offre ne sert que de filet si le téléphone ne le permet pas.
+    try {
+      final caps = await getRtpSenderCapabilities('audio');
+      final g711 = [
+        for (final name in const ['audio/PCMA', 'audio/PCMU'])
+          ...?caps.codecs?.where((c) => c.mimeType.toLowerCase() == name.toLowerCase()),
+      ];
+      if (g711.isNotEmpty) await transceiver.setCodecPreferences(g711);
+    } catch (_) {}
     final gathered = Completer<void>();
     pc.onIceGatheringState = (s) {
       if (s == RTCIceGatheringState.RTCIceGatheringStateComplete && !gathered.isCompleted) gathered.complete();
     };
     final offer = await pc.createOffer({});
-    // La caméra ne comprend que le G.711 : on n'offre que lui (A-law d'abord, comme la Hero A1).
-    await pc.setLocalDescription(RTCSessionDescription(onlyG711(offer.sdp ?? ''), offer.type));
+    final sdp = offer.sdp ?? '';
+    // Filet : si le moteur propose encore d'autres codecs, on ne garde que le G.711 dans l'offre.
+    final filtered = onlyG711(sdp);
+    try {
+      await pc.setLocalDescription(RTCSessionDescription(filtered, offer.type));
+    } catch (_) {
+      await pc.setLocalDescription(offer);
+    }
     await gathered.future.timeout(const Duration(seconds: 4), onTimeout: () {});
     final local = await pc.getLocalDescription();
     if (local?.sdp == null || _stopped) return stop();
@@ -87,7 +103,9 @@ String onlyG711(String sdp) {
       if (inAudio) {
         final parts = line.split(' ');
         final pts = parts.sublist(3).where((p) => p == '8' || p == '0').toList()..sort((a, b) => b.compareTo(a));
-        out.add([...parts.sublist(0, 3), ...(pts.isEmpty ? ['8', '0'] : pts)].join(' '));
+        // Pas de G.711 du tout : offre laissée telle quelle (le boîtier expliquera le refus).
+        if (pts.isEmpty) return sdp;
+        out.add([...parts.sublist(0, 3), ...pts].join(' '));
         continue;
       }
     }
@@ -97,12 +115,5 @@ String onlyG711(String sdp) {
     }
     out.add(line);
   }
-  var text = out.join('\r\n');
-  // Types statiques : décrits quand même, pour les relais qui l'exigent.
-  for (final (pt, name) in const [('0', 'PCMU'), ('8', 'PCMA')]) {
-    if (!text.contains('a=rtpmap:$pt ')) {
-      text = text.replaceFirstMapped(RegExp(r'(m=audio[^\r\n]*)'), (m) => '${m[1]}\r\na=rtpmap:$pt $name/8000');
-    }
-  }
-  return text;
+  return out.join('\r\n');
 }

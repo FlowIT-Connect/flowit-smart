@@ -43,7 +43,7 @@ class _LiveVideoViewState extends State<LiveVideoView> {
   String? _sessionId;
   _Phase _phase = _Phase.connecting;
   String? _error;
-  bool _muted = true;
+  bool _muted = false; // son actif d'emblée, comme dans l'application de la caméra
   CameraTalk? _talk; // voix du téléphone vers la caméra, pendant qu'on parle
   bool _talking = false;
   bool _hd = true;
@@ -284,12 +284,13 @@ class _LiveVideoViewState extends State<LiveVideoView> {
         setState(() => _talking = false);
         toast(e.message);
       }
-    } catch (_) {
+    } catch (e) {
       await talk.stop();
       if (_talk == talk) _talk = null;
       if (mounted) {
         setState(() => _talking = false);
-        toast(state.tr('video.talkFailed'));
+        // Détail technique affiché : il permet de comprendre l'échec sur un téléphone précis.
+        toast('${state.tr('video.talkFailed')} ($e)');
       }
     }
   }

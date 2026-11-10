@@ -512,6 +512,13 @@ describe('Boîtier vidéo : passerelle + UDI', () => {
     await hub.processPtz();
     assert.deepEqual(sent.slice(1).map((x) => x.op), ['Stop', 'GotoPreset']);
     assert.match(sent[2].body, /<tptz:PresetToken>1<\/tptz:PresetToken>/);
+    // Appui court : « move » puis « stop » déjà en attente → le mouvement part quand même.
+    store.ptzCommands.push(
+      { id: 'p6', home_id: 'home-1', device_id: deviceId, action: 'move', pan: 0.5, tilt: 0, status: 'pending', created_at: iso(now) },
+      { id: 'p7', home_id: 'home-1', device_id: deviceId, action: 'stop', status: 'pending', created_at: iso(now) },
+    );
+    await hub.processPtz();
+    assert.deepEqual(sent.slice(3).map((x) => x.op), ['ContinuousMove', 'Stop']);
   });
 
   let bridge;
