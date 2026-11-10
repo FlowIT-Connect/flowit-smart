@@ -235,8 +235,10 @@ export class SupabaseStore {
   subscribeCameraWatch(homeId, onWatch) {
     const channel = this.db
       .channel(`camera:${homeId}`, { config: { broadcast: { self: false } } })
-      .on('broadcast', { event: 'watch' }, ({ payload }) => {
-        if (typeof payload?.device_id === 'string') onWatch(payload.device_id);
+      .on('broadcast', { event: 'watch' }, (msg) => {
+        // L'application Flutter (realtime_client) envoie les champs à plat, sans « payload ».
+        const deviceId = msg?.payload?.device_id ?? msg?.device_id;
+        if (typeof deviceId === 'string') onWatch(deviceId);
       })
       .subscribe();
     return {

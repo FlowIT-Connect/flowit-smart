@@ -976,8 +976,11 @@ class _CameraHub {
       ..onBroadcast(
         event: 'frame',
         callback: (payload) {
+          // La passerelle (supabase-js) range ses champs sous « payload ».
+          final inner = payload['payload'];
+          final data = inner is Map ? inner : payload;
           for (final w in List.of(_watchers)) {
-            if (w.deviceId == payload['device_id']) w.onFrame(payload['at']?.toString());
+            if (w.deviceId == data['device_id']) w.onFrame(data['at']?.toString());
           }
         },
       )
@@ -1010,6 +1013,12 @@ class _CameraHub {
   Future<void> close() => _client.removeChannel(_channel);
 
   void watch(String deviceId) {
-    if (_subscribed) _channel.sendBroadcastMessage(event: 'watch', payload: {'device_id': deviceId});
+    // Champs sous « payload » et à plat : lus par toutes les versions de la passerelle.
+    if (_subscribed) {
+      _channel.sendBroadcastMessage(event: 'watch', payload: {
+        'device_id': deviceId,
+        'payload': {'device_id': deviceId},
+      });
+    }
   }
 }
