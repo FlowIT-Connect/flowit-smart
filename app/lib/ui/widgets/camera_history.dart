@@ -470,7 +470,7 @@ class CameraPtzPad extends StatefulWidget {
 }
 
 class _CameraPtzPadState extends State<CameraPtzPad> {
-  static const _speed = 0.6;
+  static const _speed = 0.5;
   Timer? _repeat;
   Offset? _dir;
   late final Backend _backend = AppScope.read(context).backend;
@@ -500,20 +500,26 @@ class _CameraPtzPadState extends State<CameraPtzPad> {
     } catch (_) {/* un ordre perdu : la caméra s'arrête seule au bout d'une seconde */}
   }
 
+  DateTime? _pressedAt;
+
   void _start(Offset dir) {
     _repeat?.cancel();
+    _pressedAt = DateTime.now();
     setState(() => _dir = dir);
+    // Un seul ordre suffit pour un appui court : la caméra tourne une seconde puis s'arrête seule.
     _send('move', dir: dir);
-    // La caméra s'arrête seule après 1 s : on renouvelle l'ordre tant que le doigt reste posé.
-    _repeat = Timer.periodic(const Duration(milliseconds: 700), (_) => _send('move', dir: dir));
+    // Doigt gardé appuyé : on renouvelle l'ordre avant que la caméra ne s'arrête.
+    _repeat = Timer.periodic(const Duration(milliseconds: 800), (_) => _send('move', dir: dir));
   }
 
   void _stop({bool send = true}) {
     _repeat?.cancel();
     _repeat = null;
     if (_dir == null) return;
+    final held = _pressedAt == null ? Duration.zero : DateTime.now().difference(_pressedAt!);
     setState(() => _dir = null);
-    if (send) _send('stop');
+    // Appui court : pas d'ordre d'arrêt, qui annulerait le petit mouvement avant qu'il ne parte.
+    if (send && held > const Duration(milliseconds: 900)) _send('stop');
   }
 
   @override

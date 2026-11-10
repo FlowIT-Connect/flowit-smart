@@ -492,14 +492,31 @@ export class UdiHub {
   // ---------------------------------------------------------------- Orientation (PTZ)
   /** Ordres d'orientation, exécutés dans l'ordre ; un ordre de plus de 5 s est ignoré (doigt déjà levé). */
   async processPtz() {
-    if (this.stopped || this.ptzBusy || !this.store.listPendingPtzCommands) return;
+    if (this.stopped || !this.store.listPendingPtzCommands) return;
+    // Ordre arrivé pendant un traitement : relu juste après, sans attendre la boucle de 3 s.
+    if (this.ptzBusy) {
+      this.ptzAgain = true;
+      return;
+    }
     this.ptzBusy = true;
     try {
+      do {
+        this.ptzAgain = false;
+        await this.#ptzBatch();
+      } while (this.ptzAgain && !this.stopped);
+    } finally {
+      this.ptzBusy = false;
+    }
+  }
+
+  async #ptzBatch() {
+    {
       const rows = await this.store.listPendingPtzCommands(this.homeId);
       for (const [i, c] of rows.entries()) {
         const done = (patch) => this.store.updatePtzCommand(c.id, { ...patch, finished_at: new Date(this.clock()).toISOString() });
-        // Plusieurs « move » en attente pour la même caméra : seul le dernier compte.
-        const later = rows.slice(i + 1).some((n) => n.device_id === c.device_id);
+        // Un « move » remplacé par un autre déplacement en attente est sauté ; un « stop » qui
+        // suit ne l'annule pas : le mouvement part, puis l'arrêt.
+        const later = rows.slice(i + 1).some((n) => n.device_id === c.device_id && n.action !== 'stop');
         if (this.clock() - Date.parse(c.created_at) > 5_000 || (c.action === 'move' && later)) {
           await done({ status: 'failed', error: 'Ordre dépassé' });
           continue;
@@ -517,8 +534,6 @@ export class UdiHub {
           log.warn('udi.ptz_failed', { source: r.source.id, action: c.action, error: e.message });
         }
       }
-    } finally {
-      this.ptzBusy = false;
     }
   }
 

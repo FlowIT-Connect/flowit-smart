@@ -12,9 +12,8 @@ void main() {
     expect(sdp, contains('a=sendonly'));
   });
 
-  test('voix vers la caméra : types statiques décrits même sans rtpmap', () {
-    final sdp = onlyG711('v=0\r\nm=audio 9 UDP/TLS/RTP/SAVPF 111 0 8\r\na=rtpmap:111 opus/48000/2\r\n');
-    expect(sdp, contains('a=rtpmap:8 PCMA/8000'));
-    expect(sdp, contains('a=rtpmap:0 PCMU/8000'));
+  test('voix vers la caméra : sans G.711, l\'offre reste intacte', () {
+    const offer = 'v=0\r\nm=audio 9 UDP/TLS/RTP/SAVPF 111\r\na=rtpmap:111 opus/48000/2\r\n';
+    expect(onlyG711(offer), offer);
   });
 }
