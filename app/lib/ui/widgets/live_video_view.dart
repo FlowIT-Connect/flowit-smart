@@ -158,7 +158,7 @@ class _LiveVideoViewState extends State<LiveVideoView> {
       // on le dit au lieu de laisser tourner sans fin, avec la qualité SD ou les images fixes.
       _watchdog?.cancel();
       _watchdog = Timer(const Duration(seconds: 15), () {
-        if (!_disposed && attempt == _attempt && !_gotFrame && _renderer.videoWidth == 0) _fail(state.tr('video.noPicture'));
+        if (!_disposed && attempt == _attempt && !_gotFrame && _renderer.videoWidth == 0) _failNoPicture(pc, attempt, state.tr('video.noPicture'));
       });
     } on BackendException catch (e) {
       _fail(e.message);
@@ -182,6 +182,26 @@ class _LiveVideoViewState extends State<LiveVideoView> {
       _applyMute();
       if (mounted) setState(() => _phase = _Phase.playing);
     } catch (_) {}
+  }
+
+  /// Pas d'image affichée : on ajoute ce que le téléphone a reçu et décodé, pour savoir
+  /// si c'est le réseau, le décodeur vidéo du téléphone ou l'affichage qui bloque.
+  Future<void> _failNoPicture(RTCPeerConnection pc, int attempt, String message) async {
+    var detail = '';
+    try {
+      for (final r in await pc.getStats()) {
+        final v = r.values;
+        if (r.type != 'inbound-rtp' || (v['kind'] ?? v['mediaType']) != 'video') continue;
+        int n(String k) => (v[k] is num) ? (v[k] as num).toInt() : 0;
+        final kb = n('bytesReceived') ~/ 1024;
+        final dec = v['decoderImplementation'];
+        detail = '\n[$kb Ko · ${n('framesReceived')} reçues · ${n('framesDecoded')} décodées · '
+            '${n('keyFramesDecoded')} clés · ${n('frameWidth')}x${n('frameHeight')}'
+            '${dec is String && dec.isNotEmpty ? ' · $dec' : ''}]';
+      }
+    } catch (_) {}
+    if (_disposed || attempt != _attempt || _gotFrame) return;
+    _fail('$message$detail');
   }
 
   void _fail(String message) {
