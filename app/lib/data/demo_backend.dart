@@ -1678,6 +1678,9 @@ class DemoBackend implements Backend {
   }
 
   @override
+  Future<void> cameraPtz(String deviceId, String action, {double pan = 0, double tilt = 0, String? preset}) async {}
+
+  @override
   Future<RecordingQuery?> getVideoRecordings(String queryId) async {
     await _wait();
     // Démonstration : quelques heures enregistrées, dont une à l'ancien format.

@@ -10,7 +10,8 @@ import { DahuaDriver } from './drivers/dahua_driver.js';
 import { RtspDriver } from './drivers/rtsp_driver.js';
 import { sameSerial } from './dahua/dhip.js';
 import { UdiError } from './contract.js';
-import { iceServers, pathName, playbackPathName } from './media/mediamtx.js';
+import { iceServers, pathName, playbackPathName, talkPathName } from './media/mediamtx.js';
+import { TalkRelay } from './talk.js';
 import { withCredentials } from './rtsp.js';
 
 export const UDI_PREFIX = 'udi:';
@@ -49,8 +50,9 @@ export class UdiHub {
     sessionMaxAgeMs = 2 * 3600_000,
     clock = () => Date.now(),
     version = 'udi-1',
+    talkRelayFactory = (opts) => new TalkRelay(opts),
   } = {}) {
-    Object.assign(this, { driverFactory, mediamtx, discover, discoverDahua, allowedSubnet, stun, turn, turnSecret, retryMinMs, retryMaxMs, pingMs, sessionMaxAgeMs, clock, version });
+    Object.assign(this, { driverFactory, mediamtx, discover, discoverDahua, allowedSubnet, stun, turn, turnSecret, retryMinMs, retryMaxMs, pingMs, sessionMaxAgeMs, clock, version, talkRelayFactory });
     /** sourceId -> runner */
     this.runners = new Map();
     /** sessionId -> { location, startedAt } */
@@ -79,6 +81,7 @@ export class UdiHub {
     every(2_000, () => this.processSessions());
     every(5_000, () => this.processScans());
     every(5_000, () => this.processRecordings());
+    every(3_000, () => this.processPtz());
     every(60_000, () => this.heartbeat());
     every(this.pingMs, () => this.pingAll());
     this.unsubscribe = this.store.subscribeVideo?.(this.homeId, (table) => {
@@ -89,6 +92,8 @@ export class UdiHub {
           ? this.processScans()
           : table === 'video_recording_queries'
           ? this.processRecordings()
+          : table === 'video_ptz_commands'
+          ? this.processPtz()
           : this.refreshSources();
       run.catch((e) => log.warn('udi.realtime_failed', { table, error: e.message }));
     });
@@ -100,6 +105,7 @@ export class UdiHub {
     this.timers = [];
     this.unsubscribe?.();
     for (const [id, s] of this.sessions) {
+      await s.relay?.stop();
       await this.mediamtx?.closeSession(s.location);
       if (s.path) await this.mediamtx?.removePath(s.path).catch(() => {});
       this.sessions.delete(id);
@@ -356,6 +362,7 @@ export class UdiHub {
       } else if (this.sessions.has(row.id)) {
         const s = this.sessions.get(row.id);
         if (row.status === 'closed' || row.status === 'failed' || this.clock() - s.startedAt > this.sessionMaxAgeMs) {
+          await s.relay?.stop();
           await this.mediamtx?.closeSession(s.location);
           if (s.path) await this.mediamtx?.removePath(s.path).catch(() => {});
           this.sessions.delete(row.id);
@@ -375,6 +382,7 @@ export class UdiHub {
     if (r.status !== 'online') return fail('Équipement hors ligne');
     if (!r.flags.video_stream) return fail('Cet équipement ne fournit pas de flux vidéo');
     if (row.quality === 'playback') return this.#answerPlayback(row, r, fail);
+    if (row.quality === 'talk') return this.#answerTalk(row, r, fail);
     const quality = row.quality === 'sub' && r.driver.streams().sub ? 'sub' : 'main';
     try {
       await this.#preparePaths(r);
@@ -405,7 +413,7 @@ export class UdiHub {
     const path = playbackPathName(r.source.id, row.id);
     try {
       const { username, password } = r.driver.creds;
-      await this.mediamtx.ensurePath(path, withCredentials(url, username, password));
+      await this.mediamtx.ensurePath(path, withCredentials(url, username, password), { fresh: true });
       const { answer, location } = await this.mediamtx.whep(path, row.offer);
       this.sessions.set(row.id, { location, path, startedAt: this.clock() });
       await this.store.updateVideoSession(row.id, { status: 'answered', answer, answered_at: new Date(this.clock()).toISOString() });
@@ -414,6 +422,41 @@ export class UdiHub {
       await this.mediamtx.removePath(path).catch(() => {});
       await fail(e.message);
     }
+  }
+
+  /** Parler à travers la caméra : le téléphone publie sa voix, le boîtier la relaie à la caméra. */
+  async #answerTalk(row, r, fail) {
+    const cameraUrl = typeof r.driver.talkUrl === 'function' ? r.driver.talkUrl() : null;
+    if (!r.flags.audio_output || !cameraUrl) return fail('Cette caméra n\'accepte pas la voix depuis Solea');
+    const path = talkPathName(r.source.id, row.id);
+    let relay = null;
+    try {
+      await this.mediamtx.addPublisherPath(path);
+      const { answer, location } = await this.mediamtx.whip(path, row.offer);
+      const { username, password } = r.driver.creds;
+      relay = this.talkRelayFactory({ cameraUrl, username, password, sourceUrl: `${this.mediamtx.rtspUrl}/${path}` });
+      this.sessions.set(row.id, { location, path, relay, startedAt: this.clock() });
+      await this.store.updateVideoSession(row.id, { status: 'answered', answer, answered_at: new Date(this.clock()).toISOString() });
+      log.info('udi.talk_answered', { session: row.id, source: r.source.id });
+    } catch (e) {
+      await this.mediamtx.removePath(path).catch(() => {});
+      return fail(e.message);
+    }
+    relay.onEnd = () => log.info('udi.talk_ended', { session: row.id, packets: relay.packets });
+    relay
+      .start()
+      .then((info) => log.info('udi.talk_started', { session: row.id, ...info }))
+      .catch(async (e) => {
+        log.warn('udi.talk_failed', { session: row.id, error: e.message });
+        await relay.stop();
+        const s = this.sessions.get(row.id);
+        if (s) {
+          this.sessions.delete(row.id);
+          await this.mediamtx.closeSession(s.location);
+          await this.mediamtx.removePath(path).catch(() => {});
+        }
+        await this.store.updateVideoSession(row.id, { status: 'failed', error: e.message }).catch(() => {});
+      });
   }
 
   // ---------------------------------------------------------------- Historique (carte mémoire)
@@ -443,6 +486,39 @@ export class UdiHub {
       }
     } finally {
       this.recordingsBusy = false;
+    }
+  }
+
+  // ---------------------------------------------------------------- Orientation (PTZ)
+  /** Ordres d'orientation, exécutés dans l'ordre ; un ordre de plus de 5 s est ignoré (doigt déjà levé). */
+  async processPtz() {
+    if (this.stopped || this.ptzBusy || !this.store.listPendingPtzCommands) return;
+    this.ptzBusy = true;
+    try {
+      const rows = await this.store.listPendingPtzCommands(this.homeId);
+      for (const [i, c] of rows.entries()) {
+        const done = (patch) => this.store.updatePtzCommand(c.id, { ...patch, finished_at: new Date(this.clock()).toISOString() });
+        // Plusieurs « move » en attente pour la même caméra : seul le dernier compte.
+        const later = rows.slice(i + 1).some((n) => n.device_id === c.device_id);
+        if (this.clock() - Date.parse(c.created_at) > 5_000 || (c.action === 'move' && later)) {
+          await done({ status: 'failed', error: 'Ordre dépassé' });
+          continue;
+        }
+        const r = this.runners.get(sourceIdOf(this.resolveDevice?.(c.device_id)));
+        if (!r || r.status !== 'online' || !r.flags.ptz_control || typeof r.driver?.ptzCommand !== 'function') {
+          await done({ status: 'failed', error: !r ? 'Équipement vidéo inconnu de ce boîtier' : r.status !== 'online' ? 'Équipement hors ligne' : 'Cette caméra ne s\'oriente pas depuis Solea' });
+          continue;
+        }
+        try {
+          await r.driver.ptzCommand({ action: c.action, pan: Number(c.pan) || 0, tilt: Number(c.tilt) || 0, preset: c.preset ?? null });
+          await done({ status: 'done' });
+        } catch (e) {
+          await done({ status: 'failed', error: e.message });
+          log.warn('udi.ptz_failed', { source: r.source.id, action: c.action, error: e.message });
+        }
+      }
+    } finally {
+      this.ptzBusy = false;
     }
   }
 

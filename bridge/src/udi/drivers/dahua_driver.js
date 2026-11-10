@@ -10,6 +10,7 @@
 import { fetchWithAuth } from '../auth.js';
 import { UdiError, capabilityFlags, webrtcAudio } from '../contract.js';
 import { probeRtsp } from '../rtsp.js';
+import { OnvifClient } from '../onvif/client.js';
 import { OnvifDriver } from './onvif_driver.js';
 
 export const dahuaRtsp = (host, subtype, port = 554) => `rtsp://${host}:${port}/cam/realmonitor?channel=1&subtype=${subtype}`;
@@ -42,8 +43,10 @@ export class DahuaDriver {
    * @param {{id:string, host?:string|null, serial?:string|null, model?:string|null, username?:string, password?:string}} source
    * @param {{locate?:(serial:string)=>Promise<{host:string, model?:string|null, mac?:string|null}|null>, probe?:Function, fetchImpl?:Function, onvif?:Function}} [deps]
    */
-  constructor(source, { locate = async () => null, probe = probeRtsp, fetchImpl = (...a) => fetch(...a), onvif = (src) => new OnvifDriver(src, { fetchImpl, probe, events: false }) } = {}) {
+  constructor(source, { locate = async () => null, probe = probeRtsp, fetchImpl = (...a) => fetch(...a), onvif = (src) => new OnvifDriver(src, { fetchImpl, probe, events: false }), onvifClient = (opts) => new OnvifClient({ fetchImpl, timeoutMs: 5000, ...opts }) } = {}) {
     this.onvif = onvif;
+    this.onvifClient = onvifClient;
+    this.ptzProfile = null; // profil ONVIF qui porte l'orientation (Hero A1 : moteurs gauche/droite, haut/bas)
     this.alt = null; // flux annoncés par ONVIF quand l'adresse Dahua standard ne répond pas
     this.source = source;
     this.locate = locate;
@@ -128,11 +131,55 @@ export class DahuaDriver {
       throw new UdiError(check.status === 401 ? 'Code de sécurité refusé par la caméra' : check.error, check.status === 401 ? 'auth' : 'unreachable');
     }
     this.snapshotOk = await this.#trySnapshot().then(() => true, () => false);
+    const extras = await this.#onvifExtras();
     this.flags = capabilityFlags({
       video_stream: Boolean(check.video),
       snapshot: this.snapshotOk,
       audio_input: webrtcAudio(check.audio?.codec),
+      audio_output: extras.speaker,
+      ptz_control: extras.ptz,
     });
+  }
+
+  /**
+   * Ce que la caméra annonce en ONVIF en plus de la vidéo : orientation (PTZ, le profil retenu
+   * sert ensuite aux déplacements) et haut-parleur (voie de retour audio pour parler).
+   */
+  async #onvifExtras() {
+    this.ptz = null;
+    this.ptzProfile = null;
+    try {
+      const c = this.onvifClient({ host: this.host, port: 80, ...this.creds });
+      await c.syncClock().catch(() => {});
+      const caps = await c.getCapabilities();
+      const speaker = caps.audioOutputs > 0;
+      if (!caps.services.ptz) return { ptz: false, speaker };
+      const profile = (await c.getProfiles()).find((p) => p.ptz);
+      if (profile) {
+        this.ptz = c;
+        this.ptzProfile = profile.token;
+      }
+      return { ptz: Boolean(profile), speaker };
+    } catch {
+      return { ptz: false, speaker: false };
+    }
+  }
+
+  /** Adresse RTSP (porte 554, sans identifiants) sur laquelle la caméra accepte la voix. */
+  talkUrl() {
+    return this.flags.audio_output && this.host ? dahuaRtsp(this.host, 0) : null;
+  }
+
+  /**
+   * Orientation demandée depuis l'application : « move » (vitesse -1 à 1, la caméra s'arrête
+   * seule après 1 s sans nouvel ordre), « stop », ou « preset » (point favori).
+   */
+  async ptzCommand({ action, pan = 0, tilt = 0, preset = null }) {
+    if (!this.ptz || !this.ptzProfile) throw new UdiError('Cette caméra ne s\'oriente pas depuis Solea', 'unsupported');
+    if (action === 'move') return this.ptz.ptzMove(this.ptzProfile, pan, tilt, 1);
+    if (action === 'stop') return this.ptz.ptzStop(this.ptzProfile);
+    if (action === 'preset' && preset) return this.ptz.ptzGotoPreset(this.ptzProfile, preset);
+    throw new UdiError('Ordre d\'orientation inconnu', 'unsupported');
   }
 
   async #viaOnvif() {

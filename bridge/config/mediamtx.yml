@@ -13,10 +13,17 @@ logFile: mediamtx.log
 api: yes
 apiAddress: 127.0.0.1:9997
 
-rtsp: no
+# RTSP seulement sur 127.0.0.1 : le boîtier y lit la voix du téléphone pour la renvoyer à la
+# caméra (« parler »). Rien n'est accessible depuis le réseau ni depuis Internet.
+rtsp: yes
+rtspTransports: [tcp]
+rtspEncryption: "no"
+rtspAddress: 127.0.0.1:8554
 rtmp: no
 hls: no
 srt: no
+# Serveur MoQ (nouveau dans MediaMTX 1.21, actif par défaut sur toutes les interfaces) : coupé.
+moq: no
 
 webrtc: yes
 webrtcAddress: 127.0.0.1:8889

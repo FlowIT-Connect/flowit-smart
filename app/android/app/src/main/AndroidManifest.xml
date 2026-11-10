@@ -7,6 +7,9 @@
     <uses-permission android:name="android.permission.BLUETOOTH_SCAN" android:usesPermissionFlags="neverForLocation" tools:targetApi="s" />
     <uses-permission android:name="android.permission.BLUETOOTH_CONNECT" />
     <uses-permission android:name="android.permission.INTERNET" />
+    <!-- Parler à travers une caméra (seulement quand on touche le bouton micro). -->
+    <uses-permission android:name="android.permission.RECORD_AUDIO" />
+    <uses-permission android:name="android.permission.MODIFY_AUDIO_SETTINGS" />
     <!-- Absence automatique (optionnelle) : position approximative, seulement si le membre l'active. -->
     <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
     <application

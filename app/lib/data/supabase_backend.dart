@@ -824,6 +824,17 @@ class SupabaseBackend implements Backend {
       });
 
   @override
+  Future<void> cameraPtz(String deviceId, String action, {double pan = 0, double tilt = 0, String? preset}) => _guard(() async {
+        await _client.rpc('camera_ptz', params: {
+          'p_device_id': deviceId,
+          'p_action': action,
+          'p_pan': pan.clamp(-1, 1),
+          'p_tilt': tilt.clamp(-1, 1),
+          'p_preset': ?preset,
+        });
+      });
+
+  @override
   Future<String> requestVideoRecordings(String deviceId, DateTime day) => _guard(() async {
         final d = '${day.year.toString().padLeft(4, '0')}-${day.month.toString().padLeft(2, '0')}-${day.day.toString().padLeft(2, '0')}';
         return await _client.rpc('request_video_recordings', params: {'p_device_id': deviceId, 'p_day': d}) as String;

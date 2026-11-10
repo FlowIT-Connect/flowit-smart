@@ -8,7 +8,8 @@ import { createHmac } from 'node:crypto';
 
 export class MediaMtx {
   /** @param {{apiUrl?:string, webrtcUrl?:string, fetchImpl?:typeof fetch}} [opts] */
-  constructor({ apiUrl = 'http://127.0.0.1:9997', webrtcUrl = 'http://127.0.0.1:8889', fetchImpl = (...a) => fetch(...a) } = {}) {
+  constructor({ apiUrl = 'http://127.0.0.1:9997', webrtcUrl = 'http://127.0.0.1:8889', rtspUrl = 'rtsp://127.0.0.1:8554', fetchImpl = (...a) => fetch(...a) } = {}) {
+    this.rtspUrl = rtspUrl.replace(/\/$/, '');
     this.apiUrl = apiUrl.replace(/\/$/, '');
     this.webrtcUrl = webrtcUrl.replace(/\/$/, '');
     this.fetchImpl = fetchImpl;
@@ -36,8 +37,15 @@ export class MediaMtx {
   }
 
   /** Crée ou met à jour un chemin dont la source est un flux RTSP (lu à la demande). */
-  async ensurePath(name, source) {
+  async ensurePath(name, source, { fresh = false } = {}) {
     const conf = { source, sourceOnDemand: true, rtspTransport: 'tcp' };
+    // Chemin neuf (relecture) : ajouté directement, sans lecture préalable qui ferait écrire
+    // « path configuration not found » dans le journal de MediaMTX.
+    if (fresh) {
+      const r = await this.#api('POST', `/v3/config/paths/add/${encodeURIComponent(name)}`, conf);
+      if (!r.ok) throw new Error(`MediaMTX : ajout du flux refusé (${r.status} ${r.json?.error ?? ''})`.trim());
+      return 'added';
+    }
     const cur = await this.#api('GET', `/v3/config/paths/get/${encodeURIComponent(name)}`);
     if (cur.status === 404) {
       const r = await this.#api('POST', `/v3/config/paths/add/${encodeURIComponent(name)}`, conf);
@@ -49,6 +57,12 @@ export class MediaMtx {
     const r = await this.#api('PATCH', `/v3/config/paths/patch/${encodeURIComponent(name)}`, conf);
     if (!r.ok) throw new Error(`MediaMTX : mise à jour du flux refusée (${r.status})`);
     return 'updated';
+  }
+
+  /** Chemin alimenté par un téléphone (WHIP), pour sa voix vers la caméra. */
+  async addPublisherPath(name) {
+    const r = await this.#api('POST', `/v3/config/paths/add/${encodeURIComponent(name)}`, { source: 'publisher' });
+    if (!r.ok) throw new Error(`MediaMTX : chemin de la voix refusé (${r.status} ${r.json?.error ?? ''})`.trim());
   }
 
   async removePath(name) {
@@ -67,7 +81,16 @@ export class MediaMtx {
 
   /** Négociation WHEP : offre SDP de l'application → réponse SDP de MediaMTX. */
   async whep(name, offer) {
-    const res = await this.fetchImpl(`${this.webrtcUrl}/${encodeURIComponent(name)}/whep`, {
+    return this.#negotiate(name, offer, 'whep');
+  }
+
+  /** Négociation WHIP : le téléphone envoie (sa voix) au lieu de recevoir. */
+  async whip(name, offer) {
+    return this.#negotiate(name, offer, 'whip');
+  }
+
+  async #negotiate(name, offer, kind) {
+    const res = await this.fetchImpl(`${this.webrtcUrl}/${encodeURIComponent(name)}/${kind}`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/sdp' },
       body: offer,
@@ -98,6 +121,11 @@ function safeJson(text) {
 /** Nom de chemin MediaMTX d'une source : stable, sans caractère spécial, sans secret. */
 export function pathName(sourceId, quality = 'main') {
   return `solea_${String(sourceId).replace(/[^a-zA-Z0-9]/g, '')}_${quality === 'sub' ? 'sub' : 'main'}`;
+}
+
+/** Chemin MediaMTX de la voix d'un téléphone vers une caméra (supprimé à la fin de la session). */
+export function talkPathName(sourceId, sessionId) {
+  return `solea_${String(sourceId).replace(/[^a-zA-Z0-9]/g, '')}_talk_${String(sessionId).replace(/[^a-zA-Z0-9]/g, '').slice(0, 12)}`;
 }
 
 /** Chemin MediaMTX propre à une relecture de la carte mémoire (supprimé à la fin de la session). */

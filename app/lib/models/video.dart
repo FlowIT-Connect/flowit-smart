@@ -16,6 +16,9 @@ class UdiCapabilities {
   bool get video => has('video_stream');
   bool get snapshot => has('snapshot');
   bool get microphone => has('audio_input');
+
+  /// Haut-parleur de la caméra : permet de parler depuis le téléphone.
+  bool get speaker => has('audio_output');
   bool get motion => has('motion_detection');
 
   /// Clés vraies, dans l'ordre d'affichage.

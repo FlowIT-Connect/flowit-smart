@@ -237,6 +237,9 @@ abstract class Backend {
   Future<String> requestVideoRecordings(String deviceId, DateTime day);
   Future<RecordingQuery?> getVideoRecordings(String queryId);
 
+  /// Orientation d'une caméra motorisée : 'move' (vitesse -1 à 1), 'stop' ou 'preset'.
+  Future<void> cameraPtz(String deviceId, String action, {double pan = 0, double tilt = 0, String? preset});
+
   /// Photo prise par l'utilisateur (bucket privé, accès vérifié côté serveur).
   Future<Uint8List> downloadDevicePhoto(String path);
 

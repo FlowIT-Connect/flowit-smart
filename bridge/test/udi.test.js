@@ -356,10 +356,11 @@ describe('MediaMTX', () => {
       if (u.pathname.startsWith('/v3/config/paths/delete/')) return paths.delete(name), new Response('', { status: 200 });
       if (u.pathname === '/v3/config/global/patch') return new Response('', { status: 200 });
       if (u.pathname === '/v3/paths/list') return Response.json({ items: [] });
-      if (u.pathname.endsWith('/whep')) {
+      if (u.pathname.endsWith('/whep') || u.pathname.endsWith('/whip')) {
         const p = u.pathname.split('/')[1];
+        const kind = u.pathname.split('/')[2];
         if (!paths.has(p)) return new Response('', { status: 404 });
-        return new Response('v=0 réponse', { status: 201, headers: { location: `/${p}/whep/sess-1` } });
+        return new Response(kind === "whep" ? "v=0 réponse" : "v=0 réponse whip", { status: 201, headers: { location: `/${p}/${kind}/sess-1` } });
       }
       if (init.method === 'DELETE') return new Response('', { status: 200 });
       return new Response('', { status: 404 });
@@ -411,6 +412,108 @@ describe('MediaMTX', () => {
 
 
 describe('Boîtier vidéo : passerelle + UDI', () => {
+  test('boîtier : parler à travers la caméra (voix du téléphone relayée, chemin supprimé à la fin)', async () => {
+    const store = new MemoryStore();
+    store.videoSources = [{ id: 'tk-1', home_id: 'home-1', name: 'Salon', category: 'camera', driver: 'dahua', host: '192.168.1.45', username: 'admin', password: 'TEST1234' }];
+    const { mtx, paths } = globalThis.__fakeMtx();
+    const soap = (inner) => new Response(`<?xml version="1.0"?><s:Envelope xmlns:s="http://www.w3.org/2003/05/soap-envelope"><s:Body>${inner}</s:Body></s:Envelope>`, { status: 200 });
+    const fetchImpl = async (url, opts = {}) => {
+      const body = String(opts.body ?? '');
+      if (body.includes('GetCapabilities')) return soap('<GetCapabilitiesResponse><Capabilities><Media><XAddr>http://192.168.1.45/onvif/media_service</XAddr></Media><DeviceIO><AudioOutputs>1</AudioOutputs></DeviceIO></Capabilities></GetCapabilitiesResponse>');
+      if (body.includes('GetSystemDateAndTime')) return soap('<R/>');
+      return new Response('', { status: 404 });
+    };
+    const relays = [];
+    const hub = new UdiHub({
+      mediamtx: mtx,
+      allowedSubnet: subnetFilter(''),
+      driverFactory: (s, deps) => new DahuaDriver(s, { ...deps, probe: async () => ({ ok: true, status: 200, video: { codec: 'H264' }, audio: { codec: 'PCMU' } }), fetchImpl }),
+      talkRelayFactory: (opts) => {
+        const relay = { opts, stopped: false, packets: 0, start: async () => ({ codec: 'PCMA', from: 'PCMA' }), stop: async () => void (relay.stopped = true) };
+        relays.push(relay);
+        return relay;
+      },
+      clock: () => new Date(2026, 10, 4, 12, 30).getTime(),
+      retryMinMs: 30,
+      retryMaxMs: 100,
+    });
+    const adapter = addUdi(new VideoOnlyAdapter(), hub);
+    bridge = new Bridge({ store, adapter, config: { integrationId: 'integ-1', commandTimeoutMs: 300, pendingMaxAgeMs: 30_000, pollIntervalMs: 50, automationRefreshMs: 60_000, runAutomations: false, runTimeTriggers: false } });
+    await bridge.start();
+    assert.ok(await until(() => store.videoSources[0].status === 'online' && store.devices.size === 1));
+    const deviceId = [...store.devices.keys()][0];
+    assert.equal([...hub.runners.values()][0].flags.audio_output, true, 'haut-parleur annoncé par ONVIF');
+    store.videoSessions.push({ id: 'talk-sess-1', home_id: 'home-1', device_id: deviceId, quality: 'talk', offer: 'v=0 voix', status: 'offer', created_at: new Date(2026, 10, 4, 12, 30).toISOString() });
+    await hub.processSessions();
+    assert.ok(await until(() => store.videoSessions[0].status === 'answered'));
+    assert.equal(store.videoSessions[0].answer, 'v=0 réponse whip', 'le téléphone publie sa voix (WHIP)');
+    const path = [...paths.keys()].find((k) => k.includes('_talk_'));
+    assert.deepEqual(paths.get(path), { source: 'publisher' });
+    assert.equal(relays.length, 1);
+    assert.equal(relays[0].opts.cameraUrl, 'rtsp://192.168.1.45:554/cam/realmonitor?channel=1&subtype=0', 'adresse de la caméra sans identifiants');
+    assert.equal(relays[0].opts.sourceUrl, `rtsp://127.0.0.1:8554/${path}`, 'voix lue sur le relais local seulement');
+    store.videoSessions[0].status = 'closed';
+    await hub.processSessions();
+    assert.equal(relays[0].stopped, true, 'relais arrêté');
+    assert.equal(paths.has(path), false, 'chemin de la voix supprimé');
+  });
+
+  test('boîtier : orientation de la caméra (PTZ ONVIF), ordres dépassés ignorés', async () => {
+    const store = new MemoryStore();
+    store.videoSources = [{ id: 'ptz-1', home_id: 'home-1', name: 'Salon', category: 'camera', driver: 'dahua', host: '192.168.1.45', username: 'admin', password: 'TEST1234' }];
+    const { mtx } = globalThis.__fakeMtx();
+    const sent = [];
+    const soap = (inner) => new Response(`<?xml version="1.0"?><s:Envelope xmlns:s="http://www.w3.org/2003/05/soap-envelope" xmlns:tt="http://www.onvif.org/ver10/schema"><s:Body>${inner}</s:Body></s:Envelope>`, { status: 200 });
+    const fetchImpl = async (url, opts = {}) => {
+      const body = String(opts.body ?? '');
+      if (!body.includes('Envelope')) return new Response('', { status: 404 });
+      if (body.includes('GetSystemDateAndTime')) return soap('<GetSystemDateAndTimeResponse/>');
+      if (body.includes('GetCapabilities')) return soap('<GetCapabilitiesResponse><Capabilities><Media><XAddr>http://192.168.1.45/onvif/media_service</XAddr></Media><PTZ><XAddr>http://192.168.1.45/onvif/ptz_service</XAddr></PTZ></Capabilities></GetCapabilitiesResponse>');
+      if (body.includes('GetProfiles')) return soap('<GetProfilesResponse><Profiles token="MediaProfile000"><Name>Main</Name><PTZConfiguration token="PTZ000"/></Profiles></GetProfilesResponse>');
+      for (const op of ['ContinuousMove', 'Stop', 'GotoPreset']) {
+        if (body.includes(`<tptz:${op}`)) {
+          sent.push({ op, url, body });
+          return soap(`<${op}Response/>`);
+        }
+      }
+      return new Response('', { status: 500 });
+    };
+    let now = new Date(2026, 10, 4, 12, 30).getTime();
+    const hub = new UdiHub({
+      mediamtx: mtx,
+      allowedSubnet: subnetFilter(''),
+      driverFactory: (s, deps) => new DahuaDriver(s, { ...deps, probe: async () => ({ ok: true, status: 200, video: { codec: 'H264' } }), fetchImpl }),
+      clock: () => now,
+      retryMinMs: 30,
+      retryMaxMs: 100,
+    });
+    const adapter = addUdi(new VideoOnlyAdapter(), hub);
+    bridge = new Bridge({ store, adapter, config: { integrationId: 'integ-1', commandTimeoutMs: 300, pendingMaxAgeMs: 30_000, pollIntervalMs: 50, automationRefreshMs: 60_000, runAutomations: false, runTimeTriggers: false } });
+    await bridge.start();
+    assert.ok(await until(() => store.videoSources[0].status === 'online' && store.devices.size === 1));
+    const deviceId = [...store.devices.keys()][0];
+    const iso = (ms) => new Date(ms).toISOString();
+    store.ptzCommands.push(
+      { id: 'p1', home_id: 'home-1', device_id: deviceId, action: 'move', pan: -0.5, tilt: 0, status: 'pending', created_at: iso(now - 9000) },
+      { id: 'p2', home_id: 'home-1', device_id: deviceId, action: 'move', pan: 0.5, tilt: 0, status: 'pending', created_at: iso(now - 300) },
+      { id: 'p3', home_id: 'home-1', device_id: deviceId, action: 'move', pan: 0, tilt: 0.8, status: 'pending', created_at: iso(now - 100) },
+    );
+    await hub.processPtz();
+    assert.deepEqual(store.ptzCommands.map((c) => c.status), ['failed', 'failed', 'done'], 'seul le dernier déplacement récent est envoyé');
+    assert.equal(sent.length, 1);
+    assert.match(sent[0].url, /ptz_service/);
+    assert.match(sent[0].body, /MediaProfile000/);
+    assert.match(sent[0].body, /<tt:PanTilt x="0.00" y="0.80"\/>/);
+    assert.match(sent[0].body, /<tptz:Timeout>PT1S<\/tptz:Timeout>/, 'la caméra s\'arrête seule si l\'ordre d\'arrêt se perd');
+    store.ptzCommands.push(
+      { id: 'p4', home_id: 'home-1', device_id: deviceId, action: 'stop', status: 'pending', created_at: iso(now) },
+      { id: 'p5', home_id: 'home-1', device_id: deviceId, action: 'preset', preset: '1', status: 'pending', created_at: iso(now) },
+    );
+    await hub.processPtz();
+    assert.deepEqual(sent.slice(1).map((x) => x.op), ['Stop', 'GotoPreset']);
+    assert.match(sent[2].body, /<tptz:PresetToken>1<\/tptz:PresetToken>/);
+  });
+
   let bridge;
   afterEach(async () => {
     await bridge?.stop();
