@@ -795,10 +795,18 @@ class SupabaseBackend implements Backend {
       });
 
   @override
-  Future<String> openVideoSession(String homeId, String deviceId, String offerSdp, {String quality = 'main'}) => _guard(() async {
+  Future<String> openVideoSession(String homeId, String deviceId, String offerSdp, {String quality = 'main', DateTime? playbackStart}) => _guard(() async {
         final row = await _client
             .from('video_sessions')
-            .insert({'home_id': homeId, 'device_id': deviceId, 'offer': offerSdp, 'quality': quality, 'user_id': _uid})
+            .insert({
+              'home_id': homeId,
+              'device_id': deviceId,
+              'offer': offerSdp,
+              'quality': playbackStart != null ? 'playback' : quality,
+              if (playbackStart != null) 'playback_start': playbackStart.toUtc().toIso8601String(),
+              if (playbackStart != null) 'playback_end': playbackStart.add(const Duration(hours: 1)).toUtc().toIso8601String(),
+              'user_id': _uid,
+            })
             .select('id')
             .single();
         return row['id'] as String;
@@ -813,6 +821,18 @@ class SupabaseBackend implements Backend {
   @override
   Future<void> closeVideoSession(String sessionId) => _guard(() async {
         await _client.from('video_sessions').update({'status': 'closed'}).eq('id', sessionId);
+      });
+
+  @override
+  Future<String> requestVideoRecordings(String deviceId, DateTime day) => _guard(() async {
+        final d = '${day.year.toString().padLeft(4, '0')}-${day.month.toString().padLeft(2, '0')}-${day.day.toString().padLeft(2, '0')}';
+        return await _client.rpc('request_video_recordings', params: {'p_device_id': deviceId, 'p_day': d}) as String;
+      });
+
+  @override
+  Future<RecordingQuery?> getVideoRecordings(String queryId) => _guard(() async {
+        final row = await _client.from('video_recording_queries').select('id, status, slots, error').eq('id', queryId).maybeSingle();
+        return row == null ? null : RecordingQuery.fromJson(row);
       });
 
   @override

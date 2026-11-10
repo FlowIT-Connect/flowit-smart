@@ -196,7 +196,7 @@ export class SupabaseStore {
   async listVideoSessions(homeId, trackedIds = []) {
     const since = new Date(Date.now() - 60_000).toISOString();
     const offers = check(
-      await this.db.from('video_sessions').select('id, device_id, quality, offer, status, created_at').eq('home_id', homeId).eq('status', 'offer').gte('created_at', since).order('created_at').limit(20),
+      await this.db.from('video_sessions').select('id, device_id, quality, offer, status, created_at, playback_start, playback_end').eq('home_id', homeId).eq('status', 'offer').gte('created_at', since).order('created_at').limit(20),
     );
     const tracked = trackedIds.length
       ? check(await this.db.from('video_sessions').select('id, device_id, quality, status, created_at').in('id', trackedIds))
@@ -216,6 +216,17 @@ export class SupabaseStore {
     check(await this.db.from('video_scans').update(patch).eq('id', id));
   }
 
+  /** Demandes d'historique (heures enregistrées sur la carte mémoire d'une caméra). */
+  async listPendingRecordingQueries(homeId) {
+    return check(
+      await this.db.from('video_recording_queries').select('id, device_id, day, created_at').eq('home_id', homeId).eq('status', 'pending').order('created_at').limit(5),
+    );
+  }
+
+  async updateRecordingQuery(id, patch) {
+    check(await this.db.from('video_recording_queries').update(patch).eq('id', id));
+  }
+
   async upsertMediaGateway(homeId, row) {
     check(await this.db.from('media_gateways').upsert({ home_id: homeId, ...row }));
   }
@@ -224,7 +235,7 @@ export class SupabaseStore {
   subscribeVideo(homeId, onChange) {
     const filter = `home_id=eq.${homeId}`;
     const channel = this.db.channel(`udi:${homeId}`);
-    for (const table of ['video_sessions', 'video_scans', 'video_sources']) {
+    for (const table of ['video_sessions', 'video_scans', 'video_sources', 'video_recording_queries']) {
       channel.on('postgres_changes', { event: '*', schema: 'public', table, filter }, () => onChange(table));
     }
     channel.subscribe();

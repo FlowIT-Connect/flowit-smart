@@ -7,8 +7,8 @@ import '../../models/models.dart';
 import '../../state/app_state.dart';
 import '../screens/device_detail.dart';
 import 'access_control.dart';
+import 'camera_history.dart';
 import 'camera_view.dart';
-import 'live_video_view.dart';
 import 'common.dart';
 import 'device_removal.dart';
 import 'device_visual.dart';
@@ -283,7 +283,7 @@ class DeviceControlPanel extends StatelessWidget {
         children.add(_Notice(icon: Icons.videocam_off_rounded, text: context.tr('camera.offline')));
       } else {
         children.add(d.hasLiveVideo
-            ? LiveVideoView(key: ValueKey('video-${d.id}'), device: d)
+            ? CameraVideoPanel(key: ValueKey('video-panel-${d.id}'), device: d)
             : CameraLiveView(key: ValueKey('camera-${d.id}'), device: d));
         children.add(Padding(
           padding: const EdgeInsets.fromLTRB(22, 2, 22, 8),

@@ -10,7 +10,7 @@ import { DahuaDriver } from './drivers/dahua_driver.js';
 import { RtspDriver } from './drivers/rtsp_driver.js';
 import { sameSerial } from './dahua/dhip.js';
 import { UdiError } from './contract.js';
-import { iceServers, pathName } from './media/mediamtx.js';
+import { iceServers, pathName, playbackPathName } from './media/mediamtx.js';
 import { withCredentials } from './rtsp.js';
 
 export const UDI_PREFIX = 'udi:';
@@ -78,10 +78,18 @@ export class UdiHub {
     every(30_000, () => this.refreshSources());
     every(2_000, () => this.processSessions());
     every(5_000, () => this.processScans());
+    every(5_000, () => this.processRecordings());
     every(60_000, () => this.heartbeat());
     every(this.pingMs, () => this.pingAll());
     this.unsubscribe = this.store.subscribeVideo?.(this.homeId, (table) => {
-      const run = table === 'video_sessions' ? this.processSessions() : table === 'video_scans' ? this.processScans() : this.refreshSources();
+      const run =
+        table === 'video_sessions'
+          ? this.processSessions()
+          : table === 'video_scans'
+          ? this.processScans()
+          : table === 'video_recording_queries'
+          ? this.processRecordings()
+          : this.refreshSources();
       run.catch((e) => log.warn('udi.realtime_failed', { table, error: e.message }));
     });
   }
@@ -93,6 +101,7 @@ export class UdiHub {
     this.unsubscribe?.();
     for (const [id, s] of this.sessions) {
       await this.mediamtx?.closeSession(s.location);
+      if (s.path) await this.mediamtx?.removePath(s.path).catch(() => {});
       this.sessions.delete(id);
     }
     await Promise.allSettled([...this.runners.values()].map((r) => this.#stopRunner(r)));
@@ -139,7 +148,15 @@ export class UdiHub {
           capability_key: 'camera',
           type: 'string',
           writable: false,
-          metadata: { kind: 'camera', live: flags.video_stream && this.mediamtx ? 'webrtc' : null, udi: flags, category: s.category, driver: s.driver },
+          metadata: {
+            kind: 'camera',
+            live: flags.video_stream && this.mediamtx ? 'webrtc' : null,
+            // Relecture de la carte mémoire (Dahua) : heures enregistrées + vidéo du passage choisi.
+            playback: flags.video_stream && this.mediamtx && typeof r.driver?.recordedSlots === 'function' ? 'sd' : null,
+            udi: flags,
+            category: s.category,
+            driver: s.driver,
+          },
         },
         ...(flags.motion_detection ? [{ capability_key: 'motion', type: 'sensor', writable: false, metadata: { kind: 'binary' } }] : []),
       ],
@@ -340,6 +357,7 @@ export class UdiHub {
         const s = this.sessions.get(row.id);
         if (row.status === 'closed' || row.status === 'failed' || this.clock() - s.startedAt > this.sessionMaxAgeMs) {
           await this.mediamtx?.closeSession(s.location);
+          if (s.path) await this.mediamtx?.removePath(s.path).catch(() => {});
           this.sessions.delete(row.id);
           if (row.status !== 'closed') await this.store.updateVideoSession(row.id, { status: 'closed' }).catch(() => {});
         }
@@ -356,6 +374,7 @@ export class UdiHub {
     if (!r) return fail('Équipement vidéo inconnu de ce boîtier');
     if (r.status !== 'online') return fail('Équipement hors ligne');
     if (!r.flags.video_stream) return fail('Cet équipement ne fournit pas de flux vidéo');
+    if (row.quality === 'playback') return this.#answerPlayback(row, r, fail);
     const quality = row.quality === 'sub' && r.driver.streams().sub ? 'sub' : 'main';
     try {
       await this.#preparePaths(r);
@@ -365,6 +384,65 @@ export class UdiHub {
       log.info('udi.session_answered', { session: row.id, source: r.source.id, quality });
     } catch (e) {
       await fail(e.message);
+    }
+  }
+
+  /** Relecture d'un passage de la carte mémoire : chemin MediaMTX propre à la session. */
+  async #answerPlayback(row, r, fail) {
+    if (typeof r.driver.playbackUrl !== 'function') return fail('Cette caméra ne permet pas de relire sa carte mémoire');
+    const start = new Date(row.playback_start);
+    if (Number.isNaN(start.getTime())) return fail('Heure de début manquante');
+    const end = row.playback_end ? new Date(row.playback_end) : new Date(start.getTime() + 3600_000);
+    const url = r.driver.playbackUrl(start, end);
+    if (!url) return fail('Caméra pas encore trouvée sur le réseau');
+    // Vérification avant de lancer le relais : rien d'enregistré, ou format illisible sur téléphone.
+    const check = await r.driver.probePlayback(url);
+    if (check.status === 404) return fail('Rien n\'est enregistré sur la carte mémoire à cette heure-là');
+    if (!check.ok) return fail(check.error ?? 'Carte mémoire illisible');
+    if (/H265|HEVC/i.test(check.video?.codec ?? '')) {
+      return fail('Enregistrement au format H.265 : il ne peut pas encore être lu sur le téléphone');
+    }
+    const path = playbackPathName(r.source.id, row.id);
+    try {
+      const { username, password } = r.driver.creds;
+      await this.mediamtx.ensurePath(path, withCredentials(url, username, password));
+      const { answer, location } = await this.mediamtx.whep(path, row.offer);
+      this.sessions.set(row.id, { location, path, startedAt: this.clock() });
+      await this.store.updateVideoSession(row.id, { status: 'answered', answer, answered_at: new Date(this.clock()).toISOString() });
+      log.info('udi.playback_answered', { session: row.id, source: r.source.id, start: start.toISOString() });
+    } catch (e) {
+      await this.mediamtx.removePath(path).catch(() => {});
+      await fail(e.message);
+    }
+  }
+
+  // ---------------------------------------------------------------- Historique (carte mémoire)
+  async processRecordings() {
+    if (this.stopped || this.recordingsBusy || !this.store.listPendingRecordingQueries) return;
+    this.recordingsBusy = true;
+    try {
+      for (const q of await this.store.listPendingRecordingQueries(this.homeId)) {
+        const done = (patch) => this.store.updateRecordingQuery(q.id, { ...patch, finished_at: new Date(this.clock()).toISOString() });
+        const r = this.runners.get(sourceIdOf(this.resolveDevice?.(q.device_id)));
+        if (!r) {
+          await done({ status: 'failed', error: 'Équipement vidéo inconnu de ce boîtier' });
+          continue;
+        }
+        if (r.status !== 'online' || typeof r.driver?.recordedSlots !== 'function') {
+          await done({ status: 'failed', error: r.status !== 'online' ? 'Équipement hors ligne' : 'Cette caméra ne permet pas de relire sa carte mémoire' });
+          continue;
+        }
+        try {
+          const [y, m, d] = String(q.day).split('-').map(Number);
+          const slots = await r.driver.recordedSlots(new Date(y, m - 1, d), { now: new Date(this.clock()) });
+          await done({ status: 'done', slots });
+          log.info('udi.recordings_listed', { source: r.source.id, day: q.day, hours: slots.length });
+        } catch (e) {
+          await done({ status: 'failed', error: e.message });
+        }
+      }
+    } finally {
+      this.recordingsBusy = false;
     }
   }
 

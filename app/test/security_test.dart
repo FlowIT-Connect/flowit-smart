@@ -1,4 +1,5 @@
 import 'package:flowit_smart/models/models.dart';
+import 'package:flowit_smart/ui/widgets/camera_history.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -36,9 +37,9 @@ void main() {
         'capabilities': {'video_stream': true},
         'diagnostic': {
           'steps': [
-            {'step': 'connexion', 'ok': false, 'detail': 'Identifiants refusés'}
+            {'step': 'connexion', 'ok': false, 'detail': 'Identifiants refusés'},
           ],
-          'detected': {'relay_outputs': 1}
+          'detected': {'relay_outputs': 1},
         },
         'test_requested_at': '2026-10-31T10:00:00Z',
         'diagnosed_at': '2026-10-31T10:00:05Z',
@@ -53,24 +54,57 @@ void main() {
 
     test('appareil : vidéo fluide seulement si le boîtier l\'annonce', () {
       Device cam(Map<String, dynamic> meta) => Device.fromJson({
-            'id': 'd1',
-            'home_id': 'h1',
-            'name': 'Entrée',
-            'protocol': 'other',
-            'connection_source': 'local',
-            'availability': 'available',
-            'state': {},
-            'device_capabilities': [
-              {'device_id': 'd1', 'capability_key': 'camera', 'type': 'string', 'writable': false, 'metadata': meta}
-            ],
-          });
-      final live = cam({'kind': 'camera', 'live': 'webrtc', 'category': 'intercom', 'udi': {'video_stream': true, 'audio_input': true}});
+        'id': 'd1',
+        'home_id': 'h1',
+        'name': 'Entrée',
+        'protocol': 'other',
+        'connection_source': 'local',
+        'availability': 'available',
+        'state': {},
+        'device_capabilities': [
+          {'device_id': 'd1', 'capability_key': 'camera', 'type': 'string', 'writable': false, 'metadata': meta},
+        ],
+      });
+      final live = cam({
+        'kind': 'camera',
+        'live': 'webrtc',
+        'category': 'intercom',
+        'udi': {'video_stream': true, 'audio_input': true},
+      });
       expect(live.hasLiveVideo, isTrue);
       expect(live.isIntercom, isTrue);
       expect(live.udi.microphone, isTrue);
       final stills = cam({'kind': 'camera'});
       expect(stills.hasLiveVideo, isFalse);
       expect(stills.udi.enabled, isEmpty);
+    });
+
+    test('historique : carte mémoire annoncée par le boîtier, heures lisibles ou non', () {
+      Device cam(Map<String, dynamic> meta) => Device.fromJson({
+        'id': 'd1',
+        'home_id': 'h1',
+        'name': 'Salon',
+        'protocol': 'other',
+        'connection_source': 'local',
+        'availability': 'available',
+        'state': {},
+        'device_capabilities': [
+          {'device_id': 'd1', 'capability_key': 'camera', 'type': 'string', 'writable': false, 'metadata': meta},
+        ],
+      });
+      expect(cam({'kind': 'camera', 'live': 'webrtc', 'playback': 'sd'}).hasPlayback, isTrue);
+      expect(cam({'kind': 'camera', 'live': 'webrtc'}).hasPlayback, isFalse);
+      expect(cam({'kind': 'camera', 'playback': 'sd'}).hasPlayback, isFalse, reason: 'pas de relais : pas de relecture');
+      final q = RecordingQuery.fromJson({
+        'id': 'q1',
+        'status': 'done',
+        'slots': [
+          {'start': '2026-11-04T09:00:00Z', 'end': '2026-11-04T10:00:00Z', 'codec': 'H265'},
+          {'start': '2026-11-04T13:00:00Z', 'end': '2026-11-04T14:00:00Z', 'codec': 'H264'},
+        ],
+      });
+      expect(q.slots.map((s) => s.playable), [false, true]);
+      expect(q.slots.first.start.isUtc, isFalse, reason: 'affiché à l\'heure du téléphone');
     });
 
     test('boîtier : en ligne si signalé depuis moins de 3 minutes', () {
@@ -97,6 +131,58 @@ void main() {
     await tester.pumpAndSettle();
     await tester.tap(find.text('Relancer le test'));
     await tester.pump(const Duration(seconds: 2));
+    await tester.pumpAndSettle();
+  });
+
+  testWidgets('historique : frise des heures enregistrées, relecture d\'une heure', (tester) async {
+    await pumpApp(tester);
+    await signIn(tester);
+    final cam = Device.fromJson({
+      'id': 'd-hist',
+      'home_id': 'h1',
+      'name': 'Salon',
+      'protocol': 'other',
+      'connection_source': 'local',
+      'availability': 'available',
+      'state': {},
+      'device_capabilities': [
+        {
+          'device_id': 'd-hist',
+          'capability_key': 'camera',
+          'type': 'string',
+          'writable': false,
+          'metadata': {'kind': 'camera', 'live': 'webrtc', 'playback': 'sd'},
+        },
+      ],
+    });
+    DateTime? played;
+    final nav = tester.state<NavigatorState>(find.byType(Navigator).first);
+    nav.push(
+      MaterialPageRoute(
+        builder: (_) => Scaffold(
+          body: SingleChildScrollView(
+            child: CameraHistory(device: cam, onPlay: (t) => played = t),
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(find.text('Historique (carte mémoire)'), findsOneWidget);
+    // Hier : toute la journée est passée, les heures de démonstration sont là.
+    await tester.tap(find.text('Hier'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('12h'));
+    await tester.pumpAndSettle();
+    expect(played?.hour, 12);
+    expect(find.text('12:30'), findsOneWidget, reason: 'choix des minutes');
+    await tester.tap(find.text('12:30'));
+    expect(played?.minute, 30);
+    // Ancien format : explication, pas de lecture.
+    played = null;
+    await tester.tap(find.text('07h'));
+    await tester.pump();
+    expect(played, isNull);
+    expect(find.textContaining('H.265'), findsOneWidget);
     await tester.pumpAndSettle();
   });
 

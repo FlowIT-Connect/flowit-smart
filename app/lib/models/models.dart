@@ -416,6 +416,9 @@ class Device {
   /// Vidéo fluide WebRTC par le boîtier vidéo (sinon : images fixes).
   bool get hasLiveVideo => cameraCapability?.metadata['live'] == 'webrtc';
 
+  /// Historique : le boîtier sait relire la carte mémoire de la caméra.
+  bool get hasPlayback => hasLiveVideo && cameraCapability?.metadata['playback'] == 'sd';
+
   /// Capacités déclarées par le boîtier vidéo (UDI).
   UdiCapabilities get udi => UdiCapabilities.fromJson(cameraCapability?.metadata['udi']);
 
