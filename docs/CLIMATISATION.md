@@ -61,7 +61,7 @@ Ce que Solea pilote : marche/arrêt, consigne, température et humidité mesuré
 étalonnage de la sonde, état du relais (chauffe / en attente) et piles.
 
 Les codes Tuya varient d'un lot à l'autre : si une fonction manque, envoyer la catégorie et les
-codes Tuya de l'appareil (onglet diagnostic de la passerelle ou ligne `tuya.device_ignored`).
+codes Tuya de l'appareil : on ajoute la correspondance.
 
 ## Solea HVAC Connect : ajouter un équipement par sa marque
 
