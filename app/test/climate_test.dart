@@ -204,6 +204,34 @@ void main() {
     await tester.pump(const Duration(seconds: 4));
   });
 
+  testWidgets('Absence automatique : logement placé au centre-ville, corrigé par « Je suis chez moi »', (tester) async {
+    final gps = FakeLocation((36.80, 3.06)); // chez soi, à 5 km du centre-ville choisi pour la météo
+    final state = await pumpApp(tester, location: gps);
+    await signIn(tester);
+    await tester.pumpAndSettle();
+    final saved = state.saveClimateSettings(state.climate.settings.copyWith(geoEnabled: true));
+    await tester.pumpAndSettle();
+    await saved;
+    final shared = state.setPresenceSharing(true);
+    await tester.pumpAndSettle();
+    expect(await shared, isTrue);
+    expect(state.presenceAtHome, isFalse, reason: 'le logement est au centre-ville');
+
+    final nav = Navigator.of(tester.element(find.byType(Scaffold).first));
+    nav.push(MaterialPageRoute(builder: (_) => const ClimateScreen()));
+    await tester.pumpAndSettle();
+    final here = find.byKey(const ValueKey('climate-geo-here'));
+    await tester.scrollUntilVisible(here, 200, scrollable: find.byType(Scrollable).last);
+    await tester.pumpAndSettle();
+    await tester.tap(here);
+    await tester.pumpAndSettle();
+    expect(state.home!.latitude, 36.80);
+    expect(state.home!.longitude, 3.06);
+    expect(state.presenceAtHome, isTrue);
+    expect(find.text('Position du logement enregistrée'), findsOneWidget);
+    await tester.pump(const Duration(seconds: 6));
+  });
+
   testWidgets('Absence automatique : localisation refusée', (tester) async {
     final gps = FakeLocation((36.7540, 3.0590))..allowed = false;
     final state = await pumpApp(tester, location: gps);

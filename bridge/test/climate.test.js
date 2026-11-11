@@ -181,7 +181,12 @@ test('commandes : saison, consigne bornée et arrondie, rien si déjà réglé',
   // Hors-gel à 7 °C sur une clim limitée à 16 °C : bornée.
   assert.equal(deviceCommands(acDevice({ hvac_mode: 'heat' }), presets, 'frost', 'heat').target, 16);
   // Appareil sans consigne : ignoré.
-  assert.deepEqual(deviceCommands({ state: {}, caps: new Map() }, presets, 'comfort', 'heat').commands, []);
+  assert.deepEqual(deviceCommands({ state: {}, caps: new Map() }, presets, 'comfort', 'heat').commands, []);  // Hiver, clim sans mode Chaud (touches apprises en froid seulement) : laissée telle quelle.
+  const coolOnly = { state: { hvac_mode: 'off', target_temperature: 24 }, caps: new Map([
+    ['target_temperature', { writable: true, metadata: { min: 16, max: 30, step: 1 } }],
+    ['hvac_mode', { writable: true, metadata: { options: ['off', 'cool', 'dry'] } }],
+  ]) };
+  assert.deepEqual(deviceCommands(coolOnly, presets, 'comfort', 'heat'), { commands: [], target: null });
 });
 
 test('fenêtre ouverte : détection, coupure par le mode ou en Hors-gel, reprise', async () => {
