@@ -30,7 +30,7 @@ catégorie et la liste de ses codes Tuya : on ajoute la correspondance.
 
 ## Thermostat de chaudière sans fil (Wi-Fi + RF 433 MHz)
 
-Exemple : thermostat ECOBUY vendu sur Ouedkniss (Smart Life / Tuya). Il se compose de deux pièces :
+Exemple : thermostat ECOBUY vendu sur Ouedkniss, qui reprend le modèle EZAIOT R9BW & RC9P (Smart Life / Tuya, thermostat sur 3 piles AA, récepteur 100-240 V). Il se compose de deux pièces :
 
 - le **thermostat d'ambiance**, sur piles, posé dans la pièce de vie : il mesure la température
   et l'humidité et envoie ses ordres par radio 433 MHz (jusqu'à 200 m en champ libre) ;
@@ -44,7 +44,7 @@ chauffage électrique au sol.
 
 1. Repérer sur le bornier de la chaudière l'entrée **TA** / **thermostat d'ambiance**
    (souvent un pont entre deux bornes). Retirer le pont.
-2. Relier ces deux bornes aux bornes **COM** et **NO** du récepteur. Ne jamais faire passer
+2. Relier ces deux bornes aux bornes **COM** et **OPEN** (parfois notée **NO**) du récepteur. Ne jamais faire passer
    l'alimentation 230 V de la chaudière par le relais.
 3. Alimenter le récepteur en 230 V (L, N) et l'appairer au thermostat (notice du vendeur).
 
