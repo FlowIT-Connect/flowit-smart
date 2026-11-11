@@ -7,7 +7,7 @@
 import { EventEmitter } from 'node:events';
 
 import { log } from '../log.js';
-import { addBroadlink, codesFile, irServiceCall, readLearnedCommands } from './broadlink.js';
+import { addBroadlink, codesFile, IrProfileStore, irServiceCall, PROFILE_ACTIONS, profileTestCodes, readLearnedCommands } from './broadlink.js';
 import { buildInventory, deviceSnapshot, serviceCall, stateMatches } from './ha_mapping.js';
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -18,12 +18,13 @@ export class HomeAssistantAdapter extends EventEmitter {
    *   configDir?:string|null, wsFactory?:(url:string)=>WebSocket, fetchImpl?:typeof fetch, readImpl?:Function,
    *   learnPollMs?:number, learnWaitMs?:number}} opts
    *   platforms : intégrations HA retenues (ex. broadlink) ; configDir : dossier de configuration de HA,
-   *   lu pour connaître les touches apprises des télécommandes Broadlink.
+   *   lu pour connaître les touches apprises des télécommandes Broadlink ; irStore : télécommandes de
+   *   clim choisies dans la bibliothèque (IrProfileStore, gardé dans /data/broadlink sur la box).
    */
   constructor({
     url, wsUrl, token, filter = null, platforms = null, configDir = null,
     wsFactory = (u) => new WebSocket(u), fetchImpl = (...a) => fetch(...a), readImpl = undefined,
-    learnPollMs = 1000, learnWaitMs = 25_000, codesPollMs = 60_000,
+    learnPollMs = 1000, learnWaitMs = 25_000, codesPollMs = 60_000, irStore = new IrProfileStore(),
   }) {
     super();
     this.platforms = platforms;
@@ -35,6 +36,8 @@ export class HomeAssistantAdapter extends EventEmitter {
     this.remotes = []; // télécommandes Broadlink : [{entityId, uniqueId, deviceId, name, model}]
     this.learned = new Map(); // uniqueId -> {appareil: [touches]}
     this.assumed = new Map(); // état supposé des clims infrarouges
+    this.irStore = irStore;
+    this.profiles = new Map(); // uniqueId -> {appareil: télécommande de clim de la bibliothèque}
     this.codesTimer = null;
     this.registries = { entities: [], devices: [] };
     // wsUrl direct : utilisé par le module complémentaire Home Assistant (ws://supervisor/core/websocket).
@@ -170,6 +173,7 @@ export class HomeAssistantAdapter extends EventEmitter {
         return { entityId: e.entity_id, uniqueId: e.unique_id, deviceId: e.device_id ?? null, name: dev?.name_by_user ?? dev?.name ?? null, model: dev?.model ?? null };
       });
     await this.#readCodes();
+    await this.#loadProfiles();
     this.#rebuild();
     if (this.remotes.length && !this.codesTimer && this.configDir) {
       // Touches apprises directement dans Home Assistant : vues dans la minute.
@@ -180,7 +184,7 @@ export class HomeAssistantAdapter extends EventEmitter {
   #rebuild() {
     const states = [...this.states.values()];
     const list = buildInventory(states, this.registries.entities, this.registries.devices, this.filter, this.platforms);
-    if (this.remotes.length) addBroadlink(list, this.remotes, this.learned, this.assumed);
+    if (this.remotes.length) addBroadlink(list, this.remotes, this.learned, this.assumed, this.profiles);
     this.inventory = new Map(list.map((d) => [d.externalId, d]));
     this.byEntity = new Map();
     for (const d of list) {
@@ -212,10 +216,50 @@ export class HomeAssistantAdapter extends EventEmitter {
     return changed;
   }
 
+  /** Télécommandes de clim choisies dans la bibliothèque (codes téléchargés une fois). */
+  async #loadProfiles() {
+    if (!this.remotes.length) return;
+    try {
+      await this.irStore.load();
+    } catch (e) {
+      log.warn('broadlink.profiles_unreadable', { error: e.message });
+    }
+    for (const r of this.remotes) if (r.uniqueId) this.profiles.set(r.uniqueId, await this.irStore.resolved(r.uniqueId));
+  }
+
+  /** Essai, choix ou retrait d'une télécommande de clim de la bibliothèque. */
+  async #executeProfile(entry, value) {
+    try {
+      if (value.action === 'profile_clear') {
+        await this.irStore.select(entry.uniqueId, value.device.trim(), null);
+      } else {
+        const profile = await this.irStore.profile(value.profile);
+        if (value.action === 'profile_test') {
+          const codes = profileTestCodes(profile, value.mode ?? 'cool');
+          if (!codes) return { status: 'failed', error: 'Réglage absent de cette télécommande' };
+          await this.#send({ type: 'call_service', domain: 'remote', service: 'send_command', service_data: { command: codes.map((c) => `b64:${c}`) }, target: { entity_id: entry.entityId } });
+          return { status: 'confirmed' };
+        }
+        await this.irStore.select(entry.uniqueId, value.device.trim(), value.profile);
+      }
+    } catch (e) {
+      return { status: 'failed', error: e.message };
+    }
+    // Nouvelle télécommande : la clim repart d'un état connu (éteinte).
+    for (const id of this.assumed.keys()) if (id.endsWith(`:ir:${value.device.trim()}`)) this.assumed.delete(id);
+    await this.#loadProfiles();
+    this.#rebuild();
+    return { status: 'confirmed' };
+  }
+
   /** Envoi d'une touche, clim infrarouge, apprentissage : aucun retour d'état possible. */
   async #executeIr(externalId, entry, value) {
     const remote = this.states.get(entry.entityId);
     if (!remote || remote.state === 'unavailable') return { status: 'failed', error: 'Broadlink injoignable' };
+    if (entry.base === 'ir_learn' && PROFILE_ACTIONS.includes(value?.action)) {
+      if (remote.state === 'off') await this.#send({ type: 'call_service', domain: 'remote', service: 'turn_on', target: { entity_id: entry.entityId } }).catch(() => {});
+      return this.#executeProfile(entry, value);
+    }
     const r = irServiceCall(entry, value, this.assumed, externalId);
     if (r.error) return { status: 'failed', error: r.error };
     try {

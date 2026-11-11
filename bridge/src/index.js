@@ -3,6 +3,7 @@
 
 import { existsSync } from 'node:fs';
 
+import { IrProfileStore } from './adapters/broadlink.js';
 import { addDirectCameras } from './adapters/direct_cameras.js';
 import { FakeHomeAssistant } from './adapters/fake_home_assistant.js';
 import { HomeAssistantAdapter } from './adapters/home_assistant.js';
@@ -63,12 +64,12 @@ if (config.adapter === 'simulator') {
 } else if (config.adapter === 'video') {
   adapter = new VideoOnlyAdapter();
 } else {
-  adapter = new HomeAssistantAdapter({ url: config.haUrl, wsUrl: config.haWsUrl ?? undefined, token: config.haToken, filter: config.haEntityFilter, configDir: config.haConfigDir });
+  adapter = new HomeAssistantAdapter({ url: config.haUrl, wsUrl: config.haWsUrl ?? undefined, token: config.haToken, filter: config.haEntityFilter, configDir: config.haConfigDir, irStore: new IrProfileStore({ dir: config.irDataDir }) });
 }
 
 if (config.haImport) {
   const h = config.haImport;
-  addHomeAssistant(adapter, new HomeAssistantAdapter({ url: h.url ?? undefined, wsUrl: h.wsUrl ?? undefined, token: h.token, platforms: h.platforms, configDir: config.haConfigDir }));
+  addHomeAssistant(adapter, new HomeAssistantAdapter({ url: h.url ?? undefined, wsUrl: h.wsUrl ?? undefined, token: h.token, platforms: h.platforms, configDir: config.haConfigDir, irStore: new IrProfileStore({ dir: config.irDataDir }) }));
   log.info('bridge.ha_import', { platforms: [...h.platforms], codes: Boolean(config.haConfigDir) });
 }
 

@@ -109,6 +109,8 @@ flutter:
     - assets/rooms/
     # Bibliothèque des arrière-plans (voir assets/backgrounds/LISEZMOI.md)
     - assets/backgrounds/
+    # Télécommandes de clim Broadlink prêtes à l'emploi (tools/ir_climate_index.sh)
+    - assets/ir/climate_index.json
   fonts:
     - family: Manrope
       fonts:

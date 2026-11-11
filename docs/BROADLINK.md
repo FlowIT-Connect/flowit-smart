@@ -15,7 +15,7 @@ Broadlink), puis par le module **FlowIT Bridge** de la box.
 3. HA crée `remote.<nom>` et, si le câble capteur est branché, la température et
    l'humidité.
 
-## 2. Mettre à jour le module FlowIT Bridge (version 2.1.0)
+## 2. Mettre à jour le module FlowIT Bridge (version 2.2.0)
 
 Paramètres > Modules complémentaires > FlowIT Bridge > **Mettre à jour** (ou Reconstruire),
 puis **Redémarrer**. Rien à saisir : en mode `tuya_cloud`, le module reprend les appareils
@@ -24,7 +24,27 @@ de l'intégration Broadlink (réglage `ha_integrations`, `broadlink` par défaut
 Journal attendu : `bridge.ha_import`, puis `home_assistant.inventory … broadlink: 1`.
 Le Broadlink apparaît dans Solea avec sa température et son humidité.
 
-## 3. Apprendre les touches depuis Solea
+## 3. Clim : choisir sa télécommande dans la bibliothèque (le plus simple)
+
+Comme l'app Broadlink, Solea connaît déjà les télécommandes de 395 clims (Daikin, Midea, Gree,
+LG, Samsung, Hyundai, Hisense…). Fiche du Broadlink > **Choisir la marque de ma clim** :
+
+1. chercher la marque, puis toucher **Essayer** sur une télécommande : le Broadlink envoie
+   Froid 24° ;
+2. si la clim bipe ou démarre : **Oui, garder celle-ci**. Sinon **Non, essayer la suivante**
+   (Solea éteint la clim et passe à la suivante).
+
+La fiche **Clim** a alors tous les modes (froid, chaud, déshumidification, ventilation, auto
+selon le modèle), toutes les températures et les vitesses de ventilation (et l'oscillation
+quand la télécommande l'a), sans rien apprendre. Les touches déjà apprises hors réglage
+(ex. « allumé ») restent en boutons. **Retirer** revient aux touches apprises.
+
+Les codes viennent de la bibliothèque libre SmartIR (licence MIT,
+https://github.com/smartHomeHub/SmartIR) : la box télécharge ceux de la télécommande
+choisie une seule fois, puis les garde (`/data/broadlink` du module). Index régénéré par
+`tools/ir_climate_index.sh`.
+
+## 4. Apprendre les touches depuis Solea
 
 Fiche du Broadlink > **Apprendre les touches d'une télécommande** :
 

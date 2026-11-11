@@ -21,7 +21,9 @@ Onglet **Journal** : `tuya.inventory`, `ttlock.inventory`, `yeedi.inventory`, pu
 (Paramètres > Appareils et services, « Broadlink » découvert > Configurer). Le module la
 reprend tout seul (`bridge.ha_import`, puis `home_assistant.inventory … broadlink: 1`) :
 sa température et son humidité arrivent dans Solea, et les touches s'apprennent depuis
-Solea (fiche du Broadlink > Apprendre une touche). Guide : docs/BROADLINK.md.
+Solea (fiche du Broadlink > Apprendre une touche). Clim : « Choisir la marque de ma clim »
+(bibliothèque de 395 télécommandes, modes et vitesses sans apprentissage, codes gardés dans
+/data/broadlink). Guide : docs/BROADLINK.md.
 
 ## Mode `home_assistant` : les appareils de ce Home Assistant dans Solea
 
