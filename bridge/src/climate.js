@@ -91,6 +91,9 @@ export function deviceCommands(device, presets, preset, mode) {
   if (!tempCap?.writable) return { commands: [], target: null };
   const options = modeCap?.writable ? modeCap.metadata?.options ?? [] : [];
   const current = device.state?.hvac_mode;
+  // Saison que l'appareil ne sait pas faire (ex. Hiver, clim sans mode Chaud) : on n'y touche
+  // pas, plutôt que de changer une consigne qui ne chauffera jamais.
+  if (mode && options.length && !options.includes(mode)) return { commands: [], target: null };
   // Sans saison : une clim en froid suit la consigne « froid », le reste la consigne « chaud ».
   const kind = mode ?? (current === 'cool' ? 'cool' : 'heat');
   const t = presetTemperature(presets, preset, kind);

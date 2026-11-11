@@ -250,6 +250,18 @@ class _ClimateScreenState extends State<ClimateScreen> {
                   onChanged: (v) => state.setPresenceSharing(v),
                 ),
               ),
+              if (manage)
+                Padding(
+                  padding: const EdgeInsets.only(top: 4),
+                  child: Text(context.tr('climate.geo.hereHelp'), style: Theme.of(context).textTheme.bodySmall),
+                ),
+              if (manage)
+                TextButton.icon(
+                  key: const ValueKey('climate-geo-here'),
+                  onPressed: () => state.setHomeLocationHere(),
+                  icon: const Icon(Icons.my_location_rounded),
+                  label: Text(context.tr('climate.geo.here')),
+                ),
             ],
             SectionHeader(context.tr('climate.rooms')),
             if (c.zones.isEmpty) Padding(padding: const EdgeInsets.symmetric(vertical: 8), child: Text(context.tr('climate.noRooms'))),

@@ -545,6 +545,39 @@ class AppState extends ChangeNotifier {
     return true;
   }
 
+  /// « Je suis chez moi » : la position exacte du logement devient celle de ce téléphone
+  /// (la ville choisie pour la météo n'est qu'un centre-ville, trop loin pour l'Absence
+  /// automatique). false si la position est introuvable.
+  Future<bool> setHomeLocationHere() async {
+    final h = home;
+    if (h == null || !canManage) return false;
+    if (!await location.requestPermission()) {
+      _notices.add(Notice(tr('climate.geo.denied'), isError: true));
+      notifyListeners();
+      return false;
+    }
+    final p = await location.current();
+    if (p == null) {
+      _notices.add(Notice(tr('climate.geo.hereFailed'), isError: true));
+      notifyListeners();
+      return false;
+    }
+    try {
+      await backend.updateHomeLocation(h.id, p.$1, p.$2, h.locationName);
+    } on BackendException catch (e) {
+      _notices.add(Notice(e.message, isError: true));
+      notifyListeners();
+      return false;
+    }
+    final updated = h.copyWith(latitude: p.$1, longitude: p.$2);
+    if (home?.id == h.id) home = updated;
+    homes = [for (final x in homes) x.id == h.id ? updated : x];
+    _notices.add(Notice(tr('climate.geo.hereDone')));
+    if (presenceSharing) await _sendPresence(p);
+    notifyListeners();
+    return true;
+  }
+
   Future<void> reloadClimate() async {
     final h = home;
     if (h == null) return;
