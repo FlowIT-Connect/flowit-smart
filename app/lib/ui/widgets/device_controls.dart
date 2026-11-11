@@ -12,6 +12,7 @@ import 'camera_view.dart';
 import 'common.dart';
 import 'device_removal.dart';
 import 'device_visual.dart';
+import 'ir_climate_library.dart';
 import 'ir_remote.dart';
 import 'organize.dart';
 import 'presence_panel.dart';
@@ -19,7 +20,8 @@ import 'vacuum_map.dart';
 
 String capabilityLabel(BuildContext context, String key) => context.tryTr('cap.$key') ?? key.replaceAll('_', ' ');
 
-String optionLabel(BuildContext context, String option) => context.tryTr('option.$option') ?? option;
+String optionLabel(BuildContext context, String option) =>
+    context.tryTr('option.$option') ?? context.tryTr('option.${option.toLowerCase()}') ?? option;
 
 /// Valeur lisible d'une capacité (unité, booléens traduits).
 String formatValue(BuildContext context, Capability? cap, String key, dynamic value) {
@@ -738,7 +740,15 @@ class _CapabilityControlState extends State<_CapabilityControl> {
       case CapabilityType.string:
       case CapabilityType.sensor:
         if (cap.metadata['kind'] == 'ir_learn') {
-          return IrLearnCard(device: d, cap: cap, enabled: d.availability != Availability.unavailable);
+          final on = d.availability != Availability.unavailable;
+          return Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              IrClimateLibraryCard(device: d, cap: cap, enabled: on),
+              const Divider(height: 1, indent: 16, endIndent: 16),
+              IrLearnCard(device: d, cap: cap, enabled: on),
+            ],
+          );
         }
         if (cap.metadata['kind'] == 'vacuum_clean') {
           return VacuumMapPanel(device: d, cap: cap, enabled: enabled, indicator: indicator, showIndicator: pending != null, send: send);

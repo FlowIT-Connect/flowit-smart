@@ -1,3 +1,4 @@
+import 'package:flowit_smart/ui/widgets/ir_climate_library.dart';
 import 'package:flowit_smart/core/location.dart';
 import 'package:flowit_smart/app.dart';
 import 'package:flowit_smart/data/demo_backend.dart';
@@ -221,6 +222,41 @@ void main() {
     expect(state.pendingFor(hub.id, 'ir_learn')?.status, CommandStatus.confirmed);
     expect(find.text('« Éteindre » apprise. Touche suivante proposée.'), findsOneWidget);
     expect(find.text('Apprendre « Déshumidifier »'), findsOneWidget);
+    await tester.pump(const Duration(seconds: 3));
+  });
+
+  testWidgets('Broadlink : clim choisie dans la bibliothèque (marque, essai, garder)', (tester) async {
+    final state = await pumpApp(tester);
+    await signIn(tester);
+    await tester.tap(find.text('Appareils').last);
+    await tester.pumpAndSettle();
+    await tester.enterText(find.byType(TextField).first, 'broadlink');
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Broadlink RM4 Pro').last);
+    await tester.pumpAndSettle();
+    // Lecture réelle du fichier de la bibliothèque (hors horloge simulée du test).
+    await tester.runAsync(() => loadIrClimateProfiles());
+    await tester.scrollUntilVisible(find.text('Choisir la marque de ma clim'), 200, scrollable: find.byType(Scrollable).last);
+    await tester.tap(find.text('Choisir la marque de ma clim'));
+    await tester.pumpAndSettle();
+    await tester.enterText(find.widgetWithText(TextField, 'Rechercher une marque'), 'hyun');
+    await tester.pumpAndSettle();
+    expect(find.text('4 télécommandes'), findsOneWidget);
+    await tester.tap(find.text('Hyundai'));
+    await tester.pumpAndSettle();
+    expect(find.text('HSE09PH5V'), findsOneWidget);
+    expect(find.textContaining('4 vitesses'), findsWidgets);
+    await tester.tap(find.text('Essayer').first);
+    await tester.pumpAndSettle();
+    final hub = state.devices.values.firstWhere((d) => d.name == 'Broadlink RM4 Pro');
+    expect(state.pendingFor(hub.id, 'ir_learn')?.value, {'action': 'profile_test', 'profile': 2660});
+    expect(find.text('La clim a-t-elle bipé ou démarré en froid ?'), findsOneWidget);
+    await tester.ensureVisible(find.text('Oui, garder celle-ci'));
+    await tester.tap(find.text('Oui, garder celle-ci'));
+    await tester.pump(const Duration(milliseconds: 300));
+    expect(state.pendingFor(hub.id, 'ir_learn')?.value, {'action': 'profile_set', 'device': 'clim', 'profile': 2660});
+    await tester.pumpAndSettle();
+    expect(find.text('Clim configurée : les modes et les vitesses sont sur sa fiche.'), findsOneWidget);
     await tester.pump(const Duration(seconds: 3));
   });
 

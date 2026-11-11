@@ -92,6 +92,8 @@ export function loadConfig(env = process.env) {
     haImport,
     // Dossier de configuration de HA (touches apprises des télécommandes Broadlink).
     haConfigDir: env.HA_CONFIG_DIR?.trim() || null,
+    // Télécommandes de clim choisies dans la bibliothèque et leurs codes (/data/broadlink sur la box).
+    irDataDir: env.IR_DATA_DIR?.trim() || null,
     // Tuya Cloud (sans box) : identifiants du projet cloud sur platform.tuya.com > Overview.
     tuyaAccessId: tuya ? required(env, 'TUYA_ACCESS_ID').trim() : null,
     tuyaAccessSecret: tuya ? required(env, 'TUYA_ACCESS_SECRET').trim() : null,

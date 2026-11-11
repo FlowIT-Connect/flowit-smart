@@ -20,6 +20,8 @@ export const DEFAULT_SUPABASE_URL = 'https://qhzlmzfdbajulnymrwvg.supabase.co';
 export const YEEDI_ENTRY = '/yeedi/src/index.js';
 /** Dossier de configuration de HA dans le module (map homeassistant_config, lecture seule). */
 export const HA_CONFIG_DIR = '/homeassistant';
+/** Télécommandes de clim de la bibliothèque, gardées par le module (dossier persistant). */
+export const IR_DATA_DIR = '/data/broadlink';
 /** Intégrations de HA reprises par défaut en mode tuya_cloud : télécommandes Broadlink. */
 export const DEFAULT_HA_INTEGRATIONS = 'broadlink';
 const YEEDI_PORT = 8790;
@@ -49,6 +51,7 @@ export function envFromAddonOptions(options, supervisorToken) {
     env.HA_TOKEN = supervisorToken ?? '';
     if (options.entity_filter) env.HA_ENTITY_FILTER = options.entity_filter;
     env.HA_CONFIG_DIR = HA_CONFIG_DIR;
+    env.IR_DATA_DIR = IR_DATA_DIR;
   }
   if (mode === 'tuya_cloud') {
     env.TUYA_ACCESS_ID = text(options.tuya_access_id);
@@ -61,6 +64,7 @@ export function envFromAddonOptions(options, supervisorToken) {
       env.HA_WS_URL = 'ws://supervisor/core/websocket';
       env.HA_TOKEN = supervisorToken ?? '';
       env.HA_CONFIG_DIR = HA_CONFIG_DIR;
+      env.IR_DATA_DIR = IR_DATA_DIR;
     }
   }
   if (text(options.ttlock_client_id)) {
