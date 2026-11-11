@@ -19,13 +19,49 @@ qu'ils déclarent réellement : rien n'est supposé. Ce qui n'est pas déclaré 
 - **Mode** : Arrêt, Auto, Climatisation, Chauffage, Déshumidification, Ventilation.
 - **Ambiance** : Programme, Manuel, Confort, Éco, Nuit, Absence, Hors-gel, Boost (selon l'appareil).
 - **Ventilation** : Auto, Silencieux, Faible, Moyenne, Forte, Turbo.
-- **Oscillation**, **Mode nuit**, **Mode éco**, **Détection fenêtre ouverte**, **Verrouillage enfant**.
+- **Oscillation**, **Mode nuit**, **Mode éco**, **Détection fenêtre ouverte**, **Verrouillage enfant**, **Hors-gel**.
+- Dans les réglages de l'appareil : **Étalonnage de la sonde** (± quelques degrés).
 - **Activité** (lecture seule) : chauffe en cours, refroidit, en attente.
 
 ## Si un appareil manque une fonction
 
 Dans la fenêtre de la passerelle, cherchez la ligne de l'appareil et envoyez-nous sa
 catégorie et la liste de ses codes Tuya : on ajoute la correspondance.
+
+## Thermostat de chaudière sans fil (Wi-Fi + RF 433 MHz)
+
+Exemple : thermostat ECOBUY vendu sur Ouedkniss (Smart Life / Tuya). Il se compose de deux pièces :
+
+- le **thermostat d'ambiance**, sur piles, posé dans la pièce de vie : il mesure la température
+  et l'humidité et envoie ses ordres par radio 433 MHz (jusqu'à 200 m en champ libre) ;
+- le **récepteur Wi-Fi**, branché près de la chaudière : son relais ferme le contact
+  « thermostat d'ambiance » de la chaudière. C'est lui qui parle au cloud Tuya.
+
+Prendre la **version 3 A (contact sec)** pour une chaudière murale. La version 16 A sert au
+chauffage électrique au sol.
+
+### Branchement (à faire chaudière hors tension)
+
+1. Repérer sur le bornier de la chaudière l'entrée **TA** / **thermostat d'ambiance**
+   (souvent un pont entre deux bornes). Retirer le pont.
+2. Relier ces deux bornes aux bornes **COM** et **NO** du récepteur. Ne jamais faire passer
+   l'alimentation 230 V de la chaudière par le relais.
+3. Alimenter le récepteur en 230 V (L, N) et l'appairer au thermostat (notice du vendeur).
+
+### Ajout dans Solea
+
+1. Ajouter le thermostat dans **Smart Life** (Wi-Fi 2,4 GHz) avec le compte déjà relié à Solea.
+2. La passerelle le découvre (catégorie `wk`) au prochain inventaire ; il arrive « Sans pièce » :
+   le ranger dans la bonne pièce.
+3. Dans **Chauffage et clim**, l'associer à la pièce pour profiter des ambiances, du programme
+   de la semaine, de la fenêtre ouverte et du préchauffage.
+
+Ce que Solea pilote : marche/arrêt, consigne, température et humidité mesurées, programme
+(auto, manuel, vacances → Programme, Manuel, Absence), mode éco, hors-gel, verrouillage enfant,
+étalonnage de la sonde, état du relais (chauffe / en attente) et piles.
+
+Les codes Tuya varient d'un lot à l'autre : si une fonction manque, envoyer la catégorie et les
+codes Tuya de l'appareil (onglet diagnostic de la passerelle ou ligne `tuya.device_ignored`).
 
 ## Solea HVAC Connect : ajouter un équipement par sa marque
 

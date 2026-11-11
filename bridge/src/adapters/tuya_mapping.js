@@ -211,6 +211,24 @@ function climateCapabilities(codes, writable, has) {
   if (writable('sleep') && codes.get('sleep').type === 'Boolean') caps.push(boolCap('sleep', 'sleep'));
   if (writable('window_check') && codes.get('window_check').type === 'Boolean') caps.push(boolCap('window_detection', 'window_check'));
   if (writable('child_lock') && codes.get('child_lock').type === 'Boolean') caps.push(boolCap('child_lock', 'child_lock'));
+  // Hors-gel des thermostats de chaudière (souvent un simple interrupteur à côté du programme).
+  const frostCode = firstCode(['frost', 'antifreeze', 'frost_protection'], (k) => writable(k) && codes.get(k).type === 'Boolean');
+  if (frostCode) caps.push(boolCap('frost_protection', frostCode));
+  // Étalonnage de la sonde (± quelques degrés) : réglage, pas une commande du quotidien.
+  const calibCode = firstCode(['temp_correction', 'temp_calibration', 'temp_calibrate'], (k) => writable(k) && codes.get(k).type === 'Integer');
+  if (calibCode) {
+    const cc = codes.get(calibCode);
+    const cs = scaleOf(cc);
+    caps.push({
+      key: 'temp_calibration', type: 'number', writable: true,
+      metadata: { min: (cc.values.min ?? -9) / cs, max: (cc.values.max ?? 9) / cs, step: (cc.values.step ?? 1) / cs || 0.5, unit: '°C', setting: true },
+      read: (st) => {
+        const v = num(st.get(calibCode));
+        return v == null ? null : round(v / cs, 2);
+      },
+      write: (v) => [{ code: calibCode, value: Math.round(v * cs) }],
+    });
+  }
   if (has('window_state')) {
     caps.push({
       key: 'window_open', type: 'sensor', writable: false, metadata: { kind: 'binary' },
@@ -221,6 +239,11 @@ function climateCapabilities(codes, writable, has) {
     });
   }
   const actionCode = firstCode(['work_state', 'valve_state'], (k) => has(k) && codes.get(k).type === 'Enum');
+  const relayCode = firstCode(['valve_state', 'relay_status', 'heating_state'], (k) => has(k) && codes.get(k).type === 'Boolean');
+  if (!actionCode && relayCode) {
+    // Récepteur RF / relais de chaudière : true = la chaudière est appelée.
+    caps.push({ key: 'hvac_action', type: 'enum', writable: false, metadata: {}, read: (st) => (typeof st.get(relayCode) === 'boolean' ? (st.get(relayCode) ? 'heating' : 'idle') : null) });
+  }
   if (actionCode) {
     caps.push({
       key: 'hvac_action', type: 'enum', writable: false, metadata: {},

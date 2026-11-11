@@ -163,6 +163,8 @@ IconData capabilityIcon(String key) => switch (key) {
       'away' => Icons.flight_takeoff_rounded,
       'window_detection' || 'window_open' => Icons.window_rounded,
       'child_lock' => Icons.child_care_rounded,
+      'frost_protection' => Icons.severe_cold_rounded,
+      'temp_calibration' => Icons.straighten_rounded,
       'hvac_action' => Icons.local_fire_department_rounded,
       _ => Icons.tune_rounded,
     };
