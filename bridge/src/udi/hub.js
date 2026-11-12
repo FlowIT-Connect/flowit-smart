@@ -52,11 +52,12 @@ export class UdiHub {
     version = 'udi-1',
     talkRelayFactory = (opts) => new TalkRelay(opts),
     talkPathDelayMs = 2000,
+    talkGain = undefined,
     relayWatchMs = 20_000,
     relayDeadAfter = 3,
     onRelayDead = null,
   } = {}) {
-    Object.assign(this, { driverFactory, mediamtx, discover, discoverDahua, allowedSubnet, stun, turn, turnSecret, retryMinMs, retryMaxMs, pingMs, sessionMaxAgeMs, clock, version, talkRelayFactory, talkPathDelayMs, relayWatchMs, relayDeadAfter, onRelayDead });
+    Object.assign(this, { driverFactory, mediamtx, discover, discoverDahua, allowedSubnet, stun, turn, turnSecret, retryMinMs, retryMaxMs, pingMs, sessionMaxAgeMs, clock, version, talkRelayFactory, talkGain, talkPathDelayMs, relayWatchMs, relayDeadAfter, onRelayDead });
     this.relayFails = 0;
     this.relayWasOk = false;
     /** sourceId -> runner */
@@ -441,7 +442,7 @@ export class UdiHub {
       await this.mediamtx.addPublisherPath(path);
       const { answer, location } = await this.mediamtx.whip(path, row.offer);
       const { username, password } = r.driver.creds;
-      relay = this.talkRelayFactory({ cameraUrl, username, password, sourceUrl: `${this.mediamtx.rtspUrl}/${path}` });
+      relay = this.talkRelayFactory({ cameraUrl, username, password, sourceUrl: `${this.mediamtx.rtspUrl}/${path}`, gain: this.talkGain });
       this.sessions.set(row.id, { location, path, relay, startedAt: this.clock() });
       await this.store.updateVideoSession(row.id, { status: 'answered', answer, answered_at: new Date(this.clock()).toISOString() });
       log.info('udi.talk_answered', { session: row.id, source: r.source.id });

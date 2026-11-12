@@ -120,4 +120,6 @@ test('mode video : boîtier vidéo sur la box, relais local, relance si le relai
   assert.equal(config.adapter, 'video');
   assert.equal(config.video.relay, true);
   assert.equal(config.video.mediamtxApiUrl, 'http://127.0.0.1:9997');
+  assert.equal(env.TALK_GAIN, undefined, 'volume de la voix par défaut');
+  assert.equal(envFromAddonOptions({ mode: 'video', talk_gain: 5 }, 'tok').TALK_GAIN, '5');
 });

@@ -4,7 +4,7 @@ import net from 'node:net';
 import { after, describe, test } from 'node:test';
 
 import { setLogLevel } from '../src/log.js';
-import { alawToUlaw, parseSdpMedia, rewriteRtp, ulawToAlaw } from '../src/udi/rtsp_session.js';
+import { alawToUlaw, g711Converter, g711Decode, g711Encode, parseSdpMedia, rewriteRtp, ulawToAlaw } from '../src/udi/rtsp_session.js';
 import { TalkRelay } from '../src/udi/talk.js';
 
 setLogLevel('error');
@@ -89,6 +89,30 @@ describe('parler à travers la caméra', () => {
     for (const u of [0x00, 0x80, 0x10, 0x9a, 0xee]) assert.ok(Math.abs(ulawToAlaw(alawToUlaw(ulawToAlaw(Buffer.from([u]))))[0] - ulawToAlaw(Buffer.from([u]))[0]) === 0, `aller-retour ${u}`);
   });
 
+  test('voix amplifiée : plus forte sans saturer, silence gardé, tables G.711 cohérentes', () => {
+    for (const codec of ['PCMA', 'PCMU']) {
+      for (let b = 0; b < 256; b++) {
+        const pcm = g711Decode(codec, b);
+        assert.equal(g711Decode(codec, g711Encode(codec, pcm)), pcm, `${codec} aller-retour ${b}`);
+      }
+    }
+    // Les anciennes tables µ-law ↔ A-law et le nouveau décodeur donnent le même son.
+    for (let u = 0; u < 256; u++) {
+      const a = ulawToAlaw(Buffer.from([u]))[0];
+      assert.ok(Math.abs(g711Decode('PCMA', a) - g711Decode('PCMU', u)) <= Math.max(64, Math.abs(g711Decode('PCMU', u)) / 16), `µ-law ${u}`);
+    }
+    assert.equal(g711Converter('PCMA', 'PCMA', 1), null, 'rien à faire');
+    const boost = g711Converter('PCMU', 'PCMA', 3);
+    const quiet = g711Encode('PCMU', 1000);
+    const loud = g711Encode('PCMU', 30000);
+    const [q, l, z] = boost(Buffer.from([quiet, loud, 0xff]));
+    assert.ok(Math.abs(g711Decode('PCMA', q) - 3000) < 200, 'voix faible ×3');
+    assert.ok(g711Decode('PCMA', l) > 30000 && g711Decode('PCMA', l) <= 32767, 'voix forte limitée sans débordement');
+    assert.equal(g711Decode('PCMA', z), g711Decode('PCMA', 0xd5), 'silence → silence');
+    const neg = g711Decode('PCMA', boost(Buffer.from([g711Encode('PCMU', -1000)]))[0]);
+    assert.ok(Math.abs(neg + 3000) < 200, 'négatif amplifié aussi');
+  });
+
   test('SDP : voie de retour ONVIF repérée (piste « sendonly » en PCMA)', () => {
     const sdp = 'v=0\r\nm=video 0 RTP/AVP 96\r\na=rtpmap:96 H264/90000\r\na=control:trackID=0\r\na=recvonly\r\nm=audio 0 RTP/AVP 0\r\na=control:trackID=1\r\na=recvonly\r\nm=audio 0 RTP/AVP 8\r\na=control:trackID=5\r\na=sendonly\r\n';
     const { medias } = parseSdpMedia(sdp);
@@ -148,7 +172,7 @@ describe('parler à travers la caméra', () => {
       sourceUrl: `rtsp://127.0.0.1:${source.address().port}/solea_x_talk_1`,
     });
     const info = await relay.start();
-    assert.deepEqual(info, { codec: 'PCMA', from: 'PCMU' });
+    assert.deepEqual(info, { codec: 'PCMA', from: 'PCMU', gain: 3 });
     const until = async (ok) => {
       for (let i = 0; i < 100 && !ok(); i++) await new Promise((r) => setTimeout(r, 10));
     };

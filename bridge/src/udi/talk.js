@@ -2,15 +2,21 @@
 // (MediaMTX, chemin propre à la session), le boîtier la lit en RTSP sur 127.0.0.1 et la renvoie
 // à la caméra par sa voie de retour audio ONVIF, en G.711. Rien ne sort de la maison.
 
-import { BACKCHANNEL, RtspSession, alawToUlaw, controlUrl, rewriteRtp, ulawToAlaw } from './rtsp_session.js';
+import { BACKCHANNEL, RtspSession, controlUrl, g711Converter, rewriteRtp } from './rtsp_session.js';
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+/**
+ * Amplification de la voix par défaut (×3 ≈ +9,5 dB) : sans elle, une voix normale arrive trop
+ * faible et le haut-parleur des caméras en semi-duplex automatique (Dahua Hero) reste coupé.
+ */
+export const DEFAULT_TALK_GAIN = 3;
 
 export class TalkRelay {
   /**
-   * @param {{cameraUrl:string, username?:string, password?:string, sourceUrl:string, connect?:Function, readyTimeoutMs?:number}} opts
+   * @param {{cameraUrl:string, username?:string, password?:string, sourceUrl:string, connect?:Function, readyTimeoutMs?:number, gain?:number}} opts
    */
-  constructor({ cameraUrl, username = '', password = '', sourceUrl, connect, readyTimeoutMs = 20_000 }) {
+  constructor({ cameraUrl, username = '', password = '', sourceUrl, connect, readyTimeoutMs = 20_000, gain = DEFAULT_TALK_GAIN }) {
+    this.gain = Number.isFinite(gain) && gain > 0 ? Math.min(gain, 10) : DEFAULT_TALK_GAIN;
     this.cameraUrl = cameraUrl;
     this.creds = { username, password };
     this.sourceUrl = sourceUrl;
@@ -62,7 +68,7 @@ export class TalkRelay {
     await camera.setup(controlUrl(cam.base, back.control), 0);
     await camera.play(cam.sessionControl ? controlUrl(cam.base, cam.sessionControl) : cam.base);
 
-    const convert = audio.codec === back.codec ? null : audio.codec === 'PCMU' ? ulawToAlaw : alawToUlaw;
+    const convert = g711Converter(audio.codec, back.codec, this.gain);
     const ssrc = (Math.random() * 0xffffffff) >>> 0;
     source.onRtp = (ch, pkt) => {
       if (ch !== 0) return; // canal 1 : RTCP
@@ -77,7 +83,7 @@ export class TalkRelay {
     camera.onClose = end;
     await source.setup(controlUrl(src.base, audio.control), 0);
     await source.play(src.sessionControl ? controlUrl(src.base, src.sessionControl) : src.base);
-    return { codec: back.codec, from: audio.codec };
+    return { codec: back.codec, from: audio.codec, gain: this.gain };
   }
 
   async stop() {

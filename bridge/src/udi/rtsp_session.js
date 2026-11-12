@@ -281,3 +281,64 @@ export function rewriteRtp(packet, { pt, ssrc, convert = null }) {
   head.writeUInt32BE(ssrc >>> 0, 8);
   return Buffer.concat([head, payload]);
 }
+
+/** Octet G.711 → échantillon PCM 16 bits (UIT-T G.711). */
+export function g711Decode(codec, byte) {
+  if (codec === 'PCMU') {
+    const x = ~byte & 0xff;
+    const exp = (x >> 4) & 0x07;
+    const pcm = ((((x & 0x0f) << 3) + 0x84) << exp) - 0x84;
+    return x & 0x80 && pcm ? -pcm : pcm;
+  }
+  const a = byte ^ 0x55;
+  const seg = (a >> 4) & 0x07;
+  let v = (a & 0x0f) << 4;
+  v = seg === 0 ? v + 8 : (v + 0x108) << (seg - 1);
+  return a & 0x80 ? v : -v;
+}
+
+/** Échantillon PCM 16 bits → octet G.711 (UIT-T G.711). */
+export function g711Encode(codec, pcm) {
+  if (codec === 'PCMU') {
+    const sign = pcm < 0 ? 0x80 : 0;
+    let v = Math.min(Math.abs(pcm), 32635) + 0x84;
+    let exp = 7;
+    for (let mask = 0x4000; (v & mask) === 0 && exp > 0; mask >>= 1) exp--;
+    return ~(sign | (exp << 4) | ((v >> (exp + 3)) & 0x0f)) & 0xff;
+  }
+  let mask = 0xd5;
+  let v = pcm;
+  if (v < 0) {
+    mask = 0x55;
+    v = -v - 1;
+  }
+  v = Math.min(v, 32767) >> 3;
+  let seg = 0;
+  for (let lim = 0x1f; v > lim && seg < 7; lim = (lim << 1) | 1) seg++;
+  const a = seg === 0 ? (v >> 1) & 0x0f : (seg << 4) | ((v >> seg) & 0x0f);
+  return (a ^ mask) & 0xff;
+}
+
+/**
+ * Conversion G.711 avec amplification : la voix du téléphone arrive souvent trop faible pour
+ * que la caméra (haut-parleur en semi-duplex automatique) bascule sur « parler ». Gain appliqué
+ * octet par octet via une table de 256 valeurs, avec un limiteur doux pour ne pas saturer.
+ * Renvoie null si rien à faire (même codec, gain 1).
+ */
+export function g711Converter(from, to, gain = 1) {
+  if (from === to && gain === 1) return null;
+  const table = Buffer.alloc(256);
+  const knee = 24000;
+  for (let b = 0; b < 256; b++) {
+    let x = g711Decode(from, b) * gain;
+    const ax = Math.abs(x);
+    // Au-delà du genou, compression douce vers 32767 au lieu d'un écrêtage brutal.
+    if (ax > knee) x = Math.sign(x) * (knee + (32767 - knee) * Math.tanh((ax - knee) / (32767 - knee)));
+    table[b] = g711Encode(to, Math.round(x));
+  }
+  return (buf) => {
+    const out = Buffer.alloc(buf.length);
+    for (let i = 0; i < buf.length; i++) out[i] = table[buf[i]];
+    return out;
+  };
+}

@@ -16,3 +16,6 @@ configuration:
   video_subnets:
     name: Réseaux autorisés (facultatif)
     description: "Ex. 192.168.100.0/24. Vide = réseau local de la box."
+  talk_gain:
+    name: Volume de votre voix dans la caméra (facultatif)
+    description: "3 par défaut. Plus haut si la caméra ne vous entend qu'en parlant fort ; 1 = sans amplification."

@@ -2,7 +2,7 @@
 # visiophones, micro, orientation, carte mémoire) sur la box, pour pouvoir éteindre le PC.
 # Le relais vidéo MediaMTX tourne dans le même module, sans port ouvert sur Internet.
 name: Solea Boîtier vidéo
-version: "1.0.0"
+version: "1.0.1"
 slug: solea_video
 description: Caméras et visiophones dans Solea depuis la box (le PC peut rester éteint)
 url: https://github.com/flowit-connect/flowit-smart
@@ -27,3 +27,4 @@ schema:
   supabase_url: url
   log_level: list(debug|info|warn|error)
   video_subnets: str?
+  talk_gain: float(1,10)?
