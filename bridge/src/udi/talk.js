@@ -48,17 +48,13 @@ export class TalkRelay {
         await s.close().catch(() => {});
         if (e.status !== 404 && e.status !== 400) throw e;
         if (Date.now() > deadline) throw new Error('La voix du téléphone n\'est pas arrivée au boîtier');
-        await sleep(400);
+        await sleep(150);
       }
     }
   }
 
-  async start() {
-    const { s: source, d: src } = await this.#openSource();
-    this.source = source;
-    const audio = src.medias.find((m) => m.kind === 'audio');
-    if (!audio || !['PCMA', 'PCMU'].includes(audio.codec)) throw new Error(`Voix du téléphone dans un format inattendu (${audio?.codec ?? 'aucun son'})`);
-
+  /** Voie de retour de la caméra ouverte et prête (DESCRIBE, SETUP, PLAY avec identification). */
+  async #openCamera() {
     const camera = new RtspSession(this.cameraUrl, { ...this.creds, require: BACKCHANNEL, connect: this.connect });
     this.camera = camera;
     await camera.open();
@@ -67,6 +63,27 @@ export class TalkRelay {
     if (!back) throw new Error('Cette caméra n\'accepte pas la voix (pas de voie de retour audio)');
     await camera.setup(controlUrl(cam.base, back.control), 0);
     await camera.play(cam.sessionControl ? controlUrl(cam.base, cam.sessionControl) : cam.base);
+    return back;
+  }
+
+  async start() {
+    // La caméra est préparée PENDANT que le téléphone établit sa liaison (et non après) : le relais
+    // ne garde pas la voix, tout ce qui arrive avant la lecture est perdu (première phrase coupée).
+    const cameraReady = this.#openCamera();
+    cameraReady.catch(() => {});
+    let opened;
+    try {
+      opened = await this.#openSource();
+    } catch (e) {
+      await cameraReady.catch(() => {});
+      throw e;
+    }
+    const { s: source, d: src } = opened;
+    this.source = source;
+    const audio = src.medias.find((m) => m.kind === 'audio');
+    if (!audio || !['PCMA', 'PCMU'].includes(audio.codec)) throw new Error(`Voix du téléphone dans un format inattendu (${audio?.codec ?? 'aucun son'})`);
+    const back = await cameraReady;
+    const camera = this.camera;
 
     const convert = g711Converter(audio.codec, back.codec, this.gain);
     const ssrc = (Math.random() * 0xffffffff) >>> 0;
