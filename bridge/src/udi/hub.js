@@ -51,8 +51,14 @@ export class UdiHub {
     clock = () => Date.now(),
     version = 'udi-1',
     talkRelayFactory = (opts) => new TalkRelay(opts),
+    talkPathDelayMs = 2000,
+    relayWatchMs = 20_000,
+    relayDeadAfter = 3,
+    onRelayDead = null,
   } = {}) {
-    Object.assign(this, { driverFactory, mediamtx, discover, discoverDahua, allowedSubnet, stun, turn, turnSecret, retryMinMs, retryMaxMs, pingMs, sessionMaxAgeMs, clock, version, talkRelayFactory });
+    Object.assign(this, { driverFactory, mediamtx, discover, discoverDahua, allowedSubnet, stun, turn, turnSecret, retryMinMs, retryMaxMs, pingMs, sessionMaxAgeMs, clock, version, talkRelayFactory, talkPathDelayMs, relayWatchMs, relayDeadAfter, onRelayDead });
+    this.relayFails = 0;
+    this.relayWasOk = false;
     /** sourceId -> runner */
     this.runners = new Map();
     /** sessionId -> { location, startedAt } */
@@ -83,6 +89,7 @@ export class UdiHub {
     every(5_000, () => this.processRecordings());
     every(3_000, () => this.processPtz());
     every(60_000, () => this.heartbeat());
+    if (this.mediamtx && this.onRelayDead) every(this.relayWatchMs, () => this.watchRelay());
     every(this.pingMs, () => this.pingAll());
     this.unsubscribe = this.store.subscribeVideo?.(this.homeId, (table) => {
       const run =
@@ -364,8 +371,8 @@ export class UdiHub {
         if (row.status === 'closed' || row.status === 'failed' || this.clock() - s.startedAt > this.sessionMaxAgeMs) {
           await s.relay?.stop();
           await this.mediamtx?.closeSession(s.location);
-          if (s.path) await this.mediamtx?.removePath(s.path).catch(() => {});
           this.sessions.delete(row.id);
+          if (s.path) this.#removePathLater(s);
           if (row.status !== 'closed') await this.store.updateVideoSession(row.id, { status: 'closed' }).catch(() => {});
         }
       }
@@ -607,6 +614,41 @@ export class UdiHub {
     const found = match(await this.#dahuaDevices(true)) ?? null;
     log.info('udi.locate', { serial, found: found?.host ?? null });
     return found;
+  }
+
+  /**
+   * Chemin retiré du relais. Pour la voix, on attend que le téléphone et le lecteur RTSP s'en
+   * soient détachés : le 12/11, MediaMTX 1.21 s'est figé quand le chemin a été supprimé dans la
+   * même seconde que la fin de la session.
+   */
+  #removePathLater(s) {
+    const remove = () => this.mediamtx?.removePath(s.path).catch(() => {});
+    if (!s.relay || !this.talkPathDelayMs) return remove();
+    const t = setTimeout(remove, this.talkPathDelayMs);
+    t.unref?.();
+  }
+
+  /**
+   * Relais qui ne répond plus (figé) alors qu'il répondait : après quelques essais, on prévient
+   * (le boîtier s'arrête, le lanceur relance le relais et le boîtier).
+   */
+  async watchRelay() {
+    if (this.stopped || !this.mediamtx) return;
+    const ok = await this.mediamtx.health();
+    if (ok) {
+      this.relayFails = 0;
+      this.relayWasOk = true;
+      return;
+    }
+    if (!this.relayWasOk) return; // pas encore démarré : rien à relancer
+    this.relayFails += 1;
+    log.warn('udi.relay_unresponsive', { fails: this.relayFails });
+    if (this.relayFails >= this.relayDeadAfter) {
+      this.relayFails = 0;
+      this.relayWasOk = false;
+      log.error('udi.relay_dead', { message: 'Relais vidéo figé : relance du relais et du boîtier' });
+      this.onRelayDead?.();
+    }
   }
 
   // ---------------------------------------------------------------- Boîtier

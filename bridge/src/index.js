@@ -100,6 +100,8 @@ if (config.video) {
     stun: v.stun,
     turn: v.turn,
     turnSecret: v.turnSecret,
+    // Lanceur Windows : relais figé → arrêt du boîtier, le .cmd relance le relais puis le boîtier.
+    onRelayDead: process.env.RELAY_RESTART_EXIT === '1' ? () => setTimeout(() => process.exit(3), 500) : null,
   });
   addUdi(adapter, hub);
   log.info('bridge.video', { relay: v.relay, discovery: v.discovery, turn: v.turn.length > 0 });

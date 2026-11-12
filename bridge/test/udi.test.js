@@ -433,6 +433,7 @@ describe('Boîtier vidéo : passerelle + UDI', () => {
       mediamtx: mtx,
       allowedSubnet: subnetFilter(''),
       driverFactory: (s, deps) => new DahuaDriver(s, { ...deps, probe: async () => ({ ok: true, status: 200, video: { codec: 'H264' }, audio: { codec: 'PCMU' } }), fetchImpl }),
+      talkPathDelayMs: 50,
       talkRelayFactory: (opts) => {
         const relay = { opts, stopped: false, packets: 0, start: async () => ({ codec: 'PCMA', from: 'PCMA' }), stop: async () => void (relay.stopped = true) };
         relays.push(relay);
@@ -460,7 +461,27 @@ describe('Boîtier vidéo : passerelle + UDI', () => {
     store.videoSessions[0].status = 'closed';
     await hub.processSessions();
     assert.equal(relays[0].stopped, true, 'relais arrêté');
-    assert.equal(paths.has(path), false, 'chemin de la voix supprimé');
+    assert.equal(paths.has(path), true, 'chemin de la voix gardé un instant (MediaMTX se figeait sinon)');
+    assert.ok(await until(() => !paths.has(path)), 'chemin de la voix supprimé ensuite');
+  });
+
+  test('boîtier : relais vidéo figé → signalé après plusieurs essais, pas avant son démarrage', async () => {
+    let ok = false;
+    let dead = 0;
+    const hub = new UdiHub({ mediamtx: { health: async () => ok }, relayDeadAfter: 3, onRelayDead: () => dead++ });
+    hub.stopped = false;
+    await hub.watchRelay();
+    await hub.watchRelay();
+    await hub.watchRelay();
+    assert.equal(dead, 0, 'relais jamais vu en marche : rien à relancer');
+    ok = true;
+    await hub.watchRelay();
+    ok = false;
+    await hub.watchRelay();
+    await hub.watchRelay();
+    assert.equal(dead, 0, 'deux silences ne suffisent pas');
+    await hub.watchRelay();
+    assert.equal(dead, 1, 'relais figé signalé au troisième silence');
   });
 
   test('boîtier : orientation de la caméra (PTZ ONVIF), ordres dépassés ignorés', async () => {
