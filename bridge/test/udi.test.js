@@ -351,7 +351,12 @@ describe('MediaMTX', () => {
       calls.push([init.method ?? 'GET', u.pathname, init.body]);
       const name = decodeURIComponent(u.pathname.split('/').pop());
       if (u.pathname.startsWith('/v3/config/paths/get/')) return paths.has(name) ? Response.json(paths.get(name)) : new Response('{"error":"path not found"}', { status: 404 });
-      if (u.pathname.startsWith('/v3/config/paths/add/')) return paths.set(name, JSON.parse(init.body)), new Response('', { status: 200 });
+      if (u.pathname.startsWith('/v3/config/paths/add/')) {
+        const conf = JSON.parse(init.body);
+        // Comme le vrai MediaMTX avec pathDefaults.sourceOnDemand: yes (config/mediamtx.yml).
+        if (conf.source === 'publisher' && conf.sourceOnDemand !== false) return Response.json({ error: "'sourceOnDemand' is useless when source is 'publisher'" }, { status: 400 });
+        return paths.set(name, conf), new Response('', { status: 200 });
+      }
       if (u.pathname.startsWith('/v3/config/paths/patch/')) return paths.set(name, { ...paths.get(name), ...JSON.parse(init.body) }), new Response('', { status: 200 });
       if (u.pathname.startsWith('/v3/config/paths/delete/')) return paths.delete(name), new Response('', { status: 200 });
       if (u.pathname === '/v3/config/global/patch') return new Response('', { status: 200 });
@@ -448,7 +453,7 @@ describe('Boîtier vidéo : passerelle + UDI', () => {
     assert.ok(await until(() => store.videoSessions[0].status === 'answered'));
     assert.equal(store.videoSessions[0].answer, 'v=0 réponse whip', 'le téléphone publie sa voix (WHIP)');
     const path = [...paths.keys()].find((k) => k.includes('_talk_'));
-    assert.deepEqual(paths.get(path), { source: 'publisher' });
+    assert.deepEqual(paths.get(path), { source: 'publisher', sourceOnDemand: false }, 'chemin accepté malgré sourceOnDemand: yes par défaut');
     assert.equal(relays.length, 1);
     assert.equal(relays[0].opts.cameraUrl, 'rtsp://192.168.1.45:554/cam/realmonitor?channel=1&subtype=0', 'adresse de la caméra sans identifiants');
     assert.equal(relays[0].opts.sourceUrl, `rtsp://127.0.0.1:8554/${path}`, 'voix lue sur le relais local seulement');
