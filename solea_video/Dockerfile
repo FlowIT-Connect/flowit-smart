@@ -14,7 +14,9 @@ RUN tar -xzf /tmp/flowit.tar.gz --strip-components=2 "flowit-smart-${FLOWIT_REF}
   && npm ci --omit=dev && npm cache clean --force \
   && case "${BUILD_ARCH}" in aarch64) MTX_ARCH=arm64 ;; *) MTX_ARCH=amd64 ;; esac \
   && mkdir -p /mediamtx \
-  && wget -qO- "https://github.com/bluenviron/mediamtx/releases/download/${MTX_VERSION}/mediamtx_${MTX_VERSION}_linux_${MTX_ARCH}.tar.gz" | tar -xz -C /mediamtx mediamtx \
+  && node -e "fetch(process.argv[1]).then(async(r)=>{if(!r.ok)throw new Error('HTTP '+r.status);process.stdout.write(Buffer.from(await r.arrayBuffer()))}).catch((e)=>{console.error(e.message);process.exit(1)})" \
+       "https://github.com/bluenviron/mediamtx/releases/download/${MTX_VERSION}/mediamtx_${MTX_VERSION}_linux_${MTX_ARCH}.tar.gz" > /tmp/mtx.tar.gz \
+  && tar -xzf /tmp/mtx.tar.gz -C /mediamtx mediamtx && rm /tmp/mtx.tar.gz \
   && sed -i 's/^logDestinations:.*/logDestinations: [stdout]/' config/mediamtx.yml \
   && chmod +x /run_video.sh /mediamtx/mediamtx
 CMD ["/run_video.sh"]
