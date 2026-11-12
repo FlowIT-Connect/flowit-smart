@@ -61,7 +61,12 @@ export class MediaMtx {
 
   /** Chemin alimenté par un téléphone (WHIP), pour sa voix vers la caméra. */
   async addPublisherPath(name) {
-    const r = await this.#api('POST', `/v3/config/paths/add/${encodeURIComponent(name)}`, { source: 'publisher' });
+    const r = await this.#api('POST', `/v3/config/paths/add/${encodeURIComponent(name)}`, {
+      source: 'publisher',
+      // Les réglages par défaut (pathDefaults) mettent sourceOnDemand à oui : MediaMTX refuse alors
+      // un chemin « publisher » (400 « 'sourceOnDemand' is useless… »). On le coupe pour ce chemin.
+      sourceOnDemand: false,
+    });
     if (!r.ok) throw new Error(`MediaMTX : chemin de la voix refusé (${r.status} ${r.json?.error ?? ''})`.trim());
   }
 
