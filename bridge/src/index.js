@@ -137,6 +137,15 @@ const shutdown = async (signal) => {
   await bridge.stop();
   process.exit(0);
 };
+// Erreur imprévue : on la note (fenêtre et LOG_FILE) avant de s'arrêter ; le lanceur Windows relance.
+process.on('uncaughtException', (e) => {
+  log.error('bridge.crash', { error: e?.message ?? String(e), stack: e?.stack?.split('\n').slice(0, 6).join(' | ') });
+  process.exit(1);
+});
+process.on('unhandledRejection', (e) => {
+  log.error('bridge.crash', { error: e?.message ?? String(e), stack: e?.stack?.split('\n').slice(0, 6).join(' | ') });
+  process.exit(1);
+});
 process.on('SIGINT', shutdown);
 process.on('SIGTERM', shutdown);
 

@@ -77,6 +77,8 @@ echo cochez "Réseaux privés" puis cliquez "Autoriser l'accès".
 echo Gardez cette fenêtre ouverte. Pour changer de logement : supprimez le fichier .env.video
 echo puis relancez ce fichier.
 echo.
+rem Journal gardé dans boitier.log (ce dossier) pour comprendre un arrêt après coup.
+set "LOG_FILE=%~dp0boitier.log"
 :relance
 tasklist /fi "imagename eq mediamtx.exe" | find /i "mediamtx.exe" >nul
 if errorlevel 1 start "Solea - relais video" /min mediamtx\mediamtx.exe config\mediamtx.yml

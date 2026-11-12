@@ -39,6 +39,8 @@ echo.
 echo FlowIT Bridge démarre. Pour changer les réglages : fermez cette fenêtre
 echo puis double-cliquez sur Configurer-FlowIT-Tuya.cmd
 echo.
+rem Journal gardé dans passerelle.log (ce dossier) pour comprendre un arrêt après coup.
+set "LOG_FILE=%~dp0passerelle.log"
 :relance
 node --env-file=.env src\index.js
 rem Arrêt imprévu (coupure Internet, Wi-Fi...) : nouvel essai tout seul dans 15 secondes.
