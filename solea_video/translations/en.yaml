@@ -16,3 +16,6 @@ configuration:
   video_subnets:
     name: Allowed networks (optional)
     description: "E.g. 192.168.100.0/24. Empty = the box's local network."
+  talk_gain:
+    name: Your voice volume in the camera (optional)
+    description: "3 by default. Higher if the camera only plays your voice when you speak loudly; 1 = no boost."

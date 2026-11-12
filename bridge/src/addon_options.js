@@ -74,6 +74,7 @@ export function envFromAddonOptions(options, supervisorToken) {
     // Relais figé : le boîtier s'arrête, run_video.sh relance le relais puis le boîtier.
     env.RELAY_RESTART_EXIT = '1';
     if (text(options.video_subnets)) env.VIDEO_SUBNETS = text(options.video_subnets);
+    if (Number(options.talk_gain) > 0) env.TALK_GAIN = String(options.talk_gain);
   }
   if (text(options.ttlock_client_id)) {
     env.TTLOCK_CLIENT_ID = text(options.ttlock_client_id);

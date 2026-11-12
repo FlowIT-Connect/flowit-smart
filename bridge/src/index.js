@@ -100,6 +100,8 @@ if (config.video) {
     stun: v.stun,
     turn: v.turn,
     turnSecret: v.turnSecret,
+    // Volume de la voix envoyée à la caméra (TALK_GAIN, 3 par défaut ; 1 = sans amplification).
+    talkGain: process.env.TALK_GAIN ? Number(process.env.TALK_GAIN) : undefined,
     // Lanceur Windows : relais figé → arrêt du boîtier, le .cmd relance le relais puis le boîtier.
     onRelayDead: process.env.RELAY_RESTART_EXIT === '1' ? () => setTimeout(() => process.exit(3), 500) : null,
   });
