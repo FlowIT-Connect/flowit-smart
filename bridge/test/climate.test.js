@@ -302,3 +302,33 @@ test('Absence automatique : tout le monde parti depuis 10 min, retour dès qu\'u
   assert.equal(geoDecision({ ...away, geo_enabled: false }, [{ at_home: false, since: ago(30) }], now), 'back', 'fonction coupée : on rend la main');
   assert.equal(geoDecision(null, [], now), null);
 });
+
+test('Tuya thermostat de chaudière sans fil (wk + récepteur RF 433) : hors-gel, étalonnage, relais', () => {
+  const d = buildTuyaDevice({ id: 'rf1', name: 'Thermostat chaudière' }, {
+    category: 'wk',
+    functions: [
+      fn('switch', 'Boolean'),
+      fn('temp_set', 'Integer', { min: 5, max: 35, scale: 0, step: 1, unit: '℃' }),
+      fn('mode', 'Enum', { range: ['auto', 'manual', 'holiday'] }),
+      fn('child_lock', 'Boolean'),
+      fn('frost', 'Boolean'),
+      fn('temp_correction', 'Integer', { min: -9, max: 9, scale: 0, step: 1 }),
+    ],
+    status: [fn('temp_current', 'Integer', { min: 0, max: 50, scale: 0 }), fn('valve_state', 'Boolean')],
+  });
+  const caps = Object.fromEntries(d.capabilities.map((c) => [c.capability_key, c]));
+  assert.deepEqual(caps.hvac_mode.metadata.options, ['off', 'heat']);
+  assert.deepEqual(caps.preset.metadata.options, ['schedule', 'manual', 'away']);
+  assert.ok(caps.frost_protection && caps.child_lock && caps.hvac_action);
+  assert.equal(caps.temp_calibration.metadata.min, -9);
+  assert.equal(caps.temp_calibration.metadata.setting, true);
+  const st = statusMap([{ code: 'switch', value: true }, { code: 'temp_set', value: 21 }, { code: 'temp_current', value: 19 }, { code: 'valve_state', value: true }, { code: 'frost', value: false }, { code: 'temp_correction', value: -2 }]);
+  const snap = tuyaSnapshot(d, st, true).state;
+  assert.equal(snap.hvac_mode, 'heat');
+  assert.equal(snap.hvac_action, 'heating');
+  assert.equal(snap.frost_protection, false);
+  assert.equal(snap.temp_calibration, -2);
+  assert.deepEqual(d.capMap.frost_protection.write(true), [{ code: 'frost', value: true }]);
+  assert.deepEqual(d.capMap.temp_calibration.write(1.5), [{ code: 'temp_correction', value: 2 }]);
+  assert.deepEqual(d.capMap.preset.write('schedule'), [{ code: 'mode', value: 'auto' }]);
+});
