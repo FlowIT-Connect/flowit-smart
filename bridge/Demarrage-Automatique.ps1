@@ -1,4 +1,4 @@
-# Démarrage automatique d'un programme Solea à l'ouverture de la session Windows.
+﻿# Démarrage automatique d'un programme Solea à l'ouverture de la session Windows.
 # Appelé par les fichiers Demarrer-*.cmd : crée UNE fois un raccourci dans le dossier
 # « Démarrage » de Windows. Si vous le supprimez ensuite, il n'est pas recréé (fichier témoin).
 param(
