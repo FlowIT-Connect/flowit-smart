@@ -9,3 +9,5 @@ homeassistant.env
 diag-dahua.txt
 mediamtx_new/
 mediamtx.log
+boitier.log*
+passerelle.log*

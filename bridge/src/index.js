@@ -100,6 +100,8 @@ if (config.video) {
     stun: v.stun,
     turn: v.turn,
     turnSecret: v.turnSecret,
+    // Lanceur Windows : relais figé → arrêt du boîtier, le .cmd relance le relais puis le boîtier.
+    onRelayDead: process.env.RELAY_RESTART_EXIT === '1' ? () => setTimeout(() => process.exit(3), 500) : null,
   });
   addUdi(adapter, hub);
   log.info('bridge.video', { relay: v.relay, discovery: v.discovery, turn: v.turn.length > 0 });
@@ -137,6 +139,15 @@ const shutdown = async (signal) => {
   await bridge.stop();
   process.exit(0);
 };
+// Erreur imprévue : on la note (fenêtre et LOG_FILE) avant de s'arrêter ; le lanceur Windows relance.
+process.on('uncaughtException', (e) => {
+  log.error('bridge.crash', { error: e?.message ?? String(e), stack: e?.stack?.split('\n').slice(0, 6).join(' | ') });
+  process.exit(1);
+});
+process.on('unhandledRejection', (e) => {
+  log.error('bridge.crash', { error: e?.message ?? String(e), stack: e?.stack?.split('\n').slice(0, 6).join(' | ') });
+  process.exit(1);
+});
 process.on('SIGINT', shutdown);
 process.on('SIGTERM', shutdown);
 

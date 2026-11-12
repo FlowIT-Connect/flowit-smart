@@ -32,11 +32,20 @@ if not exist .env (
   )
 )
 
+rem Démarre tout seul à chaque allumage du PC (raccourci créé une fois dans « Démarrage »).
+powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0Demarrage-Automatique.ps1" -Name "Solea - Passerelle" -Target "%~f0"
+
 echo.
 echo FlowIT Bridge démarre. Pour changer les réglages : fermez cette fenêtre
 echo puis double-cliquez sur Configurer-FlowIT-Tuya.cmd
 echo.
+rem Journal gardé dans passerelle.log (ce dossier) pour comprendre un arrêt après coup.
+set "LOG_FILE=%~dp0passerelle.log"
+:relance
 node --env-file=.env src\index.js
+rem Arrêt imprévu (coupure Internet, Wi-Fi...) : nouvel essai tout seul dans 15 secondes.
 echo.
-echo FlowIT Bridge s'est arrêté (voir le message ci-dessus).
-pause
+echo Arrêt imprévu (voir le message ci-dessus). Nouvel essai dans 15 secondes,
+echo fermez cette fenêtre pour arrêter.
+timeout /t 15 /nobreak >nul
+goto relance

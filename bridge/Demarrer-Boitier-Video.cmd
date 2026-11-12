@@ -68,8 +68,8 @@ if not exist .env.video (
   )
 )
 
-tasklist /fi "imagename eq mediamtx.exe" | find /i "mediamtx.exe" >nul
-if errorlevel 1 start "Solea - relais video" /min mediamtx\mediamtx.exe config\mediamtx.yml
+rem Démarre tout seul à chaque allumage du PC (raccourci créé une fois dans « Démarrage »).
+powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0Demarrage-Automatique.ps1" -Name "Solea - Boitier video" -Target "%~f0"
 
 echo.
 echo Boîtier vidéo démarré. Si Windows demande l'autorisation du pare-feu,
@@ -77,7 +77,19 @@ echo cochez "Réseaux privés" puis cliquez "Autoriser l'accès".
 echo Gardez cette fenêtre ouverte. Pour changer de logement : supprimez le fichier .env.video
 echo puis relancez ce fichier.
 echo.
+rem Journal gardé dans boitier.log (ce dossier) pour comprendre un arrêt après coup.
+set "LOG_FILE=%~dp0boitier.log"
+rem Relais figé : le boîtier s'arrête et ce fichier relance le relais puis le boîtier.
+set "RELAY_RESTART_EXIT=1"
+:relance
+tasklist /fi "imagename eq mediamtx.exe" | find /i "mediamtx.exe" >nul
+if errorlevel 1 start "Solea - relais video" /min mediamtx\mediamtx.exe config\mediamtx.yml
 node --env-file=.env.video src\index.js
+rem Arrêt imprévu (coupure Internet, Wi-Fi...) : nouvel essai tout seul dans 15 secondes.
 echo.
-echo Le boîtier vidéo s'est arrêté (voir le message ci-dessus).
-pause
+echo Arrêt imprévu (voir le message ci-dessus). Nouvel essai dans 15 secondes,
+echo fermez cette fenêtre pour arrêter.
+rem Le relais est arrêté puis relancé : il peut être figé (12/11).
+taskkill /im mediamtx.exe /f >nul 2>&1
+timeout /t 15 /nobreak >nul
+goto relance
