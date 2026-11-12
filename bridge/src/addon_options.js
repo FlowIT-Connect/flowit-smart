@@ -6,7 +6,9 @@
 //  - mode « home_assistant » : les appareils de CE Home Assistant vont dans Solea ;
 //  - mode « tuya_cloud » : la passerelle Solea complète (Smart Life, TTLock, robot yeedi)
 //    tourne sur la box à la place du PC, et peut publier ses appareils dans Home Assistant
-//    par MQTT (option ha_mqtt, identifiants fournis par le Supervisor).
+//    par MQTT (option ha_mqtt, identifiants fournis par le Supervisor) ;
+//  - mode « video » (module « Solea Boîtier vidéo ») : caméras et visiophones du logement,
+//    avec le relais MediaMTX lancé à côté par run_video.sh, pour pouvoir éteindre le PC.
 
 import { spawn } from 'node:child_process';
 import { randomBytes } from 'node:crypto';
@@ -31,7 +33,7 @@ const text = (v) => (v == null ? '' : String(v).trim());
 /** Mode du module : ancien réglage « simulator » encore accepté. */
 export function addonMode(options) {
   if (options.simulator) return 'simulator';
-  return ['tuya_cloud', 'simulator'].includes(options.mode) ? options.mode : 'home_assistant';
+  return ['tuya_cloud', 'simulator', 'video'].includes(options.mode) ? options.mode : 'home_assistant';
 }
 
 /** Variables d'environnement déduites des options du module (ne modifie rien). */
@@ -66,6 +68,12 @@ export function envFromAddonOptions(options, supervisorToken) {
       env.HA_CONFIG_DIR = HA_CONFIG_DIR;
       env.IR_DATA_DIR = IR_DATA_DIR;
     }
+  }
+  if (mode === 'video') {
+    env.MEDIAMTX = 'true';
+    // Relais figé : le boîtier s'arrête, run_video.sh relance le relais puis le boîtier.
+    env.RELAY_RESTART_EXIT = '1';
+    if (text(options.video_subnets)) env.VIDEO_SUBNETS = text(options.video_subnets);
   }
   if (text(options.ttlock_client_id)) {
     env.TTLOCK_CLIENT_ID = text(options.ttlock_client_id);

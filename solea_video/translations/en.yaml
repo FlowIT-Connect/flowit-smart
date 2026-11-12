@@ -1,0 +1,18 @@
+configuration:
+  mode:
+    name: Mode
+    description: Always "video".
+  service_role_key:
+    name: Supabase secret key (service_role)
+    description: Same key as the FlowIT Bridge add-on. It stays on this box.
+  integration_id:
+    name: Video box integration ID
+    description: Solea > Settings > Integrations > "Video box" > copy the ID.
+  supabase_url:
+    name: Supabase URL
+    description: Keep the default.
+  log_level:
+    name: Log level
+  video_subnets:
+    name: Allowed networks (optional)
+    description: "E.g. 192.168.100.0/24. Empty = the box's local network."

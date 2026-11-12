@@ -109,3 +109,15 @@ test('module yeedi lancé à côté, avec un jeton partagé', () => {
   handle.stop();
   assert.equal(startAddonYeedi({ ...FULL, yeedi_email: '' }, {}, { spawnImpl, entry }), null);
 });
+
+test('mode video : boîtier vidéo sur la box, relais local, relance si le relais se fige', () => {
+  const env = envFromAddonOptions({ mode: 'video', service_role_key: 'k', integration_id: 'i-video', log_level: 'info' }, 'tok');
+  assert.equal(env.ADAPTER, 'video');
+  assert.equal(env.MEDIAMTX, 'true');
+  assert.equal(env.RELAY_RESTART_EXIT, '1');
+  assert.equal(env.HA_TOKEN, undefined, 'aucun accès à Home Assistant nécessaire');
+  const config = loadConfig(env);
+  assert.equal(config.adapter, 'video');
+  assert.equal(config.video.relay, true);
+  assert.equal(config.video.mediamtxApiUrl, 'http://127.0.0.1:9997');
+});

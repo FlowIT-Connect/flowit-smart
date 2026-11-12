@@ -1,0 +1,18 @@
+configuration:
+  mode:
+    name: Mode
+    description: Toujours « video ».
+  service_role_key:
+    name: Clé secrète Supabase (service_role)
+    description: La même que celle du module FlowIT Bridge. Elle reste dans cette box.
+  integration_id:
+    name: Identifiant du boîtier vidéo
+    description: Solea > Paramètres > Intégrations > « Boîtier vidéo » > copier l'identifiant.
+  supabase_url:
+    name: Adresse Supabase
+    description: Laisser la valeur par défaut.
+  log_level:
+    name: Niveau de détail des journaux
+  video_subnets:
+    name: Réseaux autorisés (facultatif)
+    description: "Ex. 192.168.100.0/24. Vide = réseau local de la box."
