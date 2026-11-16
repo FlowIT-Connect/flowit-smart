@@ -18,6 +18,7 @@ import '../widgets/home_modes_bar.dart';
 import '../widgets/home_summary_panel.dart';
 import '../widgets/room_visual.dart';
 import 'rooms_screen.dart';
+import 'transport_screen.dart';
 
 /// Accueil : synthèse de la maison, scènes rapides, pièces, favoris, appareils à surveiller.
 class DashboardScreen extends StatefulWidget {
@@ -57,6 +58,18 @@ class _DashboardScreenState extends State<DashboardScreen> {
     WidgetsBinding.instance.addPostFrameCallback((_) => state.refreshWeather());
     if (all.isEmpty && state.scenes.isEmpty) {
       return ListView(children: [
+        Padding(
+          padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
+          child: Align(
+            alignment: AlignmentDirectional.centerStart,
+            child: _HeroPill(
+              key: const ValueKey('transport-pill'),
+              icon: Icons.directions_bus_rounded,
+              label: context.tr('transport.pill'),
+              onTap: () => openTransport(context),
+            ),
+          ),
+        ),
         EmptyState(
           icon: Icons.devices_other_rounded,
           title: context.tr('dashboard.emptyTitle'),
@@ -210,6 +223,12 @@ class _StatusPills extends StatelessWidget {
           ].join(' · '),
           onTap: weather != null ? () => showWeatherSheet(context) : null,
         ),
+      _HeroPill(
+        key: const ValueKey('transport-pill'),
+        icon: Icons.directions_bus_rounded,
+        label: context.tr('transport.pill'),
+        onTap: () => openTransport(context),
+      ),
       _HeroPill(
         icon: unavailable > 0 ? Icons.error_outline_rounded : Icons.check_circle_rounded,
         label: unavailable > 0 ? context.tr('dashboard.unavailableCount', {'n': unavailable}) : context.tr('dashboard.allGood'),
